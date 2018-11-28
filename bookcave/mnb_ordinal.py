@@ -16,7 +16,7 @@ def get_vectorizer():
     return TfidfVectorizer()
 
 
-def get_train_test_split(book_ids, book_id_to_preview, y, category_index, perm, fold, folds):
+def get_train_test_split(book_ids, book_id_to_preview, y, perm, fold, folds):
     # Cross validate...
     test_start = len(y) * fold // folds
     test_end = len(y) * (fold + 1) // folds
@@ -24,35 +24,39 @@ def get_train_test_split(book_ids, book_id_to_preview, y, category_index, perm, 
     perm_test = perm[test_start:test_end]
     previews_train = [book_id_to_preview[book_id] for book_id in book_ids[perm_train]]
     previews_test = [book_id_to_preview[book_id] for book_id in book_ids[perm_test]]
-    y_train = y[perm_train, category_index]
-    y_test = y[perm_test, category_index]
+    y_train = y[perm_train]
+    y_test = y[perm_test]
     return previews_train, previews_test, y_train, y_test
 
 
 def to_ordinal(y, ordinal_index):
-    # and use ordinal classification as explained in
+    # and use ordinal classification as explained in:
     # `Frank, Eibe, and Mark Hall. "A simple approach to ordinal classification."
     # European Conference on Machine Learning. Springer, Berlin, Heidelberg, 2001.`.
     return np.array([1 if level > ordinal_index else 0 for level in y])
 
 
 def cross_validate(folds, book_ids, book_id_to_preview, category_names, category_sizes, y, perm):
-    for category_index, category_name in enumerate(category_names):
-        print('Evaluating category `{}`...'.format(category_name))
-        category_size = category_sizes[category_name]
-        # Start cross-validation.
-        num_correct_total = 0
-        for fold in range(folds):
-            print('Starting fold {}...'.format(fold + 1))
-            # Split data into train and test sets for this fold.
-            previews_train, previews_test, y_train, y_test = get_train_test_split(book_ids, book_id_to_preview, y,
-                                                                                  category_index, perm, fold, folds)
-            # Create vectorized representations of the book previews.
-            vectorizer = get_vectorizer()
-            vectorizer.fit(previews_train)  # Be fair, as if we were only allowed to model the training data.
-            x_train = vectorizer.transform(previews_train)
-            x_test = vectorizer.transform(previews_test)
+    # Start cross-validation.
+    num_correct_totals = np.zeros(len(category_names))
+    # Start looping through folds before categories because text vectorization is the most time-consuming operation.
+    for fold in range(folds):
+        print('Starting fold {}...'.format(fold + 1))
+        # Split data into train and test sets for this fold.
+        split = get_train_test_split(book_ids, book_id_to_preview, y, perm, fold, folds)
+        previews_train, previews_test, y_train_all, y_test_all = split
+        # Create vectorized representations of the book previews.
+        print('Vectorizing text...')
+        vectorizer = get_vectorizer()
+        vectorizer.fit(previews_train)  # Be fair, as if we were only allowed to model the training data.
+        x_train = vectorizer.transform(previews_train)
+        x_test = vectorizer.transform(previews_test)
+        for category_index, category_name in enumerate(category_names):
+            print('Evaluating category `{}`...'.format(category_name))
             # Perform ordinal classification.
+            category_size = category_sizes[category_name]
+            y_train = y_train_all[:, category_index]
+            y_test = y_test_all[:, category_index]
             # Get probabilities for binarized ordinal labels.
             ordinal_ps = np.zeros((len(y_test), category_size - 1))
             for ordinal_index in range(category_size - 1):
@@ -73,9 +77,10 @@ def cross_validate(folds, book_ids, book_id_to_preview, category_names, category
             # Choose the most likely class label.
             y_pred = np.argmax(ps, axis=1)
             num_correct = accuracy_score(y_test, y_pred, normalize=False)
-            num_correct_total += num_correct
-        accuracy = num_correct_total/len(y)
-        print('Accuracy: {:.4%}'.format(accuracy))
+            num_correct_totals[category_index] += num_correct
+    accuracies = num_correct_totals/len(y)
+    for i, accuracy in enumerate(accuracies):
+        print('`{}` overall accuracy: {:.4%}'.format(category_names[i], accuracy))
 
 
 def main():
