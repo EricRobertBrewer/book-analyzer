@@ -16,17 +16,17 @@ def get_vectorizer():
     return TfidfVectorizer()
 
 
-def get_train_test_split(book_ids, book_id_to_preview, y, perm, fold, folds):
+def get_train_test_split(book_ids, book_id_to_text, y, perm, fold, folds):
     # Cross validate...
     test_start = len(y) * fold // folds
     test_end = len(y) * (fold + 1) // folds
     perm_train = np.concatenate((perm[:test_start], perm[test_end:]))
     perm_test = perm[test_start:test_end]
-    previews_train = [book_id_to_preview[book_id] for book_id in book_ids[perm_train]]
-    previews_test = [book_id_to_preview[book_id] for book_id in book_ids[perm_test]]
+    texts_train = [book_id_to_text[book_id] for book_id in book_ids[perm_train]]
+    texts_test = [book_id_to_text[book_id] for book_id in book_ids[perm_test]]
     y_train = y[perm_train]
     y_test = y[perm_test]
-    return previews_train, previews_test, y_train, y_test
+    return texts_train, texts_test, y_train, y_test
 
 
 def to_ordinal(y, ordinal_index):
@@ -36,21 +36,21 @@ def to_ordinal(y, ordinal_index):
     return np.array([1 if level > ordinal_index else 0 for level in y])
 
 
-def cross_validate(folds, book_ids, book_id_to_preview, category_names, category_sizes, y, perm):
+def cross_validate(folds, book_ids, book_id_to_text, category_names, category_sizes, y, perm):
     # Start cross-validation.
     num_correct_totals = np.zeros(len(category_names))
     # Start looping through folds before categories because text vectorization is the most time-consuming operation.
     for fold in range(folds):
         print('Starting fold {}...'.format(fold + 1))
         # Split data into train and test sets for this fold.
-        split = get_train_test_split(book_ids, book_id_to_preview, y, perm, fold, folds)
-        previews_train, previews_test, y_train_all, y_test_all = split
-        # Create vectorized representations of the book previews.
+        split = get_train_test_split(book_ids, book_id_to_text, y, perm, fold, folds)
+        texts_train, texts_test, y_train_all, y_test_all = split
+        # Create vectorized representations of the book texts.
         print('Vectorizing text...')
         vectorizer = get_vectorizer()
-        vectorizer.fit(previews_train)  # Be fair, as if we were only allowed to model the training data.
-        x_train = vectorizer.transform(previews_train)
-        x_test = vectorizer.transform(previews_test)
+        vectorizer.fit(texts_train)  # Be fair, as if we were only allowed to model the training data.
+        x_train = vectorizer.transform(texts_train)
+        x_test = vectorizer.transform(texts_test)
         for category_index, category_name in enumerate(category_names):
             print('Evaluating category `{}`...'.format(category_name))
             # Perform ordinal classification.
@@ -84,11 +84,12 @@ def cross_validate(folds, book_ids, book_id_to_preview, category_names, category
 
 
 def main():
-    book_ids, book_id_to_preview, category_names, category_sizes, y = bcdata.get_data()
+    # book_ids, book_id_to_text, category_names, category_sizes, y = bcdata.get_data('book.txt')
+    book_ids, book_id_to_text, category_names, category_sizes, y = bcdata.get_data('text.txt', kindle=True)
     # Generate a random permutation in order to process the data set in a random order.
     # np.random.seed(1)
     perm = np.random.permutation(len(y))
-    cross_validate(5, book_ids, book_id_to_preview, category_names, category_sizes, y, perm=perm)
+    cross_validate(5, book_ids, book_id_to_text, category_names, category_sizes, y, perm=perm)
 
 
 if __name__ == '__main__':
