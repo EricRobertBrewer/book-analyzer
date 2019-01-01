@@ -5,7 +5,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import accuracy_score
 from sklearn.naive_bayes import MultinomialNB
 # Data.
-import bookcave.data as bcdata
+import bookcave
 
 
 def get_classifier():
@@ -13,20 +13,29 @@ def get_classifier():
 
 
 def get_vectorizer():
-    return TfidfVectorizer()
+    return TfidfVectorizer(sublinear_tf=True,
+                           min_df=2,
+                           norm='l2',
+                           encoding='latin-1',
+                           ngram_range=(1, 2),
+                           stop_words='english')
 
 
-def get_train_test_split(book_ids, book_id_to_text, y, perm, fold, folds):
+def get_train_test_split(x, y, fold, folds, seed=None):
+    # Generate a random permutation in order to process the data set in a random order.
+    if seed:
+        np.random.seed(seed)
+    perm = np.random.permutation(len(y))
     # Cross validate...
     test_start = len(y) * fold // folds
     test_end = len(y) * (fold + 1) // folds
     perm_train = np.concatenate((perm[:test_start], perm[test_end:]))
     perm_test = perm[test_start:test_end]
-    texts_train = [book_id_to_text[book_id] for book_id in book_ids[perm_train]]
-    texts_test = [book_id_to_text[book_id] for book_id in book_ids[perm_test]]
+    x_train = x[perm_train]
+    x_test = x[perm_test]
     y_train = y[perm_train]
     y_test = y[perm_test]
-    return texts_train, texts_test, y_train, y_test
+    return x_train, x_test, y_train, y_test
 
 
 def to_ordinal(y, ordinal_index):
@@ -36,15 +45,16 @@ def to_ordinal(y, ordinal_index):
     return np.array([1 if level > ordinal_index else 0 for level in y])
 
 
-def cross_validate(folds, book_ids, book_id_to_text, category_names, category_sizes, y, perm):
+def cross_validate(folds, book_ids, book_id_to_text, category_names, category_sizes, level_names, y, seed=None):
     # Start cross-validation.
     num_correct_totals = np.zeros(len(category_names))
     # Start looping through folds before categories because text vectorization is the most time-consuming operation.
     for fold in range(folds):
         print('Starting fold {}...'.format(fold + 1))
         # Split data into train and test sets for this fold.
-        split = get_train_test_split(book_ids, book_id_to_text, y, perm, fold, folds)
-        texts_train, texts_test, y_train_all, y_test_all = split
+        book_ids_train, book_ids_test, y_train_all, y_test_all = get_train_test_split(book_ids, y, fold, folds, seed=seed)
+        texts_train = [book_id_to_text[book_id] for book_id in book_ids_train]
+        texts_test = [book_id_to_text[book_id] for book_id in book_ids_test]
         # Create vectorized representations of the book texts.
         print('Vectorizing text...')
         vectorizer = get_vectorizer()
@@ -52,7 +62,6 @@ def cross_validate(folds, book_ids, book_id_to_text, category_names, category_si
         x_train = vectorizer.transform(texts_train)
         x_test = vectorizer.transform(texts_test)
         for category_index, category_name in enumerate(category_names):
-            print('Evaluating category `{}`...'.format(category_name))
             # Perform ordinal classification.
             category_size = category_sizes[category_name]
             y_train = y_train_all[:, category_index]
@@ -85,11 +94,9 @@ def cross_validate(folds, book_ids, book_id_to_text, category_names, category_si
 
 def main():
     # book_ids, book_id_to_text, category_names, category_sizes, y = bcdata.get_data('book.txt')
-    book_ids, book_id_to_text, category_names, category_sizes, y = bcdata.get_data('text.txt', kindle=True)
-    # Generate a random permutation in order to process the data set in a random order.
-    # np.random.seed(1)
-    perm = np.random.permutation(len(y))
-    cross_validate(5, book_ids, book_id_to_text, category_names, category_sizes, y, perm=perm)
+    book_ids, book_id_to_text, category_names, category_sizes, level_names, y = bookcave.get_data('text.txt', kindle=True)
+    seed = 1
+    cross_validate(5, book_ids, book_id_to_text, category_names, category_sizes, level_names, y, seed=seed)
 
 
 if __name__ == '__main__':
