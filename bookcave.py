@@ -8,7 +8,7 @@ import os
 import sys
 
 # Declare file path constants.
-CONTENT_ROOT = os.path.join('..', '..', 'content')
+CONTENT_ROOT = os.path.join('..', 'content')
 BOOKCAVE_ROOT = os.path.join(CONTENT_ROOT, 'bookcave')
 BOOKCAVE_AMAZON_KINDLE_ROOT = os.path.join(CONTENT_ROOT, 'bookcave_amazon_kindle')
 BOOKCAVE_AMAZON_PREVIEW_ROOT = os.path.join(CONTENT_ROOT, 'bookcave_amazon_preview')
@@ -130,3 +130,20 @@ def get_data(text_file_name, kindle=False, verbose=False):
     y = np.ceil(y_cont).astype(np.int32)
 
     return book_ids, book_id_to_text, category_names, category_sizes, level_names, y
+
+
+def get_train_test_split(x, y, fold, folds, seed=None):
+    # Generate a random permutation in order to process the data set in a random order.
+    if seed:
+        np.random.seed(seed)
+    perm = np.random.permutation(len(y))
+    # Cross validate...
+    test_start = len(y) * fold // folds
+    test_end = len(y) * (fold + 1) // folds
+    perm_train = np.concatenate((perm[:test_start], perm[test_end:]))
+    perm_test = perm[test_start:test_end]
+    x_train = x[perm_train]
+    x_test = x[perm_test]
+    y_train = y[perm_train]
+    y_test = y[perm_test]
+    return x_train, x_test, y_train, y_test
