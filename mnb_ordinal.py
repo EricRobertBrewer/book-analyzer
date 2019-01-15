@@ -28,18 +28,16 @@ def to_ordinal(y, ordinal_index):
     return np.array([1 if level > ordinal_index else 0 for level in y])
 
 
-def cross_validate(folds, book_ids, book_id_to_text, category_names, category_sizes, level_names, y, seed=None):
+def cross_validate(folds, texts, y, categories, levels, seed=None):
     # Start cross-validation.
-    num_correct_totals = np.zeros(len(category_names))
+    num_correct_totals = np.zeros(len(categories))
 
     # Start looping through folds before categories because text vectorization is the most time-consuming operation.
     for fold in range(folds):
         print('Starting fold {}...'.format(fold + 1))
 
         # Split data into train and test sets for this fold.
-        book_ids_train, book_ids_test, y_train_all, y_test_all = bc.get_train_test_split(book_ids, y, fold, folds, seed=seed)
-        texts_train = [book_id_to_text[book_id] for book_id in book_ids_train]
-        texts_test = [book_id_to_text[book_id] for book_id in book_ids_test]
+        texts_train, texts_test, y_train_all, y_test_all = bc.get_train_test_split(texts, y, fold, folds, seed=seed)
 
         # Create vectorized representations of the book texts.
         print('Vectorizing text...')
@@ -48,9 +46,9 @@ def cross_validate(folds, book_ids, book_id_to_text, category_names, category_si
         x_train = vectorizer.transform(texts_train)
         x_test = vectorizer.transform(texts_test)
 
-        for category_index, category_name in enumerate(category_names):
+        for category_index, category in enumerate(categories):
             # Perform ordinal classification.
-            category_size = category_sizes[category_name]
+            category_size = len(levels[category])
             y_train = y_train_all[:, category_index]
             y_test = y_test_all[:, category_index]
 
@@ -80,14 +78,14 @@ def cross_validate(folds, book_ids, book_id_to_text, category_names, category_si
 
     accuracies = num_correct_totals/len(y)
     for i, accuracy in enumerate(accuracies):
-        print('`{}` overall accuracy: {:.4%}'.format(category_names[i], accuracy))
+        print('`{}` overall accuracy: {:.4%}'.format(categories[i], accuracy))
 
 
 def main():
-    # book_ids, book_id_to_text, category_names, category_sizes, y = bcdata.get_data('book.txt')
-    book_ids, book_id_to_text, category_names, category_sizes, level_names, y = bc.get_data('text.txt', kindle=True)
+    # book_ids, book_id_to_text, category_names, category_sizes, y = bcdata.get_data('book.txt', kindle=False)
+    texts, y, categories, levels = bc.get_data()
     seed = 1
-    cross_validate(5, book_ids, book_id_to_text, category_names, category_sizes, level_names, y, seed=seed)
+    cross_validate(5, texts, y, categories, levels, seed=seed)
 
 
 if __name__ == '__main__':

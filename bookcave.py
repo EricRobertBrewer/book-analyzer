@@ -14,122 +14,116 @@ BOOKCAVE_AMAZON_KINDLE_ROOT = os.path.join(CONTENT_ROOT, 'bookcave_amazon_kindle
 BOOKCAVE_AMAZON_PREVIEW_ROOT = os.path.join(CONTENT_ROOT, 'bookcave_amazon_preview')
 
 
-def get_data(text_file_name, kindle=False, verbose=False):
+def get_data(text_file='text.txt', kindle=True, verbose=False):
 
     # Pull all of the data from the BookCave database.
-    if verbose:
-        print('Opening database...')
     conn = sqlite3.connect(os.path.join(BOOKCAVE_ROOT, 'contents.db'))
-    all_books = pd.read_sql_query('SELECT * FROM Books;', conn)
-    # ratings = pd.read_sql_query('SELECT * FROM BookRatings;', conn)
-    levels = pd.read_sql_query('SELECT * FROM BookRatingLevels;', conn)
+    all_books_df = pd.read_sql_query('SELECT * FROM Books;', conn)
+    # rating_df = pd.read_sql_query('SELECT * FROM BookRatings;', conn)
+    levels_df = pd.read_sql_query('SELECT * FROM BookRatingLevels;', conn)
     conn.close()
 
     # Consider only books which have at least one rating.
-    rated_books = all_books[all_books['community_ratings_count'] > 0]
+    rated_books_df = all_books_df[all_books_df['community_ratings_count'] > 0]
 
-    # Extract categories.
-    categories = pd.read_csv(os.path.join(CONTENT_ROOT, 'bookcave', 'categories.tsv'), sep='\t')
-
-    # Enumerate category names.
-    category_names = categories['category'].unique()
-
-    # Map category names to their indices.
-    category_indices = dict()
-    for i, category in enumerate(category_names):
-        category_indices[category] = i
-
-    # Map level names to their indices.
-    level_indices = dict()
-    for category in category_names:
-        category_rows = categories[categories['category'].str.match(category)]
-        category_level_names = category_rows['level']
-        category_level_indices = {name: j for j, name in enumerate(category_level_names)}
-        level_indices.update(category_level_indices)
-
-    # Map each level to its category index.
-    level_to_category_index = dict()
-    for _, category_row in categories.iterrows():
-        level = category_row['level']
-        if level != 'None':
-            level_to_category_index[level] = category_indices[category_row['category']]
-
-    # Enumerate the level names per category.
-    level_names = [['None'] for _ in range(len(category_names))]
-    for _, category_row in categories.iterrows():
-        level = category_row['level']
-        if level == 'None':
-            continue
-        category_index = level_to_category_index[level]
-        level_names[category_index].append(level)
-
-    # Count the number of levels in each category.
-    category_sizes = categories.groupby('category').size()
-
-    # Count how many Amazon Kindle texts have been attempted to be collected.
+    # Count how many texts have been attempted to be collected.
     text_root = BOOKCAVE_AMAZON_KINDLE_ROOT if kindle else BOOKCAVE_AMAZON_PREVIEW_ROOT
     text_book_ids = os.listdir(text_root)
-
-    # Extract raw book text contents.
+    
     if verbose:
         print('Reading text files...')
+
+    # Extract raw book text contents.
     book_id_to_text = dict()
+    # Skip reading books into memory which do not have a rating.
+    rated_book_ids = set(rated_books_df['id'])
     for text_book_id in text_book_ids:
+        if text_book_id not in rated_book_ids:
+            continue
         if sys.platform == 'win32':
-            # One book folder is named:
-            # `diy-body-care-the-complete-body-care-guide-for-beginners-with-over-37-recipes-for-homemade-body-butters-body-scrubs-lotions-lip-balms-and-shampoos-body-care-essential-oils-organic-lotions`.
-            # To overcome a `FileNotFoundError` for this file, use an extended-length path on Windows.
+            # To overcome `FileNotFoundError`s for files with long names, use an extended-length path on Windows.
             # See `https://stackoverflow.com/questions/36219317/pathname-too-long-to-open/36219497`.
-            path = u'\\\\?\\' + os.path.abspath(os.path.join(text_root, text_book_id, text_file_name))
+            path = u'\\\\?\\' + os.path.abspath(os.path.join(text_root, text_book_id, text_file))
         # elif sys.platform == 'darwin':
         else:
-            path = os.path.join(text_root, text_book_id, text_file_name)
+            path = os.path.join(text_root, text_book_id, text_file)
         try:
             with open(path, 'r', encoding='utf-8') as fd:
-                contents = fd.read()
-            # Skip empty text files.
-            if len(contents) == 0:
-                continue
-            book_id_to_text[text_book_id] = contents
+                text = fd.read()
+            book_id_to_text[text_book_id] = text
         except FileNotFoundError:
             pass
         except NotADirectoryError:
             pass
 
-    # Count how many texts exist for books with at least one rating.
-    books = rated_books[rated_books['id'].isin(book_id_to_text)]
+    # Consider only books for which text has been collected.
+    books_df = rated_books_df[rated_books_df['id'].isin(book_id_to_text)]
+
+    # Create a fancy-indexable array of book IDs.
+    book_ids = np.array([book_row['id'] for _, book_row in books_df.iterrows()])
 
     # Map book IDs to indices.
-    book_indices = {book_id: i for i, book_id in enumerate(books['id'])}
+    book_id_to_index = {book_id: i for i, book_id in enumerate(book_ids)}
 
-    # Likewise, create a fancy-indexable array of book IDs.
-    book_ids = np.array([book['id'] for _, book in books.iterrows()])
+    # Create an array of texts.
+    texts = np.array([book_id_to_text[book_id] for book_id in book_ids])
+
+    # Extract category data.
+    categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories.tsv'), sep='\t')
+
+    # Enumerate category names.
+    categories = list(categories_df['category'].unique())
+
+    # Map category names to their indices.
+    category_to_index = {category: i for i, category in enumerate(categories)}
+
+    # Map each level name to its index within its own category.
+    level_to_index = dict()
+    for category in categories:
+        category_rows = categories_df[categories_df['category'].str.match(category)]
+        category_levels = category_rows['level']
+        category_level_to_index = {name: j for j, name in enumerate(category_levels)}
+        level_to_index.update(category_level_to_index)
+
+    # Map each level to its category index.
+    level_to_category_index = dict()
+    # Enumerate the level names per category.
+    levels = [['None'] for _ in range(len(categories))]
+    for _, category_row in categories_df.iterrows():
+        level = category_row['level']
+        if level == 'None':
+            continue
+        level_to_category_index[level] = category_to_index[category_row['category']]
+        category_index = level_to_category_index[level]
+        levels[category_index].append(level)
+
+    if verbose:
+        print('Extracting labels for {} books...'.format(len(book_ids)))
 
     # For each category, calculate the average rating for each book.
-    if verbose:
-        print('Extracting labels for {} books...'.format(len(book_indices)))
-    y_cont = np.zeros((len(books), len(category_names)))
+    y_cont = np.zeros((len(book_ids), len(categories)))
     # Add all levels together for each book.
-    for _, level in levels.iterrows():
-        book_id = level['book_id']
+    for _, level_row in levels_df.iterrows():
+        book_id = level_row['book_id']
         # Skip books which have a rating (and rating levels), but no text.
-        if book_id in book_indices:
-            # Add this rating level to its category for this book.
-            book_index = book_indices[book_id]
-            category_index = level_to_category_index[level['title']]
-            level_index = level_indices[level['title']]
-            y_cont[book_index, category_index] += level_index * level['count']
+        if book_id not in book_id_to_index:
+            continue
+        # Add this rating level to its category for this book.
+        book_index = book_id_to_index[book_id]
+        category_index = level_to_category_index[level_row['title']]
+        level_index = level_to_index[level_row['title']]
+        y_cont[book_index, category_index] += level_index * level_row['count']
     # Calculate the average level for each book by dividing by the number of ratings for that book.
-    for _, book in books.iterrows():
-        book_id = book['id']
-        book_index = book_indices[book_id]
-        y_cont[book_index] /= book['community_ratings_count']
+    for _, book_row in books_df.iterrows():
+        book_id = book_row['id']
+        book_index = book_id_to_index[book_id]
+        y_cont[book_index] /= book_row['community_ratings_count']
 
     # Since false negatives are less desirable than false positives, implement somewhat of a "harsh critic"
     # by taking the ceiling of the average ratings.
     y = np.ceil(y_cont).astype(np.int32)
 
-    return book_ids, book_id_to_text, category_names, category_sizes, level_names, y
+    return texts, y, categories, levels
 
 
 def get_train_test_split(x, y, fold, folds, seed=None):
