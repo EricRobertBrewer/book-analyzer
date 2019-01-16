@@ -14,12 +14,32 @@ BOOKCAVE_AMAZON_KINDLE_ROOT = os.path.join(CONTENT_ROOT, 'bookcave_amazon_kindle
 BOOKCAVE_AMAZON_PREVIEW_ROOT = os.path.join(CONTENT_ROOT, 'bookcave_amazon_preview')
 
 
-def get_data(text_file='text.txt', kindle=True, verbose=False):
+def get_data(text_file='text.txt', kindle=True, return_meta=False, verbose=False):
+    """
 
-    # Pull all of the data from the BookCave database.
+    :param text_file:   The name of the text file.
+    :param kindle:      If `True`, full texts will be returned.
+                        Otherwise, only Kindle previews (the first few chapters) will be returned.
+    :param return_meta: When `True`, all meta data will be returned.
+    :param verbose:     When `True`, function progress will be printed to the console.
+    :return:
+        Always:
+            text (np.array):                Raw texts of books.
+            y (np.ndarray):                 Averaged level (label) for the corresponding text in 8 categories.
+            categories (list):              Names of categories.
+            levels (list):                  Names of levels per category.
+        Only when `return_meta` is set to `True`:
+            all_books_df (pd.DataFrame):    Metadata for all books collected from BookCave.
+            rated_books_df (pd.DataFrame):  Metadata for books which have been rated.
+            books_df (pd.DataFrame):        Metadata for books which have been rated AND have text.
+            ratings_df (pd.DataFrame):      Metadata for book ratings (unused).
+            levels_df (pd.DataFrame):       Metadata for book rating levels.
+            categories_df (pd.DataFrame):   Metadata for categories (contains a description for each rating level).
+    """
+    # Read all of the data from the BookCave database.
     conn = sqlite3.connect(os.path.join(BOOKCAVE_ROOT, 'contents.db'))
     all_books_df = pd.read_sql_query('SELECT * FROM Books;', conn)
-    # rating_df = pd.read_sql_query('SELECT * FROM BookRatings;', conn)
+    ratings_df = pd.read_sql_query('SELECT * FROM BookRatings;', conn)
     levels_df = pd.read_sql_query('SELECT * FROM BookRatingLevels;', conn)
     conn.close()
 
@@ -123,7 +143,14 @@ def get_data(text_file='text.txt', kindle=True, verbose=False):
     # by taking the ceiling of the average ratings.
     y = np.ceil(y_cont).astype(np.int32)
 
+    if return_meta:
+        return texts, y, categories, levels, all_books_df, rated_books_df, books_df, ratings_df, levels_df, categories_df
+
     return texts, y, categories, levels
+
+
+def get_text_lines(texts):
+    return np.array([text.split('\n') for text in texts])
 
 
 def get_train_test_split(x, y, fold, folds, seed=None):
