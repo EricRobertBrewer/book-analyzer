@@ -3,7 +3,7 @@ import nltk
 import bookcave
 
 
-def get_documents(text_lines, sentences=False):
+def get_processed_documents(text_lines, sentences=False):
     for lines in text_lines:
         for line in lines:
             if sentences:
@@ -61,18 +61,22 @@ def load_doc_model(fname):
 
 
 def main():
+    print('Loading BookCave data...')
     texts, y, categories, levels = bookcave.get_data()
+    print('Splitting text files into lines...')
     text_lines = bookcave.get_text_lines(texts)
-    lines = [line for line in get_documents(text_lines, sentences=False)]
-    sentences = [sentence for sentence in get_documents(text_lines, sentences=True)]
+    print('Pre-processing lines...')
+    lines = [line for line in get_processed_documents(text_lines, sentences=False)]
+    print('Pre-processing sentences...')
+    sentences = [sentence for sentence in get_processed_documents(text_lines, sentences=True)]
     line_fname = save_trained_vectors(lines, 'line', epochs=10, verbose=True)
     print('Saved `line` vectors to `{}`.'.format(line_fname))
     sentence_fname = save_trained_vectors(sentences, 'sentence', epochs=10, verbose=True)
     print('Saved `sentence` vectors to `{}`.'.format(sentence_fname))
     line_doc_fname = save_trained_doc_model(lines, 'line', epochs=10, verbose=True)
     print('Saved `line` doc2vec model to `{}`.'.format(line_doc_fname))
-    sentence_doc_fname = save_trained_doc_model(sentences, 'line', epochs=10, verbose=True)
-    print('Saved `line` doc2vec model to `{}`.'.format(sentence_doc_fname))
+    sentence_doc_fname = save_trained_doc_model(sentences, 'sentence', epochs=10, verbose=True)
+    print('Saved `sentence` doc2vec model to `{}`.'.format(sentence_doc_fname))
 
 
 if __name__ == '__main__':
