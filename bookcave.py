@@ -14,30 +14,34 @@ BOOKCAVE_ROOT = os.path.join(CONTENT_ROOT, 'bookcave')
 
 
 def get_data(
+        text='kindle',
         input='content',
         categories_mode='hard',
-        combine_ratings='average',
+        combine_ratings='avgceil',
         return_meta=False,
         verbose=False):
     """
-    :param input: string {'filename', 'content'}
-    :param combine_ratings: string {'average', 'max'}
-        When `'average'`, the average of all rating levels per book will be returned.
-        When `'max'`, the maximum among all rating levels per book will be returned.
-    :param categories_mode: string {'hard', 'soft'}
+    :param text: string {'kindle' (default), 'preview'}
+    :param input: string {'content' (default), 'filename'}
+    :param categories_mode: string {'hard' (default), 'soft'}
         When 'hard', all BookCave category levels will be returned.
         When 'soft', adjacent category levels which result in the same rating will be collapsed.
+    :param combine_ratings: string {'avgceil' (default), 'avgfloor', 'max'}
+        When `'avgceil'`, the ceiling of the average of all rating levels per category per book will be returned.
+        When `'avgfloor'`, the floor of the average of all rating levels per category per book will be returned.
+        When `'max'`, the maximum among all rating levels per category per book will be returned.
     :param return_meta: boolean, default False
         When `True`, all meta data will be returned.
     :param verbose: boolean, default False
         When `True`, function progress will be printed to the console.
     :return:
         Always:
-            text (np.array):                Raw texts of books.
-            y (np.ndarray):                 Averaged level (label) for the corresponding text in 8 categories.
+            inputs (np.array):              An array of either file paths or of raw texts of books.
+            Y (np.ndarray):                 Level (label) for the corresponding text in 8 categories.
             categories (list):              Names of categories.
             levels (list):                  Names of levels per category.
         Only when `return_meta` is set to `True`:
+            book_asins (np.array)           Alphabetically-ordered array of book ASINs parallel with `inputs`.
             all_books_df (pd.DataFrame):    Metadata for all books collected from BookCave.
             rated_books_df (pd.DataFrame):  Metadata for books which have been rated.
             books_df (pd.DataFrame):        Metadata for books which have been rated AND have text.
@@ -59,7 +63,12 @@ def get_data(
         print('Reading text files...')
 
     # Count how many texts have been attempted to be collected.
-    text_file = 'text.txt'
+    if text == 'kindle':
+        text_file = 'text.txt'
+    elif text == 'preview':
+        text_file = 'preview.txt'
+    else:
+        raise ValueError('Unknown value for `text`: `{}`'.format(text))
     # Extract raw book text contents.
     book_asin_to_input = dict()
     # Skip reading books into memory which do not have a rating or a ASIN.
@@ -80,12 +89,15 @@ def get_data(
             book_asin_to_input[book_asin] = text
         elif input == 'filename':
             book_asin_to_input[book_asin] = path
+        else:
+            raise ValueError('Unknown value for `input`: `{}`'.format(input))
 
     # Consider only books for which text has been collected.
     books_df = rated_books_df[rated_books_df['asin'].isin(book_asin_to_input)]
 
     # Create a fancy-indexable array of book ASINs.
-    book_asins = np.array([book_row['asin'] for _, book_row in books_df.iterrows()])
+    # Eliminate duplicate ASINs by using a set comprehension.
+    book_asins = np.array(sorted(list({book_row['asin'] for _, book_row in books_df.iterrows()})))
 
     # Map book ASINs to indices.
     book_asin_to_index = {book_asin: i for i, book_asin in enumerate(book_asins)}
@@ -138,9 +150,9 @@ def get_data(
         levels[category_index].append(level)
 
     if verbose:
-        print('Extracting labels for {} books...'.format(len(book_asins)))
+        print('Extracting labels for {} texts...'.format(len(book_asins)))
 
-    if combine_ratings == 'average':
+    if combine_ratings == 'avgceil' or combine_ratings == 'avgfloor':
         # For each category, calculate the average rating for each book.
         Y_cont = np.zeros((len(book_asins), len(categories)))
         # First, add all levels together for each book.
@@ -149,23 +161,27 @@ def get_data(
             if book_id not in book_id_to_asin:
                 continue
             book_asin = book_id_to_asin[book_id]
-            if book_asin not in book_asin_to_index:
-                continue
             # Add this rating level to its category for this book.
             book_index = book_asin_to_index[book_asin]
             category_index = level_to_category_index[level_row['title']]
             level_index = level_to_index[level_row['title']]
             Y_cont[book_index, category_index] += level_index * level_row['count']
-        # Then calculate the average level for each book by dividing by the number of ratings for that book.
+        # Add up the total number of community ratings for each ASIN.
+        # This step is necessary because books with different IDs exist in the database with the same ASIN.
+        # See `contrasting-lives` and `contrasting-lives-2`.
+        book_rating_counts = np.zeros(len(book_asins), dtype=np.int32)
         for _, book_row in books_df.iterrows():
-            book_id = book_row['id']
-            book_asin = book_id_to_asin[book_id]
+            book_asin = book_row['asin']
             book_index = book_asin_to_index[book_asin]
-            Y_cont[book_index] /= book_row['community_ratings_count']
+            book_rating_counts[book_index] += book_row['community_ratings_count']
+        # Then calculate the average level for each book by dividing by the number of ratings for that book.
+        for book_index, count in enumerate(book_rating_counts):
+            Y_cont[book_index] /= count
 
-        # Since false negatives are less desirable than false positives, implement somewhat of a "harsh critic"
-        # by taking the ceiling of the average ratings.
-        Y = np.ceil(Y_cont).astype(np.int32)
+        if combine_ratings == 'avgceil':
+            Y = np.ceil(Y_cont).astype(np.int32)
+        else:
+            Y = np.floor(Y_cont).astype(np.int32)
     elif combine_ratings == 'max':
         # For each book, take the maximum rating level in each category.
         Y = np.zeros((len(book_asins), len(categories)), dtype=np.int32)
@@ -174,8 +190,6 @@ def get_data(
             if book_id not in book_id_to_asin:
                 continue
             book_asin = book_id_to_asin[book_id]
-            if book_asin not in book_asin_to_index:
-                continue
             book_index = book_asin_to_index[book_asin]
             category_index = level_to_category_index[level_row['title']]
             level_index = level_to_index[level_row['title']]
@@ -184,10 +198,28 @@ def get_data(
         raise ValueError('Unknown value for `combine_ratings`: `{}`'.format(combine_ratings))
 
     if return_meta:
-        return inputs, Y, categories, levels, all_books_df, rated_books_df, books_df, ratings_df, levels_df, categories_df
+        return inputs, Y, categories, levels,\
+               book_asins, all_books_df, rated_books_df, books_df, ratings_df, levels_df, categories_df
 
     return inputs, Y, categories, levels
 
 
 def get_text_lines(texts):
     return np.array([text.split('\n') for text in texts])
+
+
+def main():
+    """
+    Test each permutation of parameters.
+    """
+    for text in ['kindle', 'preview']:
+        # for input_ in ['content', 'filename']:
+        for categories_mode in ['hard', 'soft']:
+            for combine_ratings in ['avgceil', 'avgfloor', 'max']:
+                _, _, _, _ = get_data(text=text,
+                                      categories_mode=categories_mode,
+                                      combine_ratings=combine_ratings)
+
+
+if __name__ == 'main':
+    main()
