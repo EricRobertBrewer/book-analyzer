@@ -1,0 +1,30 @@
+category	level	rating	description
+crude_humor_language	None	All Ages	None or minimal (appropriate for young children)
+crude_humor_language	Mild crude humor	Mild	Mild (fart jokes or similar)
+crude_humor_language	Moderate crude humor/language|Significant crude humor/language	Moderate	Moderate (appropriate for teens)|Significant (moderate+ to adult)
+crude_humor_language	Extensive crude humor/language	Adult	Graphic, extensive, and continuous
+drug_alcohol_tobacco_use	None	All Ages	None or small mention of use by adults only
+drug_alcohol_tobacco_use	Mild substance use|Some substance use	Mild	Mild use by adults only|Average use by adults and/or mild use by minors in a negative light
+drug_alcohol_tobacco_use	Moderate substance use by adults and/or some use by minors|Significant substance use	Moderate	Moderate by adults and/or some use by minors|Significant by adults and/or minors
+drug_alcohol_tobacco_use	Extensive substance abuse	Adult	Extensive substance abuse
+kissing	None	All Ages	None or quick peck
+kissing	Mild kissing|Passionate kissing	Mild	Mild (no tongue/not more than a few paragraphs per kiss)|Passionate (with tongue or more than a few paragraphs for each kiss)
+profanity	None	All Ages	No swearing or use of deity as a swear (dang, darn, etc. are okay)
+profanity	Mild language	Mild	5 mild or fewer (no f-bombs or deity swears like “Oh, my God”)
+profanity	Some profanity (6 to 40)|Moderate profanity (41 to 100)	Moderate	40 or fewer (no f-bombs)|41 to 100 (or contains f-bomb)
+profanity	Significant profanity (101 to 200)|Significant profanity (201 to 500)|Extensive profanity (501+)	Adult	101 to 200|201 to 500|501 or more
+nudity	None	All Ages	None
+nudity	Brief (nonsexual) nudity|Brief nudity	Mild	Brief (non-sexual)|Brief
+nudity	Some nudity	Moderate	Some nudity
+nudity	Extensive nudity	Adult	Extensive
+sex_and_intimacy	None	All Ages	No sex, sexual intimacy, or talking about sex
+sex_and_intimacy	Mild sensuality	Mild	No sex or implied sex except mild/brief references not seductive in nature
+sex_and_intimacy	Non-graphic sexual references|Non-detailed fade-out sensuality|Fade-out intimacy with details or significant sexual discussion	Moderate	Non-graphic discussion or references, can be seductive in nature (no details of touching or naming of intimate body parts)|Implied or closed-door or fade-out intimacy (clothes on/no consummation/details/naming of intimate body parts before doors close/scene ends); may also contain the above non-graphic references to intimacy|Fade-out intimacy with mild details (taking off clothes, brief mention of petting/breasts/erection/excitement) but NO onscreen consummation before scene ends and/or significant sexual conversation that may or may not contain similar details
+sex_and_intimacy	Semi-detailed onscreen love scenes|Detailed onscreen love scenes|Repeated graphic sex|Menage or BDSM sex	Adult	1-3 non-detailed onscreen sex scenes (not long or graphic) or intimacy/petting that doesn't fit better on previous or subsequent level; may contain additional closed-door implied scenes|Up to 3 detailed onscreen sex scenes or intimacy scenes (not erotica); may also contain additional closed-door scenes|4+ detailed sex scenes or erotica|Menage or BDSM
+violence_and_horror	None	All Ages	None, minimal, or cartoonish, no real injuries/blood (appropriate for young children)
+violence_and_horror	Mild (nonsexual) violence or horror|Some violence or horror	Mild	Mild (nonsexual) with some injuries/blood, dealt with in a few pages, mild fear, no murders/death (okay for preteens)|Mild that is sexual or more than a few pages, some death (more tense than previous level but no onscreen murders or graphic descriptions)
+violence_and_horror	Moderate violence or horror	Moderate	Moderate (significant descriptions of fighting, battles, attacks etc./not overly graphic, appropriate for most teens)
+violence_and_horror	Graphic violence or horror|Extended gruesome and depraved violence or horror	Adult	Graphic and/or gruesome and/or extended (multiple graphic murders)|Extensive, gruesome, and depraved
+gay_lesbian_characters	None		None or insignificant mention
+gay_lesbian_characters	Minor gay/lesbian characters or elements		Minor character(s) or stories where the sexual orientation is a minor element in the plot
+gay_lesbian_characters	Prominent gay/lesbian character(s)		Main character or prominent sidekick

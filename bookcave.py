@@ -9,15 +9,16 @@ import sys
 
 # Declare file path constants.
 CONTENT_ROOT = os.path.join('..', 'content')
-AMAZON_KINDLE_ROOT = os.path.join(CONTENT_ROOT, 'amazon_kindle')
-BOOKCAVE_ROOT = os.path.join(CONTENT_ROOT, 'bookcave')
+AMAZON_KINDLE_CONTENT_ROOT = os.path.join(CONTENT_ROOT, 'amazon_kindle')
+BOOKCAVE_ROOT = 'bookcave'
 
 
 def get_data(
         source='book',
         input='content',
         min_len=None,
-        categories_mode='hard',
+        max_len=None,
+        categories_mode='medium',
         combine_ratings='avgceil',
         return_meta=False,
         verbose=False):
@@ -33,10 +34,14 @@ def get_data(
         When 'filename', file paths specifying the text contents will be returned.
     :param min_len: None or int, default None
         The minimum length of texts that will be returned.
-    :param categories_mode: string {'hard' (default), 'soft'}
+    :param max_len: None or int, default None
+        The maximum length of texts that will be returned.
+    :param categories_mode: string {'hard', 'medium' (default), 'soft'}
         The flexibility of rating levels within categories.
         When 'hard', all BookCave category levels will be returned.
-        When 'soft', adjacent category levels which result in the same overall rating will be collapsed.
+        When 'medium', adjacent category levels which result in the same overall rating will be collapsed.
+        When 'soft', ratings are collapsed to their formo without a '+'.
+        For example, all category levels which would yield a rating of 'Adult' or 'Adult+' are merged.
     :param combine_ratings: string {'avgceil' (default), 'avgfloor', 'max'}
         The method by which multiple ratings for a single book will be combined.
         When `'avgceil'`, the ceiling of the average of all rating levels per category per book will be returned.
@@ -85,6 +90,7 @@ def get_data(
 
         # Collect file contents or paths.
         for _, rated_book_row in rated_books_df.iterrows():
+            # Skip books without a known ASIN.
             asin = rated_book_row['asin']
             if asin is None:
                 continue
@@ -92,20 +98,25 @@ def get_data(
             if sys.platform == 'win32':
                 # To overcome `FileNotFoundError`s for files with long names, use an extended-length path on Windows.
                 # See `https://stackoverflow.com/questions/36219317/pathname-too-long-to-open/36219497`.
-                path = u'\\\\?\\' + os.path.abspath(os.path.join(AMAZON_KINDLE_ROOT, asin, text_file))
+                path = u'\\\\?\\' + os.path.abspath(os.path.join(AMAZON_KINDLE_CONTENT_ROOT, asin, text_file))
             # elif sys.platform == 'darwin':
             else:
-                path = os.path.join(AMAZON_KINDLE_ROOT, asin, text_file)
+                path = os.path.join(AMAZON_KINDLE_CONTENT_ROOT, asin, text_file)
             if not os.path.exists(path):
                 continue
 
-            # Open the file.
-            with open(path, 'r', encoding='utf-8') as fd:
-                text = fd.read()
+            # Conditionally open the file.
+            text = None
+            if input == 'content' or min_len is not None or max_len is not None:
+                with open(path, 'r', encoding='utf-8') as fd:
+                    text = fd.read()
 
             # Validate file length.
             if min_len is not None:
                 if len(text) < min_len:
+                    continue
+            if max_len is not None:
+                if len(text) > max_len:
                     continue
 
             book_id = rated_book_row['id']
@@ -143,6 +154,8 @@ def get_data(
     # Extract category data.
     if categories_mode == 'hard':
         categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_hard.tsv'), sep='\t')
+    elif categories_mode == 'medium':
+        categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_medium.tsv'), sep='\t')
     elif categories_mode == 'soft':
         categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_soft.tsv'), sep='\t')
     else:
@@ -234,11 +247,12 @@ def main():
     for source in ['book', 'preview', 'description']:
         # for input in ['content', 'filename']:
         input = 'filename'
-        for categories_mode in ['hard', 'soft']:
+        for categories_mode in ['hard', 'medium', 'soft']:
             for combine_ratings in ['avgceil', 'avgfloor', 'max']:
                 inputs, Y, categories, levels = get_data(source=source,
                                                          input=input,
-                                                         min_len=6,
+                                                         min_len=None,
+                                                         max_len=None,
                                                          categories_mode=categories_mode,
                                                          combine_ratings=combine_ratings)
                 print('source={}, input={}, categories_modex={}, combine_ratings={}: len(inputs)={:d}, Y.shape={}'
