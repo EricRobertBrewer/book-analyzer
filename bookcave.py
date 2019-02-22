@@ -135,6 +135,9 @@ def get_data(
             if min_len is not None:
                 if len(description) < min_len:
                     continue
+            if max_len is not None:
+                if len(description) > max_len:
+                    continue
             book_id_to_input[rated_book_row['id']] = description
     else:
         raise ValueError('Unknown value for `source`: `{}`'.format(source))
