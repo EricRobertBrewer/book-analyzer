@@ -1,19 +1,11 @@
 import gensim
 import nltk
+
 import bookcave
+import preprocessing
 
 
-def get_processed_documents(text_lines, sentences=False):
-    for lines in text_lines:
-        for line in lines:
-            if sentences:
-                for sentence in nltk.sent_tokenize(line):
-                    yield gensim.utils.simple_preprocess(sentence)
-            else:
-                yield gensim.utils.simple_preprocess(line)
-
-
-def save_trained_vectors(documents, name, size=150, window=8, min_count=2, workers=8, epochs=1, verbose=False):
+def save_trained_vectors(documents, name, size=50, window=8, min_count=2, workers=8, epochs=1, verbose=False):
     if verbose:
         print('Creating model...')
     model = gensim.models.Word2Vec(documents,
@@ -26,7 +18,7 @@ def save_trained_vectors(documents, name, size=150, window=8, min_count=2, worke
     model.train(documents, total_examples=len(documents), epochs=epochs)
     if verbose:
         print('Saving vectors...')
-    fname = 'vectors_{}_d{}_w{}_min{}.wv'.format(name, size, window, min_count)
+    fname = 'vectors_{}_{:d}d_{:d}w_{:d}min_{:d}e.wv'.format(name, size, window, min_count, epochs)
     model.wv.save(fname)
     return fname
 
@@ -35,7 +27,12 @@ def load_vectors(fname):
     return gensim.models.KeyedVectors.load(fname)
 
 
-def save_trained_doc_model(documents, name, vector_size=150, window=8, min_count=2, workers=8, epochs=1, verbose=False):
+def save_trained_doc_model(documents, names, vector_size=50, window=8, min_count=2, workers=8, epochs=1, verbose=False):
+    if isinstance(names, str):
+        name = names
+    else:
+        name = '_'.join(names)
+
     if verbose:
         print('Tagging documents...')
     tagged_docs = [gensim.models.doc2vec.TaggedDocument(doc, [i]) for i, doc in enumerate(documents)]
@@ -51,7 +48,7 @@ def save_trained_doc_model(documents, name, vector_size=150, window=8, min_count
     model.train(tagged_docs, total_examples=len(tagged_docs), epochs=epochs)
     if verbose:
         print('Saving entire model...')
-    fname = 'docmodel_{}_d{}_w{}_min{}.model'.format(name, vector_size, window, min_count)
+    fname = 'docmodel_{}_{:d}d_{:d}w_{:d}min_{:d}e.model'.format(name, vector_size, window, min_count, epochs)
     model.save(fname)
     return fname
 
@@ -63,19 +60,59 @@ def load_doc_model(fname):
 def main():
     print('Loading BookCave data...')
     texts, y, categories, levels = bookcave.get_data()
+
     print('Splitting text files into lines...')
     text_lines = bookcave.get_text_lines(texts)
+
+    # Do pre-processing.
+    tokenizer = nltk.tokenize.treebank.TreebankWordTokenizer()
+    kwargs = {
+        'lower': True,
+        'endings': {'.', '?', ')', '!', ':', '-', '"', ';', ',', '\''},
+        'min_len': 6,
+        'normal': True
+    }
     print('Pre-processing lines...')
-    lines = [line for line in get_processed_documents(text_lines, sentences=False)]
+    processed_lines = list()
+    for lines in text_lines:
+        processed_lines.extend(list(preprocessing.process_lines(tokenizer, lines, **kwargs, sentences=False)))
     print('Pre-processing sentences...')
-    sentences = [sentence for sentence in get_processed_documents(text_lines, sentences=True)]
-    line_fname = save_trained_vectors(lines, 'line', epochs=10, verbose=True)
+    processed_sentences = list()
+    for lines in text_lines:
+        processed_sentences.extend(list(preprocessing.process_lines(tokenizer, lines, **kwargs, sentences=True)))
+
+    # Hyperparameters.
+    tokenizer_name = 'treebank'
+    vector_size = 50
+    epochs = 16
+    verbose = True
+
+    # Train word vectors.
+    line_fname = save_trained_vectors(processed_lines,
+                                      ('line', tokenizer_name),
+                                      size=vector_size,
+                                      epochs=epochs,
+                                      verbose=verbose)
     print('Saved `line` vectors to `{}`.'.format(line_fname))
-    sentence_fname = save_trained_vectors(sentences, 'sentence', epochs=10, verbose=True)
+    sentence_fname = save_trained_vectors(processed_sentences,
+                                          ('sentence', tokenizer_name),
+                                          size=vector_size,
+                                          epochs=epochs,
+                                          verbose=verbose)
     print('Saved `sentence` vectors to `{}`.'.format(sentence_fname))
-    line_doc_fname = save_trained_doc_model(lines, 'line', epochs=10, verbose=True)
+
+    # Train doc2vec models.
+    line_doc_fname = save_trained_doc_model(processed_lines,
+                                            ('line', tokenizer_name),
+                                            vector_size=vector_size,
+                                            epochs=epochs,
+                                            verbose=verbose)
     print('Saved `line` doc2vec model to `{}`.'.format(line_doc_fname))
-    sentence_doc_fname = save_trained_doc_model(sentences, 'sentence', epochs=10, verbose=True)
+    sentence_doc_fname = save_trained_doc_model(processed_sentences,
+                                                ('sentence', tokenizer_name),
+                                                vector_size=vector_size,
+                                                epochs=epochs,
+                                                verbose=verbose)
     print('Saved `sentence` doc2vec model to `{}`.'.format(sentence_doc_fname))
 
 
