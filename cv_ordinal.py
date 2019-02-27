@@ -34,12 +34,12 @@ def to_ordinal(y, ordinal_index):
     return np.array([1 if level > ordinal_index else 0 for level in y])
 
 
-def get_ordinal_proba(get_classifier, category_index, size, X_train, X_test, y_train, y_test):
+def get_ordinal_proba(get_classifier, options: dict, size, X_train, X_test, y_train, y_test):
     # Get probabilities for binarized ordinal labels.
     ordinal_p = np.zeros((len(y_test), size - 1))
     for ordinal_index in range(size - 1):
         # Find P(Target > Class_k) for 0..(k-1)
-        classifier = get_classifier(category_index)
+        classifier = get_classifier(options)
         y_train_ordinal = to_ordinal(y_train, ordinal_index)
         classifier.fit(X_train, y_train_ordinal)
         ordinal_p[:, ordinal_index] = classifier.predict(X_test)
@@ -69,9 +69,6 @@ def cross_validate(vectorizer, get_classifier, folds, inputs, Y, categories, lev
         print('Vectorized text with {:d} unique words.'.format(len(vectorizer.get_feature_names())))
 
     for category_index, category in enumerate(categories):
-        # TODO: FIX
-        if category_index in {1}:
-            continue
         if verbose:
             print('Classifying category `{}`...'.format(category))
 
@@ -90,7 +87,8 @@ def cross_validate(vectorizer, get_classifier, folds, inputs, Y, categories, lev
         for fold, (train_index, test_index) in enumerate(skf.split(X, y)):
             X_train, X_test = X[train_index], X[test_index]
             y_train, y_test = y[train_index], y[test_index]
-            p = get_ordinal_proba(get_classifier, category_index, category_size, X_train, X_test, y_train, y_test)
+            options = {'category_index': category_index}
+            p = get_ordinal_proba(get_classifier, options, category_size, X_train, X_test, y_train, y_test)
 
             # Choose the most likely class label.
             y_pred = np.argmax(p, axis=1)
@@ -115,43 +113,45 @@ def cross_validate(vectorizer, get_classifier, folds, inputs, Y, categories, lev
 
 
 def main():
-    vectorizer = TfidfVectorizer(
-        input='filename',
-        encoding='utf-8',
-        stop_words='english',
-        ngram_range=(1, 2),
-        min_df=4,
-        max_features=8000,
-        norm='l2',
-        sublinear_tf=True)
+    for source in ['description', 'preview', 'book']:
+        vectorizer = TfidfVectorizer(
+            input='content' if source == 'description' else 'filename',
+            encoding='utf-8',
+            stop_words='english',
+            ngram_range=(1, 2),
+            min_df=4,
+            max_features=8000,
+            norm='l2',
+            sublinear_tf=True)
 
-    inputs, Y, categories, levels = bookcave.get_data(
-        source='book',
-        input='filename',
-        min_len=6,
-        categories_mode='soft',
-        combine_ratings='max',
-        verbose=True)
+        inputs, Y, categories, levels = bookcave.get_data(
+            media={'text'},
+            text_source=source,
+            text_input='filename',
+            text_min_len=6,
+            categories_mode='soft',
+            combine_ratings='max',
+            verbose=True)
 
-    # Collect the parameters to use a balanced ensemble classifier.
-    ensemble_sizes = []
-    for category_index, category in enumerate(categories):
-        y = Y[:, category_index]
-        bincount = np.bincount(y)
-        max_index = np.argmax(bincount)
-        min_index = np.argmin(bincount)
-        min_size = bincount[min_index]
-        ensemble_sizes.append(int(np.floor(bincount[max_index] / min_size)))
-    print(ensemble_sizes)
+        # Collect the parameters to use a balanced ensemble classifier.
+        ensemble_sizes = []
+        for category_index, category in enumerate(categories):
+            y = Y[:, category_index]
+            bincount = np.bincount(y)
+            max_index = np.argmax(bincount)
+            min_index = np.argmin(bincount)
+            min_size = bincount[min_index]
+            ensemble_sizes.append(int(bincount[max_index] / min_size))
+        # print(ensemble_sizes)
 
-    def get_classifier(category_index):
-        return BalancedBaggingClassifier(base_estimator=MultinomialNB(fit_prior=True),
-                                         n_estimators=ensemble_sizes[category_index],
-                                         sampling_strategy='not minority')
+        def get_classifier(options: dict):
+            return BalancedBaggingClassifier(base_estimator=MultinomialNB(fit_prior=True),
+                                             n_estimators=ensemble_sizes[options['category_index']],
+                                             sampling_strategy='not minority')
 
-    folds = 5
-    seed = 1
-    cross_validate(vectorizer, get_classifier, folds, inputs, Y, categories, levels, seed=seed, verbose=True)
+        folds = 5
+        seed = 1
+        cross_validate(vectorizer, get_classifier, folds, inputs, Y, categories, levels, seed=seed, verbose=True)
 
 
 if __name__ == '__main__':

@@ -1,3 +1,4 @@
+import numpy as np
 import gensim
 import nltk
 
@@ -59,10 +60,10 @@ def load_doc_model(fname):
 
 def main():
     print('Loading BookCave data...')
-    texts, y, categories, levels = bookcave.get_data()
+    texts, _, _, _ = bookcave.get_data({'text'}, text_source='book')
 
     print('Splitting text files into lines...')
-    text_lines = bookcave.get_text_lines(texts)
+    text_lines = np.array([text.split('\n') for text in texts])
 
     # Do pre-processing.
     tokenizer = nltk.tokenize.treebank.TreebankWordTokenizer()
