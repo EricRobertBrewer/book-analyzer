@@ -148,8 +148,8 @@ def get_data(
         images_source='cover',
         images_min_size=None,
         images_max_size=None,
-        categories_mode='medium',
-        combine_ratings='avg ceil',
+        categories_mode='soft',
+        combine_ratings='max',
         return_meta=False,
         verbose=False):
     """
@@ -187,11 +187,11 @@ def get_data(
         When 'soft', all levels which would yield the same base overall rating (without a '+') will be collapsed.
         When 'medium', all levels which would yield the same overall rating will be collapsed.
         When 'hard', no levels will be collapsed.
-    :param combine_ratings: string {'avg ceil' (default), 'avg floor', 'max'}
+    :param combine_ratings: string {'max' (default), 'avg ceil', 'avg floor'}
         The method by which multiple ratings for a single book will be combined.
+        When `'max'`, the maximum among all rating levels per category per book will be returned.
         When `'avg ceil'`, the ceiling of the average of all rating levels per category per book will be returned.
         When `'avg floor'`, the floor of the average of all rating levels per category per book will be returned.
-        When `'max'`, the maximum among all rating levels per category per book will be returned.
     :param return_meta: boolean, default False
         When `True`, all meta data will be returned.
     :param verbose: boolean, default False
@@ -320,7 +320,18 @@ def get_data(
 
     if verbose:
         print('Extracting labels for {} books...'.format(len(book_ids)))
-    if combine_ratings == 'avgceil' or combine_ratings == 'avgfloor':
+    if combine_ratings == 'max':
+        # For each book, take the maximum rating level in each category.
+        Y = np.zeros((len(book_ids), len(categories)), dtype=np.int32)
+        for _, level_row in levels_df.iterrows():
+            book_id = level_row['book_id']
+            if book_id not in book_id_to_index:
+                continue
+            book_index = book_id_to_index[book_id]
+            category_index = level_to_category_index[level_row['title']]
+            level_index = level_to_index[level_row['title']]
+            Y[book_index, category_index] = max(Y[book_index, category_index], level_index)
+    elif combine_ratings == 'avgceil' or combine_ratings == 'avgfloor':
         # For each category, calculate the average rating for each book.
         Y_cont = np.zeros((len(book_ids), len(categories)))
         # First, add all levels together for each book.
@@ -342,17 +353,6 @@ def get_data(
             Y = np.ceil(Y_cont).astype(np.int32)
         else:  # combine_ratings == 'avgfloor':
             Y = np.floor(Y_cont).astype(np.int32)
-    elif combine_ratings == 'max':
-        # For each book, take the maximum rating level in each category.
-        Y = np.zeros((len(book_ids), len(categories)), dtype=np.int32)
-        for _, level_row in levels_df.iterrows():
-            book_id = level_row['book_id']
-            if book_id not in book_id_to_index:
-                continue
-            book_index = book_id_to_index[book_id]
-            category_index = level_to_category_index[level_row['title']]
-            level_index = level_to_index[level_row['title']]
-            Y[book_index, category_index] = max(Y[book_index, category_index], level_index)
     else:
         raise ValueError('Unknown value for `combine_ratings`: `{}`'.format(combine_ratings))
 
