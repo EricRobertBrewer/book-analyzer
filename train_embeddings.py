@@ -60,10 +60,11 @@ def load_doc_model(fname):
 
 def main():
     print('Loading BookCave data...')
-    texts, _, _, _ = bookcave.get_data({'text'}, text_source='book')
+    inputs, _, _, _ = bookcave.get_data({'text'}, text_source='book')
+    texts = inputs['text']
 
     print('Splitting text files into lines...')
-    text_lines = np.array([text.split('\n') for text in texts])
+    text_lines = [text.split('\n') for text in texts]
 
     # Do pre-processing.
     tokenizer = nltk.tokenize.treebank.TreebankWordTokenizer()
@@ -84,19 +85,19 @@ def main():
 
     # Hyperparameters.
     tokenizer_name = 'treebank'
-    vector_size = 50
+    vector_size = 100
     epochs = 16
     verbose = True
 
     # Train word vectors.
     line_fname = save_trained_vectors(processed_lines,
-                                      ('line', tokenizer_name),
+                                      ['line', tokenizer_name],
                                       size=vector_size,
                                       epochs=epochs,
                                       verbose=verbose)
     print('Saved `line` vectors to `{}`.'.format(line_fname))
     sentence_fname = save_trained_vectors(processed_sentences,
-                                          ('sentence', tokenizer_name),
+                                          ['sentence', tokenizer_name],
                                           size=vector_size,
                                           epochs=epochs,
                                           verbose=verbose)
@@ -104,13 +105,13 @@ def main():
 
     # Train doc2vec models.
     line_doc_fname = save_trained_doc_model(processed_lines,
-                                            ('line', tokenizer_name),
+                                            ['line', tokenizer_name],
                                             vector_size=vector_size,
                                             epochs=epochs,
                                             verbose=verbose)
     print('Saved `line` doc2vec model to `{}`.'.format(line_doc_fname))
     sentence_doc_fname = save_trained_doc_model(processed_sentences,
-                                                ('sentence', tokenizer_name),
+                                                ['sentence', tokenizer_name],
                                                 vector_size=vector_size,
                                                 epochs=epochs,
                                                 verbose=verbose)

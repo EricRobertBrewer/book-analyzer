@@ -372,7 +372,7 @@ def main():
         text_input = 'filename'
         for categories_mode in ['hard', 'medium', 'soft']:
             for combine_ratings in ['avgceil', 'avgfloor', 'max']:
-                inputs, Y, categories, levels = get_data(media={'text'},
+                inputs, Y, categories, levels = get_data({'text'},
                                                          text_source=text_source,
                                                          text_input=text_input,
                                                          text_min_len=None,
