@@ -48,10 +48,9 @@ def get_text(
         if input == 'content' or min_len is not None or max_len is not None:
             with open(path, 'r', encoding='utf-8') as fd:
                 text = fd.read()
-
-        # Validate file length.
-        if not is_between(len(text), min_len, max_len):
-            return None
+            # Validate file length.
+            if not is_between(len(text), min_len, max_len):
+                return None
 
         if input == 'content':
             return text
@@ -77,6 +76,7 @@ def is_image_file(fname):
 def get_images(
         book_row,
         source='cover',
+        size=None,
         min_size=None,
         max_size=None):
     # Skip books without a known ASIN.
@@ -90,7 +90,10 @@ def get_images(
         return None
 
     if source == 'cover soft' or source == 'cover':
-        path = os.path.join(folder, 'cover.jpg')
+        if size is None:
+            path = os.path.join(folder, 'cover.jpg')
+        else:
+            path = os.path.join(folder, 'cover-' + str(size[0]) + 'x' + str(size[1]) + '.jpg')
         if os.path.exists(path):
             size = os.path.getsize(path)
             if not is_between(size, min_size, max_size):
@@ -146,9 +149,11 @@ def get_data(
         text_min_len=None,
         text_max_len=None,
         images_source='cover',
+        images_size=None,
         images_min_size=None,
         images_max_size=None,
         categories_mode='soft',
+        only_categories=None,
         combine_ratings='max',
         return_meta=False,
         verbose=False):
@@ -178,6 +183,8 @@ def get_data(
         When 'cover soft', `cover.jpg` will be looked for first.
             Otherwise, the largest image (by size in bytes) in the book folder will be returned.
         When 'all', all images in the book folder will be returned.
+    :param images_size: tuple of int or None, default None
+        The exact size of images to retrieve, usually resized from `image_resize.py`.
     :param images_min_size: int or None, default None
         The minimum file size (in bytes) of images that will be returned.
     :param images_max_size: int or None, default None
@@ -221,8 +228,8 @@ def get_data(
     conn = sqlite3.connect(os.path.join(CONTENT_ROOT, 'contents.db'))
     all_books_df = pd.read_sql_query('SELECT * FROM BookCaveBooks;', conn)
     all_books_df.sort_values('id', inplace=True)
-    ratings_df = pd.read_sql_query('SELECT * FROM BookCaveBookRatings;', conn)
-    levels_df = pd.read_sql_query('SELECT * FROM BookCaveBookRatingLevels;', conn)
+    all_ratings_df = pd.read_sql_query('SELECT * FROM BookCaveBookRatings;', conn)
+    all_levels_df = pd.read_sql_query('SELECT * FROM BookCaveBookRatingLevels;', conn)
     conn.close()
 
     # Consider only books which have at least one rating.
@@ -244,7 +251,7 @@ def get_data(
                 continue
         images = None
         if 'images' in media:
-            images = get_images(rated_book_row, images_source, images_min_size, images_max_size)
+            images = get_images(rated_book_row, images_source, images_size, images_min_size, images_max_size)
             if images is None:
                 continue
         book_id = rated_book_row['id']
@@ -277,19 +284,25 @@ def get_data(
 
     # Extract category data.
     if categories_mode == 'hard':
-        categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_hard.tsv'), sep='\t')
+        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_hard.tsv'), sep='\t')
     elif categories_mode == 'medium':
-        categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_medium.tsv'), sep='\t')
+        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_medium.tsv'), sep='\t')
     elif categories_mode == 'soft':
-        categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_soft.tsv'), sep='\t')
+        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_soft.tsv'), sep='\t')
     else:
         raise ValueError('Unknown value for `categories_mode`: `{}`'.format(categories_mode))
 
     # Enumerate category names.
-    categories = list(categories_df['category'].unique())
+    categories = list(all_categories_df['category'].unique())
+    if only_categories is not None:
+        categories = [category for i, category in enumerate(categories) if i in only_categories]
 
     # Map category names to their indices.
     category_to_index = {category: i for i, category in enumerate(categories)}
+
+    # Get smaller ratings and categories DataFrames.
+    ratings_df = all_ratings_df[all_ratings_df['book_id'].isin(book_id_to_index)]
+    categories_df = all_categories_df[all_categories_df['category'].isin(category_to_index)]
 
     # Map each level name to its index within its own category.
     level_to_index = dict()
@@ -318,6 +331,10 @@ def get_data(
         # Enumerate the level names per category.
         levels[category_index].append(level)
 
+    # Get a smaller levels DataFrame.
+    levels_df = all_levels_df[all_levels_df['book_id'].isin(book_id_to_index) &
+                              all_levels_df['title'].isin(level_to_index)]
+
     if verbose:
         print('Extracting labels for {} books...'.format(len(book_ids)))
     if combine_ratings == 'max':
@@ -325,40 +342,37 @@ def get_data(
         Y = np.zeros((len(book_ids), len(categories)), dtype=np.int32)
         for _, level_row in levels_df.iterrows():
             book_id = level_row['book_id']
-            if book_id not in book_id_to_index:
-                continue
             book_index = book_id_to_index[book_id]
-            category_index = level_to_category_index[level_row['title']]
-            level_index = level_to_index[level_row['title']]
+            level = level_row['title']
+            category_index = level_to_category_index[level]
+            level_index = level_to_index[level]
             Y[book_index, category_index] = max(Y[book_index, category_index], level_index)
-    elif combine_ratings == 'avgceil' or combine_ratings == 'avgfloor':
+    elif combine_ratings == 'avg ceil' or combine_ratings == 'avg floor':
         # For each category, calculate the average rating for each book.
         Y_cont = np.zeros((len(book_ids), len(categories)))
         # First, add all levels together for each book.
         for _, level_row in levels_df.iterrows():
             book_id = level_row['book_id']
-            if book_id not in book_id_to_index:
-                continue
-            # Add this rating level to its category for this book.
             book_index = book_id_to_index[book_id]
-            category_index = level_to_category_index[level_row['title']]
-            level_index = level_to_index[level_row['title']]
+            level = level_row['title']
+            category_index = level_to_category_index[level]
+            level_index = level_to_index[level]
             Y_cont[book_index, category_index] += level_index * level_row['count']
         # Then calculate the average level for each book by dividing by the number of ratings for that book.
         for _, book_row in books_df.iterrows():
             book_index = book_id_to_index[book_row['id']]
             Y_cont[book_index] /= book_row['community_ratings_count']
 
-        if combine_ratings == 'avgceil':
+        if combine_ratings == 'avg ceil':
             Y = np.ceil(Y_cont).astype(np.int32)
-        else:  # combine_ratings == 'avgfloor':
+        else:  # combine_ratings == 'avg floor':
             Y = np.floor(Y_cont).astype(np.int32)
     else:
         raise ValueError('Unknown value for `combine_ratings`: `{}`'.format(combine_ratings))
 
     if return_meta:
         return inputs, Y, categories, levels, \
-               book_ids, all_books_df, rated_books_df, books_df, ratings_df, levels_df, categories_df
+               book_ids, books_df, ratings_df, levels_df, categories_df
 
     return inputs, Y, categories, levels
 
@@ -367,29 +381,30 @@ def main():
     """
     Test each permutation of parameters.
     """
-    for text_source in ['book', 'preview', 'description']:
-        # for input in ['content', 'filename']:
+    for text_source in ['description', 'preview', 'book']:
+        # for text_input in ['content', 'filename']:
         text_input = 'filename'
         for categories_mode in ['hard', 'medium', 'soft']:
-            for combine_ratings in ['avgceil', 'avgfloor', 'max']:
+            for combine_ratings in ['avg ceil', 'max']:  # , 'avg floor'
                 inputs, Y, categories, levels = get_data({'text'},
                                                          text_source=text_source,
                                                          text_input=text_input,
                                                          text_min_len=None,
                                                          text_max_len=None,
                                                          categories_mode=categories_mode,
+                                                         only_categories={0, 1, 2, 3, 4, 5, 6},
                                                          combine_ratings=combine_ratings)
                 print('text_source={}, '
                       'text_input={}, '
-                      'categories_modex={}, '
+                      'categories_mode={}, '
                       'combine_ratings={}: '
                       'len(inputs)={:d},'
                       ' Y.shape={}'
                       .format(text_source,
-                              input,
+                              text_input,
                               categories_mode,
                               combine_ratings,
-                              len(inputs),
+                              len(inputs['text']),
                               Y.shape))
 
 

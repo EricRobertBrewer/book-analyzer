@@ -6,8 +6,9 @@ import bookcave
 
 def main():
     _, Y, categories, levels = bookcave.get_data(
-        text='preview',
-        input='filename',
+        {'text'},
+        text_source='preview',
+        text_input='filename',
         categories_mode='soft',
         combine_ratings='max',
         verbose=True)

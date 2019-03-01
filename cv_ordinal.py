@@ -7,7 +7,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import StratifiedKFold
 from sklearn.naive_bayes import MultinomialNB
 # Data.
-import bookcave
+from . import bookcave
 
 
 def get_train_test_split(x, y, fold, folds, seed=None):

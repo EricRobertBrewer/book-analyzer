@@ -2,11 +2,16 @@ import numpy as np
 import gensim
 import nltk
 
-import bookcave
-import preprocessing
+from . import bookcave
+from . import preprocessing
 
 
-def save_trained_vectors(documents, name, size=50, window=8, min_count=2, workers=8, epochs=1, verbose=False):
+def save_trained_vectors(documents, names, size=50, window=8, min_count=2, workers=8, epochs=1, verbose=False):
+    if isinstance(names, str):
+        name = names
+    else:
+        name = '_'.join(names)
+
     if verbose:
         print('Creating model...')
     model = gensim.models.Word2Vec(documents,
@@ -85,7 +90,7 @@ def main():
 
     # Hyperparameters.
     tokenizer_name = 'treebank'
-    vector_size = 100
+    vector_size = 150
     epochs = 16
     verbose = True
 
