@@ -57,11 +57,6 @@ def get_text(
         elif input == 'filename':
             return path
         raise ValueError('Unknown value for `input`: `{}`'.format(input))
-    elif source == 'description':
-        description = book_row['description']
-        if not is_between(len(description), min_len, max_len):
-            return None
-        return description
     raise ValueError('Unknown value for `source`: `{}`'.format(source))
 
 
@@ -163,12 +158,10 @@ def get_data(
         The type of media to be retrieved.
         When 'text', only text and associated labels will be returned.
         When 'images', only images and associated labels will be returned.
-        When 'both', text and images with associated labels will be returned.
     :param text_source: string {'book' (default), 'preview', 'description'}
         The source of text to retrieve.
         When 'book', the entire book texts will be returned.
         When 'preview', the first few chapters of books will be returned.
-        When 'description', only a few paragraphs describing the book will be returned.
     :param text_input: string {'content' (default), 'filename'}
         The medium by which text will be returned.
         When 'content', raw text content will be returned.
