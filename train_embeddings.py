@@ -1,9 +1,12 @@
-import numpy as np
+import os
 import gensim
 import nltk
 
-from . import bookcave
-from . import preprocessing
+import bookcave
+import preprocessing
+
+
+EMBEDDINGS_FOLDER = 'embeddings'
 
 
 def save_trained_vectors(documents, names, size=50, window=8, min_count=2, workers=8, epochs=1, verbose=False):
@@ -25,12 +28,12 @@ def save_trained_vectors(documents, names, size=50, window=8, min_count=2, worke
     if verbose:
         print('Saving vectors...')
     fname = 'vectors_{}_{:d}d_{:d}w_{:d}min_{:d}e.wv'.format(name, size, window, min_count, epochs)
-    model.wv.save(fname)
+    model.wv.save(os.path.join(EMBEDDINGS_FOLDER, fname))
     return fname
 
 
 def load_vectors(fname):
-    return gensim.models.KeyedVectors.load(fname)
+    return gensim.models.KeyedVectors.load(os.path.join(EMBEDDINGS_FOLDER, fname))
 
 
 def save_trained_doc_model(documents, names, vector_size=50, window=8, min_count=2, workers=8, epochs=1, verbose=False):
@@ -55,12 +58,12 @@ def save_trained_doc_model(documents, names, vector_size=50, window=8, min_count
     if verbose:
         print('Saving entire model...')
     fname = 'docmodel_{}_{:d}d_{:d}w_{:d}min_{:d}e.model'.format(name, vector_size, window, min_count, epochs)
-    model.save(fname)
+    model.save(os.path.join(EMBEDDINGS_FOLDER, fname))
     return fname
 
 
 def load_doc_model(fname):
-    return gensim.models.Doc2Vec.load(fname)
+    return gensim.models.Doc2Vec.load(os.path.join(EMBEDDINGS_FOLDER, fname))
 
 
 def main():
@@ -88,7 +91,7 @@ def main():
     for lines in text_lines:
         processed_sentences.extend(list(preprocessing.process_lines(tokenizer, lines, **kwargs, sentences=True)))
 
-    # Hyperparameters.
+    # Hyper-parameters.
     tokenizer_name = 'treebank'
     vector_size = 150
     epochs = 16
@@ -108,7 +111,7 @@ def main():
                                           verbose=verbose)
     print('Saved `sentence` vectors to `{}`.'.format(sentence_fname))
 
-    # Train doc2vec models.
+    # Train doc2vec embeddings.
     line_doc_fname = save_trained_doc_model(processed_lines,
                                             ['line', tokenizer_name],
                                             vector_size=vector_size,

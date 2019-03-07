@@ -1,6 +1,4 @@
-*.wv
-*.model
-*.npy
+embeddings
 
 ### START Python.gitignore
 # Byte-compiled / optimized / DLL files

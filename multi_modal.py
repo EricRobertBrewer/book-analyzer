@@ -25,7 +25,7 @@ def get_model(images_size, num_classes, optimizer):
     x = Dense(64, activation='relu')(x)
     x = Dropout(0.5)(x)
 
-    outputs = [Dense(num_classes[i], activation='sigmoid')(x) for i in range(len(num_classes))]
+    outputs = Dense(num_classes, activation='sigmoid')(x)
     model = Model(inp, outputs)
     model.compile(optimizer,
                   loss='binary_crossentropy',
@@ -34,14 +34,17 @@ def get_model(images_size, num_classes, optimizer):
 
 
 def to_one_hot_ordinal(y, num_classes=None):
+    """
+    See `http://orca.st.usm.edu/~zwang/files/rank.pdf`.
+    """
     if num_classes is None:
-        num_classes = max(y) - 1
+        num_classes = max(y) + 1
     return np.array([[1 if value > i else 0 for i in range(num_classes)] for value in y])
 
 
-def from_one_hot_ordinal(Y_ordinal, threshold=0.5):
+def from_one_hot_ordinal(y_ordinal, threshold=0.5):
     y = []
-    for values in Y_ordinal:
+    for values in y_ordinal:
         i = 0
         while i < len(values) and values[i] > threshold:
             i += 1
@@ -65,35 +68,28 @@ def main():
     X = np.array([img_to_array(image) for image in images])
 
     # Train.
-    sss = StratifiedShuffleSplit(n_splits=1, test_size=0.25, random_state=1)
-    for train_index, test_index in sss.split(X, Y):
-        X_train, X_test = X[train_index], X[test_index]
-        Y_train, Y_test = Y[train_index], Y[test_index]
+    for category_index, category in enumerate(categories):
+        y = Y[:, category_index]
 
-        # Transpose `Y` to make its new shape (m, n).
-        # With this shape, the net can more cleanly learn multiple outputs at once.
-        Y_train_transpose = Y_train.transpose(1, 0)
+        sss = StratifiedShuffleSplit(n_splits=1, test_size=0.25, random_state=1)
+        for train_index, test_index in sss.split(X, y):
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
 
-        # Turn the discrete labels into an ordinal one-hot encoding.
-        # See `http://orca.st.usm.edu/~zwang/files/rank.pdf`.
-        num_classes = [len(category_levels) - 1 for category_levels in levels]
-        Y_train_transpose_ordinal = [to_one_hot_ordinal(y, num_classes=num_classes[i])
-                                     for i, y in enumerate(Y_train_transpose)]
+            # Turn the discrete labels into an ordinal one-hot encoding.
+            # See `http://orca.st.usm.edu/~zwang/files/rank.pdf`.
+            num_classes = len(levels[category_index])
+            y_train_ordinal = to_one_hot_ordinal(y, num_classes=num_classes)
 
-        optimizer = Adam()
-        model = get_model(images_size, num_classes, optimizer)
-        history = model.fit(X_train, Y_train_transpose_ordinal, epochs=1, batch_size=32)
-        Y_pred_transpose_ordinal = model.predict(X_test)
+            optimizer = Adam()
+            model = get_model(images_size, num_classes, optimizer)
+            history = model.fit(X_train, y_train_ordinal, epochs=1, batch_size=1024)
+            y_pred_ordinal = model.predict(X_test)
 
-        # Convert the ordinal one-hot encoding back to discrete labels.
-        Y_pred_transpose = np.array([from_one_hot_ordinal(y_pred_transpose_ordinal)
-                                     for y_pred_transpose_ordinal in Y_pred_transpose_ordinal])
-        Y_pred = Y_pred_transpose.transpose(1, 0)
+            # Convert the ordinal one-hot encoding back to discrete labels.
+            y_pred = from_one_hot_ordinal(y_pred_ordinal)
 
-        for category_index, category in enumerate(categories):
             print('`{}`:'.format(category))
-            y_test = Y_test[:, category_index]
-            y_pred = Y_pred[:, category_index]
             print('Accuracy: {:.3%}'.format(accuracy_score(y_test, y_pred)))
             confusion = confusion_matrix(y_test, y_pred)
             print(confusion)

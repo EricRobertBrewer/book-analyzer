@@ -17,11 +17,13 @@ def resize_image(path, size):
         return
     try:
         image = Image.open(path)
+        image_size = image.size
         image.thumbnail(size, Image.BICUBIC)
         out_image = Image.new("RGB", size)
         out_image.paste(image, ((size[0] - image.size[0]) // 2,
                                 (size[1] - image.size[1]) // 2))
         out_image.save(out_path, 'JPEG')
+        print('Resized `{}` from shape to size {} to size {}.'.format(path, image_size, out_image.size))
     except IOError:
         print('Unable to resize `{}`.'.format(path))
 

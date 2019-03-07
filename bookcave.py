@@ -154,7 +154,7 @@ def get_data(
         verbose=False):
     """
     Retrieve text and/or images with corresponding labels for books in the BookCave database.
-    :param media: set of str {'text', 'images'}, default None
+    :param media: set of str {'text', 'images'}
         The type of media to be retrieved.
         When 'text', only text and associated labels will be returned.
         When 'images', only images and associated labels will be returned.
@@ -166,9 +166,9 @@ def get_data(
         The medium by which text will be returned.
         When 'content', raw text content will be returned.
         When 'filename', file paths specifying the text contents will be returned.
-    :param text_min_len: int or None, default None
+    :param text_min_len: int, optional
         The minimum length of texts that will be returned.
-    :param text_max_len: int or None, default None
+    :param text_max_len: int, optional
         The maximum length of texts that will be returned.
     :param images_source: str {'cover' (default), 'cover soft', 'all'}
         The quantity of images to retrieve.
@@ -176,17 +176,29 @@ def get_data(
         When 'cover soft', `cover.jpg` will be looked for first.
             Otherwise, the largest image (by size in bytes) in the book folder will be returned.
         When 'all', all images in the book folder will be returned.
-    :param images_size: tuple of int or None, default None
+    :param images_size: tuple of int, optional
         The exact size of images to retrieve, usually resized from `image_resize.py`.
-    :param images_min_size: int or None, default None
+    :param images_min_size: int, optional
         The minimum file size (in bytes) of images that will be returned.
-    :param images_max_size: int or None, default None
+    :param images_max_size: int, optional
         The maximum file size (in bytes) of images that will be returned.
     :param categories_mode: string {'soft' (default), 'medium', 'hard'}
         The flexibility of rating levels within categories.
         When 'soft', all levels which would yield the same base overall rating (without a '+') will be collapsed.
         When 'medium', all levels which would yield the same overall rating will be collapsed.
         When 'hard', no levels will be collapsed.
+    :param only_categories: set of int, optional
+        Filter the returned labels (and meta data when `return_meta` is True) only to specific maturity categories.
+        The category indices are:
+            0: crude_humor_language
+            1: drug_alcohol_tobacco_use
+            2: kissing
+            3: profanity
+            4: nudity
+            5: sex_and_intimacy
+            6: violence_and_horror
+            7: gay_lesbian_characters
+        When not provided, all category labels will be returned.
     :param combine_ratings: string {'max' (default), 'avg ceil', 'avg floor'}
         The method by which multiple ratings for a single book will be combined.
         When `'max'`, the maximum among all rating levels per category per book will be returned.
@@ -200,12 +212,10 @@ def get_data(
         Always:
             inputs (dict):                  A dict containing file paths or raw texts of books and/or images.
             Y (np.ndarray):                 Level (label) for the corresponding text/images in 8 categories.
-            categories (list):              Names of categories.
-            levels (list):                  Names of levels per category.
+            categories (list of str):       Names of categories.
+            levels (list of list of str):   Names of levels per category.
         Only when `return_meta` is set to `True`:
             book_ids (np.array)             Alphabetically-sorted array of book IDs parallel with `inputs`.
-            all_books_df (pd.DataFrame):    Metadata for all books collected from BookCave.
-            rated_books_df (pd.DataFrame):  Metadata for books which have been rated.
             books_df (pd.DataFrame):        Metadata for books which have been rated AND have text.
             ratings_df (pd.DataFrame):      Metadata for book ratings (unused).
             levels_df (pd.DataFrame):       Metadata for book rating levels.
@@ -236,7 +246,7 @@ def get_data(
     text_list = []
     images_list = []
     for _, rated_book_row in rated_books_df.iterrows():
-        # Ensure that text AND images are available when `media`==`both`.
+        # Ensure that text AND images are available when `media`==`{'text', 'images'}`.
         text = None
         if 'text' in media:
             text = get_text(rated_book_row, text_source, text_input, text_min_len, text_max_len)
