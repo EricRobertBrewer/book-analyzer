@@ -8,49 +8,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.naive_bayes import MultinomialNB
 # Data.
 import bookcave
-
-
-def to_ordinal(y, ordinal_index):
-    # and use ordinal classification as explained in:
-    # `Frank, Eibe, and Mark Hall. "A simple approach to ordinal classification."
-    # European Conference on Machine Learning. Springer, Berlin, Heidelberg, 2001.`.
-    return np.array([1 if level > ordinal_index else 0 for level in y])
-
-
-def get_ordinal_proba(get_classifier, size, X_train, X_test, y_train, y_test):
-    # Get probabilities for binarized ordinal labels.
-    ordinal_p = np.zeros((len(y_test), size - 1))
-    for ordinal_index in range(size - 1):
-        # Find P(Target > Class_k) for 0..(k-1)
-        y_train_ordinal = to_ordinal(y_train, ordinal_index)
-        classifier = get_classifier({'y_train': y_train_ordinal})
-        try:
-            classifier.fit(X_train, y_train_ordinal)
-        except ValueError:
-            print('ValueError')
-            bincount = np.bincount(y_train, minlength=size)
-            print('bincount:')
-            for i, count in enumerate(bincount):
-                print('{:d}: {:d}'.format(i, count))
-            print()
-            print('y_train -> y_train_ordinal')
-            print('-' * 8)
-            for i in range(len(y_train)):
-                print('{:d} -> {:d}'.format(y_train[i], y_train_ordinal[i]))
-            print('Exiting.')
-            exit(1)
-        ordinal_p[:, ordinal_index] = classifier.predict(X_test)
-
-    # Calculate the actual class label probabilities.
-    p = np.zeros((len(y_test), size))
-    for i in range(size):
-        if i == 0:
-            p[:, i] = 1 - ordinal_p[:, 0]
-        elif i == size - 1:
-            p[:, i] = ordinal_p[:, i - 1]
-        else:
-            p[:, i] = ordinal_p[:, i - 1] - ordinal_p[:, i]
-    return p
+import ordinal
 
 
 def cross_validate(vectorizer, get_classifier, folds, texts, Y, categories, levels, seed=None, verbose=False):
@@ -93,7 +51,7 @@ def cross_validate(vectorizer, get_classifier, folds, texts, Y, categories, leve
 
             X_train, X_test = X[train_index], X[test_index]
             y_train, y_test = y[train_index], y[test_index]
-            p = get_ordinal_proba(get_classifier, category_size, X_train, X_test, y_train, y_test)
+            p = ordinal.get_simple_ordinal_proba(get_classifier, category_size, X_train, X_test, y_train, y_test)
 
             # Choose the most likely class label.
             y_pred = np.argmax(p, axis=1)

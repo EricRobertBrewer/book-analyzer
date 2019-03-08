@@ -23,7 +23,7 @@ def resize_image(path, size):
         out_image.paste(image, ((size[0] - image.size[0]) // 2,
                                 (size[1] - image.size[1]) // 2))
         out_image.save(out_path, 'JPEG')
-        print('Resized `{}` from shape to size {} to size {}.'.format(path, image_size, out_image.size))
+        print('Resized `{}` from size {} to size {}.'.format(path, image_size, out_image.size))
     except IOError:
         print('Unable to resize `{}`.'.format(path))
 
