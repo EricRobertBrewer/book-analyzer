@@ -84,7 +84,7 @@ def get_images(
     if not os.path.exists(folder):
         return None
 
-    if source == 'cover soft' or source == 'cover':
+    if source == 'cover':
         if size is None:
             path = os.path.join(folder, 'cover.jpg')
         else:
@@ -96,27 +96,7 @@ def get_images(
             return [path]
 
         # Fail when looking for the cover image by exact name.
-        if source == 'cover':
-            return None
-
-        # Find the largest image file; assume that it is the cover image.
-        largest_image_path = None
-        largest_image_size = None
-        fnames = os.listdir(folder)
-        for fname in fnames:
-            if not is_image_file(fname):
-                continue
-            path = os.path.join(folder, fname)
-            size = os.path.getsize(path)
-            if not is_between(size, min_size, max_size):
-                continue
-            if largest_image_size is None or size > largest_image_size:
-                largest_image_path = path
-                largest_image_size = size
-
-        if largest_image_path is None:
-            return None
-        return [largest_image_path]
+        return None
 
     if source == 'all':
         images = []
@@ -173,8 +153,6 @@ def get_data(
     :param images_source: str {'cover' (default), 'cover soft', 'all'}
         The quantity of images to retrieve.
         When 'cover', only the image named exactly `cover.jpg` will be returned for each book.
-        When 'cover soft', `cover.jpg` will be looked for first.
-            Otherwise, the largest image (by size in bytes) in the book folder will be returned.
         When 'all', all images in the book folder will be returned.
     :param images_size: tuple of int, optional
         The exact size of images to retrieve, usually resized from `image_resize.py`.

@@ -8,7 +8,7 @@ from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import StratifiedShuffleSplit
 
 import bookcave
-import ordinal
+from classification import ordinal
 
 
 def get_model(images_size, num_classes, optimizer):
@@ -45,6 +45,7 @@ def main():
         images_source='cover',
         images_size=images_size,
         only_categories={1, 3, 5, 6})
+    print('Found {:d} images.'.format(len(inputs['images'])))
 
     # Transform file paths into images, then images into numerical tensors.
     images = [load_img(book_images[0]) for book_images in inputs['images']]
@@ -64,7 +65,7 @@ def main():
 
             # Weight classes inversely proportional to their frequency.
             bincount = np.bincount(y_train, minlength=num_classes)
-            class_weight = {i: 1 / count ** 2 for i, count in enumerate(bincount)}
+            class_weight = {i: 1 / count for i, count in enumerate(bincount)}
 
             # Turn the discrete labels into an ordinal one-hot encoding.
             # See `http://orca.st.usm.edu/~zwang/files/rank.pdf`.

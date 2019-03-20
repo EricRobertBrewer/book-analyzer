@@ -8,7 +8,7 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn.naive_bayes import MultinomialNB
 # Data.
 import bookcave
-import ordinal
+from classification import ordinal
 
 
 def cross_validate(vectorizer, get_classifier, folds, texts, Y, categories, levels, seed=None, verbose=False):

@@ -92,6 +92,7 @@ def main():
         processed_sentences.extend(list(preprocessing.process_lines(tokenizer, lines, **kwargs, sentences=True)))
 
     # Hyper-parameters.
+    data_size = str(len(texts))
     tokenizer_name = 'treebank'
     vector_size = 150
     epochs = 16
@@ -99,13 +100,13 @@ def main():
 
     # Train word vectors.
     line_fname = save_trained_vectors(processed_lines,
-                                      ['line', tokenizer_name],
+                                      ['line', data_size,  tokenizer_name],
                                       size=vector_size,
                                       epochs=epochs,
                                       verbose=verbose)
     print('Saved `line` vectors to `{}`.'.format(line_fname))
     sentence_fname = save_trained_vectors(processed_sentences,
-                                          ['sentence', tokenizer_name],
+                                          ['sentence', data_size, tokenizer_name],
                                           size=vector_size,
                                           epochs=epochs,
                                           verbose=verbose)
@@ -113,13 +114,13 @@ def main():
 
     # Train doc2vec embeddings.
     line_doc_fname = save_trained_doc_model(processed_lines,
-                                            ['line', tokenizer_name],
+                                            ['line', data_size, tokenizer_name],
                                             vector_size=vector_size,
                                             epochs=epochs,
                                             verbose=verbose)
     print('Saved `line` doc2vec model to `{}`.'.format(line_doc_fname))
     sentence_doc_fname = save_trained_doc_model(processed_sentences,
-                                                ['sentence', tokenizer_name],
+                                                ['sentence', data_size, tokenizer_name],
                                                 vector_size=vector_size,
                                                 epochs=epochs,
                                                 verbose=verbose)
