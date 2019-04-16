@@ -2,10 +2,14 @@
 import numpy as np
 # Learning.
 from imblearn.ensemble import BalancedBaggingClassifier
+import nltk
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.naive_bayes import MultinomialNB
+from sklearn.svm import LinearSVC
 # Data.
 import bookcave
 from classification import ordinal
@@ -91,9 +95,12 @@ def cross_validate(vectorizer, get_classifier, folds, texts, Y, categories, leve
 
 
 def main():
+    tokenizer = nltk.tokenize.treebank.TreebankWordTokenizer()
     vectorizer = TfidfVectorizer(
         input='filename',
         encoding='utf-8',
+        lowercase=True,
+        tokenizer=tokenizer.tokenize,
         stop_words='english',
         ngram_range=(1, 2),
         min_df=2,
@@ -116,7 +123,10 @@ def main():
         n_estimators = max(bincount) // min(bincount)
         print('max={:d}; min={:d}; len={:d}; n_estimators={:d}'.format(max(bincount), min(bincount), len(y_train), n_estimators))
         return BalancedBaggingClassifier(
-            base_estimator=MultinomialNB(fit_prior=True),
+            # base_estimator=MultinomialNB(fit_prior=True),
+            # base_estimator=LogisticRegression(solver='lbfgs'),
+            # base_estimator=RandomForestClassifier(n_estimators=6),
+            base_estimator=LinearSVC(),
             n_estimators=min(32, n_estimators),
             bootstrap_features=True,
             sampling_strategy='not minority',
