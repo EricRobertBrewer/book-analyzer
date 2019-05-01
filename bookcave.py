@@ -7,9 +7,11 @@ import pandas as pd
 import os
 
 # Declare file path constants.
-CONTENT_ROOT = os.path.join('..', 'content')
-AMAZON_KINDLE_CONTENT_ROOT = os.path.join(CONTENT_ROOT, 'amazon_kindle')
-BOOKCAVE_ROOT = 'bookcave'
+CONTENT_PATH = os.path.join('..', 'content')
+AMAZON_KINDLE_PATH = os.path.join(CONTENT_PATH, 'amazon_kindle')
+AMAZON_KINDLE_TEXT_PATH = os.path.join(AMAZON_KINDLE_PATH, 'text')
+AMAZON_KINDLE_IMAGES_PATH = os.path.join(AMAZON_KINDLE_PATH, 'images')
+BOOKCAVE_PATH = 'bookcave'
 
 
 def is_between(value, _min=None, _max=None):
@@ -39,7 +41,7 @@ def get_text(
             text_file = 'preview.txt'
 
         # Get the file path to the text.
-        path = os.path.join(AMAZON_KINDLE_CONTENT_ROOT, asin, text_file)
+        path = os.path.join(AMAZON_KINDLE_TEXT_PATH, asin, text_file)
         if not os.path.exists(path):
             return None
 
@@ -80,7 +82,7 @@ def get_images(
         return None
 
     # Skip books whose content has not yet been scraped.
-    folder = os.path.join(AMAZON_KINDLE_CONTENT_ROOT, asin)
+    folder = os.path.join(AMAZON_KINDLE_IMAGES_PATH, asin)
     if not os.path.exists(folder):
         return None
 
@@ -206,7 +208,7 @@ def get_data(
         raise ValueError('Unknown values in `media`: `{}`. Should include `text` or `images`.'.format(media))
 
     # Read all of the data from the BookCave database.
-    conn = sqlite3.connect(os.path.join(CONTENT_ROOT, 'contents.db'))
+    conn = sqlite3.connect(os.path.join(CONTENT_PATH, 'contents.db'))
     all_books_df = pd.read_sql_query('SELECT * FROM BookCaveBooks;', conn)
     all_books_df.sort_values('id', inplace=True)
     all_ratings_df = pd.read_sql_query('SELECT * FROM BookCaveBookRatings;', conn)
@@ -265,11 +267,11 @@ def get_data(
 
     # Extract category data.
     if categories_mode == 'hard':
-        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_hard.tsv'), sep='\t')
+        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_PATH, 'categories_hard.tsv'), sep='\t')
     elif categories_mode == 'medium':
-        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_medium.tsv'), sep='\t')
+        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_PATH, 'categories_medium.tsv'), sep='\t')
     elif categories_mode == 'soft':
-        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_ROOT, 'categories_soft.tsv'), sep='\t')
+        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_PATH, 'categories_soft.tsv'), sep='\t')
     else:
         raise ValueError('Unknown value for `categories_mode`: `{}`'.format(categories_mode))
 
