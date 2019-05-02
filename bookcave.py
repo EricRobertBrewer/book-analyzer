@@ -189,7 +189,7 @@ def get_data(
     :return:
         Always:
             inputs (dict):                  A dict containing file paths or raw texts of books and/or images.
-            Y (np.ndarray):                 Level (label) for the corresponding text/images in 8 categories.
+            Y (np.ndarray):                 Level (label) for the corresponding text/images in up to 8 categories.
             categories (list of str):       Names of categories.
             levels (list of list of str):   Names of levels per category.
         Only when `return_meta` is set to `True`:
@@ -320,17 +320,17 @@ def get_data(
         print('Extracting labels for {} books...'.format(len(book_ids)))
     if combine_ratings == 'max':
         # For each book, take the maximum rating level in each category.
-        Y = np.zeros((len(book_ids), len(categories)), dtype=np.int32)
+        Y = np.zeros((len(categories), len(book_ids)), dtype=np.int32)
         for _, level_row in levels_df.iterrows():
             book_id = level_row['book_id']
             book_index = book_id_to_index[book_id]
             level = level_row['title']
             category_index = level_to_category_index[level]
             level_index = level_to_index[level]
-            Y[book_index, category_index] = max(Y[book_index, category_index], level_index)
+            Y[category_index, book_index] = max(Y[category_index, book_index], level_index)
     elif combine_ratings == 'avg ceil' or combine_ratings == 'avg floor':
         # For each category, calculate the average rating for each book.
-        Y_cont = np.zeros((len(book_ids), len(categories)))
+        Y_cont = np.zeros((len(categories), len(book_ids)), dtype=np.float32)
         # First, add all levels together for each book.
         for _, level_row in levels_df.iterrows():
             book_id = level_row['book_id']
@@ -338,11 +338,11 @@ def get_data(
             level = level_row['title']
             category_index = level_to_category_index[level]
             level_index = level_to_index[level]
-            Y_cont[book_index, category_index] += level_index * level_row['count']
+            Y_cont[category_index, book_index] += level_index * level_row['count']
         # Then calculate the average level for each book by dividing by the number of ratings for that book.
         for _, book_row in books_df.iterrows():
             book_index = book_id_to_index[book_row['id']]
-            Y_cont[book_index] /= book_row['community_ratings_count']
+            Y_cont[:, book_index] /= book_row['community_ratings_count']
 
         if combine_ratings == 'avg ceil':
             Y = np.ceil(Y_cont).astype(np.int32)
