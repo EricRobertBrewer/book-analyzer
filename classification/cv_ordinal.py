@@ -34,7 +34,7 @@ def cross_validate(vectorizer, get_classifier, folds, texts, Y, categories, leve
             print('Classifying category `{}`...'.format(category))
 
         category_size = len(levels[category_index])
-        y = Y[:, category_index]
+        y = Y[category_index]
 
         # Keep track of overall accuracy, precision, recall, and F1.
         num_correct_total = 0
