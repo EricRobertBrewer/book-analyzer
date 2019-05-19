@@ -6,6 +6,9 @@ import pandas as pd
 # File I/O.
 import os
 
+import extract_paragraphs
+
+
 # Declare file path constants.
 CONTENT_PATH = os.path.join('..', 'content')
 AMAZON_KINDLE_PATH = os.path.join(CONTENT_PATH, 'amazon_kindle')
@@ -28,46 +31,55 @@ def get_text(
         input='content',
         min_len=None,
         max_len=None):
-    if source == 'book' or source == 'preview':
-        # Skip books without a known ASIN.
-        asin = book_row['asin']
-        if asin is None:
+    # Skip books without a known ASIN.
+    asin = book_row['asin']
+    if asin is None:
+        return None
+
+    # Determine the type of texts that will be retrieved.
+    if source == 'book':
+        text_file = 'text.txt'
+    elif source == 'preview':
+        text_file = 'preview.txt'
+    elif source == 'para':
+        text_file = extract_paragraphs.FNAME_PARAGRAPHS
+    elif source == 'para normal':
+        text_file = extract_paragraphs.FNAME_PARAGRAPHS_NORMAL
+    else:
+        raise ValueError('Unknown value for `source`: `{}`'.format(source))
+
+    # Get the file path to the text.
+    path = os.path.join(AMAZON_KINDLE_TEXT_PATH, asin, text_file)
+    if not os.path.exists(path):
+        return None
+
+    if source == 'para' or source == 'para normal':
+        sections, section_paragraphs = extract_paragraphs.read_formatted_section_paragraphs(path)
+        # TODO: Incorporate (min|max)_len to filter books with too few/many sections/paragraphs
+        return sections, section_paragraphs
+
+    # Conditionally open the file.
+    text = None
+    if input == 'content' or min_len is not None or max_len is not None:
+        with open(path, 'r', encoding='utf-8') as fd:
+            text = fd.read()
+        # Validate file length.
+        if not is_between(len(text), min_len, max_len):
             return None
 
-        # Determine the type of texts that will be retrieved.
-        if source == 'book':
-            text_file = 'text.txt'
-        else:  # source == 'preview':
-            text_file = 'preview.txt'
-
-        # Get the file path to the text.
-        path = os.path.join(AMAZON_KINDLE_TEXT_PATH, asin, text_file)
-        if not os.path.exists(path):
-            return None
-
-        # Conditionally open the file.
-        text = None
-        if input == 'content' or min_len is not None or max_len is not None:
-            with open(path, 'r', encoding='utf-8') as fd:
-                text = fd.read()
-            # Validate file length.
-            if not is_between(len(text), min_len, max_len):
-                return None
-
-        if input == 'content':
-            return text
-        elif input == 'filename':
-            return path
-        raise ValueError('Unknown value for `input`: `{}`'.format(input))
-    raise ValueError('Unknown value for `source`: `{}`'.format(source))
+    if input == 'content':
+        return text
+    elif input == 'filename':
+        return path
+    raise ValueError('Unknown value for `input`: `{}`'.format(input))
 
 
 def is_image_file(fname):
     return fname.endswith('.jpg') or \
-                    fname.endswith('.png') or \
-                    fname.endswith('.gif') or \
-                    fname.endswith('.svg') or \
-                    fname.endswith('.bmp')
+           fname.endswith('.png') or \
+           fname.endswith('.gif') or \
+           fname.endswith('.svg') or \
+           fname.endswith('.bmp')
 
 
 def get_images(
@@ -140,10 +152,12 @@ def get_data(
         The type of media to be retrieved.
         When 'text', only text and associated labels will be returned.
         When 'images', only images and associated labels will be returned.
-    :param text_source: string {'book' (default), 'preview', 'description'}
+    :param text_source: string {'book' (default), 'preview', 'para', 'para normal'}
         The source of text to retrieve.
-        When 'book', the entire book texts will be returned.
+        When 'book', the entire raw book texts will be returned.
         When 'preview', the first few chapters of books will be returned.
+        When 'para', the sections and paragraphs will be returned (as a tuple).
+        When 'para normal', the normalized and lower-cased sections and paragraphs will be returned (as a tuple).
     :param text_input: string {'content' (default), 'filename'}
         The medium by which text will be returned.
         When 'content', raw text content will be returned.
@@ -190,7 +204,7 @@ def get_data(
         When `True`, function progress will be printed to the console.
     :return:
         Always:
-            inputs (dict):                  A dict containing file paths or raw texts of books and/or images.
+            inputs (dict):                  A dict containing file paths, raw texts, or sections+paragraphs tuples of books and/or images.
             Y (np.ndarray):                 Level (label) for the corresponding text/images in up to 8 categories.
             categories (list of str):       Names of categories.
             levels (list of list of str):   Names of levels per category.
