@@ -6,15 +6,30 @@ import pandas as pd
 # File I/O.
 import os
 
-import extract_paragraphs
-
+import folders
+from text import paragraph_io
 
 # Declare file path constants.
-CONTENT_PATH = os.path.join('..', 'content')
-AMAZON_KINDLE_PATH = os.path.join(CONTENT_PATH, 'amazon_kindle')
-AMAZON_KINDLE_TEXT_PATH = os.path.join(AMAZON_KINDLE_PATH, 'text')
-AMAZON_KINDLE_IMAGES_PATH = os.path.join(AMAZON_KINDLE_PATH, 'images')
-BOOKCAVE_PATH = 'bookcave'
+
+# Category indices.
+CATEGORY_INDEX_CRUDE_HUMOR_LANGUAGE = 0
+CATEGORY_INDEX_DRUG_ALCOHOL_TOBACCO_USE = 1
+CATEGORY_INDEX_KISSING = 2
+CATEGORY_INDEX_PROFANITY = 3
+CATEGORY_INDEX_NUDITY = 4
+CATEGORY_INDEX_SEX_AND_INTIMACY = 5
+CATEGORY_INDEX_VIOLENCE_AND_HORROR = 6
+CATEGORY_INDEX_GAY_LESBIAN_CHARACTERS = 7
+CATEGORY_NAMES = [
+    'crude_humor_language',
+    'drug_alcohol_tobacco_use',
+    'kissing',
+    'profanity',
+    'nudity',
+    'sex_and_intimacy',
+    'violence_and_horror',
+    'gay_lesbian_characters'
+]
 
 
 def is_between(value, _min=None, _max=None):
@@ -30,7 +45,8 @@ def get_text(
         source='book',
         input='content',
         min_len=None,
-        max_len=None):
+        max_len=None,
+        only_categories=None):
     # Skip books without a known ASIN.
     asin = book_row['asin']
     if asin is None:
@@ -38,25 +54,46 @@ def get_text(
 
     # Determine the type of texts that will be retrieved.
     if source == 'book':
-        text_file = 'text.txt'
+        fname = folders.FNAME_TEXT
     elif source == 'preview':
-        text_file = 'preview.txt'
-    elif source == 'para':
-        text_file = extract_paragraphs.FNAME_PARAGRAPHS
-    elif source == 'para normal':
-        text_file = extract_paragraphs.FNAME_PARAGRAPHS_NORMAL
+        fname = folders.FNAME_PREVIEW
+    elif source == 'paragraphs':
+        fname = folders.FNAME_TEXT_PARAGRAPHS
+    elif source == 'tokens':
+        fname = folders.FNAME_TEXT_PARAGRAPHS_TOKENS
+    elif source == 'labels':
+        fname = ''
     else:
         raise ValueError('Unknown value for `source`: `{}`'.format(source))
 
     # Get the file path to the text.
-    path = os.path.join(AMAZON_KINDLE_TEXT_PATH, asin, text_file)
-    if not os.path.exists(path):
-        return None
+    path = ''
+    if source != 'labels':
+        path = os.path.join(folders.AMAZON_KINDLE_TEXT_PATH, asin, fname)
+        if not os.path.exists(path):
+            return None
 
-    if source == 'para' or source == 'para normal':
-        sections, section_paragraphs = extract_paragraphs.read_formatted_section_paragraphs(path)
+    if source == 'paragraphs':
+        sections, section_paragraphs = paragraph_io.read_formatted_section_paragraphs(path)
         # TODO: Incorporate (min|max)_len to filter books with too few/many sections/paragraphs
         return sections, section_paragraphs
+    if source == 'tokens':
+        section_paragraphs_tokens = paragraph_io.read_formatted_section_paragraph_tokens(path)
+        # TODO: Incorporate (min|max)_len to filter books with too few/many sections/paragraphs/tokens??
+        return section_paragraphs_tokens
+    if source == 'labels':
+        category_section_paragraphs_labels = []
+        for category_index, category in enumerate(CATEGORY_NAMES):
+            if only_categories is not None and category_index not in only_categories:
+                continue
+            fname = folders.FNAME_TEXT_PARAGRAPHS_LABELS_FORMAT.format(category)
+            path = os.path.join(folders.AMAZON_KINDLE_TEXT_PATH, asin, fname)
+            if os.path.exists(path):
+                category_section_paragraphs_labels.append(paragraph_io.read_formatted_section_paragraph_labels(path))
+        # TODO: Incorporate (min|max)_len to filter books with too few/many sections/paragraphs
+        if len(category_section_paragraphs_labels) == 0:
+            return None
+        return category_section_paragraphs_labels
 
     # Conditionally open the file.
     text = None
@@ -94,7 +131,7 @@ def get_images(
         return None
 
     # Skip books whose content has not yet been scraped.
-    folder = os.path.join(AMAZON_KINDLE_IMAGES_PATH, asin)
+    folder = os.path.join(folders.AMAZON_KINDLE_IMAGES_PATH, asin)
     if not os.path.exists(folder):
         return None
 
@@ -152,16 +189,18 @@ def get_data(
         The type of media to be retrieved.
         When 'text', only text and associated labels will be returned.
         When 'images', only images and associated labels will be returned.
-    :param text_source: string {'book' (default), 'preview', 'para', 'para normal'}
+    :param text_source: string {'book' (default), 'preview', 'paragraphs', 'tokens', 'labels'}
         The source of text to retrieve.
         When 'book', the entire raw book texts will be returned.
         When 'preview', the first few chapters of books will be returned.
-        When 'para', the sections and paragraphs will be returned (as a tuple).
-        When 'para normal', the normalized and lower-cased sections and paragraphs will be returned (as a tuple).
+        When 'paragraphs', the sections and paragraphs will be returned (as tuples).
+        When 'tokens', the tokens for each section and paragraph, separated by spaces, will be returned.
+        When 'labels', the categorical maturity rating labels for the specified categories for paragraphs in sections will be returned.
     :param text_input: string {'content' (default), 'filename'}
         The medium by which text will be returned.
-        When 'content', raw text content will be returned.
+        When 'content', raw text content will be returned (as very long strings).
         When 'filename', file paths specifying the text contents will be returned.
+            Only considered when `text_source` is 'book' or 'preview'.
     :param text_min_len: int, optional
         The minimum length of texts that will be returned.
     :param text_max_len: int, optional
@@ -178,20 +217,11 @@ def get_data(
         The maximum file size (in bytes) of images that will be returned.
     :param categories_mode: string {'soft' (default), 'medium', 'hard'}
         The flexibility of rating levels within categories.
-        When 'soft', all levels which would yield the same base overall rating (without a '+') will be collapsed.
-        When 'medium', all levels which would yield the same overall rating will be collapsed.
-        When 'hard', no levels will be collapsed.
+        When 'soft', all levels which would yield the same base overall rating (without a '+') will be merged.
+        When 'medium', all levels which would yield the same overall rating will be merged.
+        When 'hard', no levels will be merged.
     :param only_categories: set of int, optional
         Filter the returned labels (and meta data when `return_meta` is True) only to specific maturity categories.
-        The category indices are:
-            0: crude_humor_language
-            1: drug_alcohol_tobacco_use
-            2: kissing
-            3: profanity
-            4: nudity
-            5: sex_and_intimacy
-            6: violence_and_horror
-            7: gay_lesbian_characters
         When not provided, all category labels will be returned.
     :param combine_ratings: string {'max' (default), 'avg ceil', 'avg floor'}
         The method by which multiple ratings for a single book will be combined.
@@ -204,7 +234,8 @@ def get_data(
         When `True`, function progress will be printed to the console.
     :return:
         Always:
-            inputs (dict):                  A dict containing file paths, raw texts, or sections+paragraphs tuples of books and/or images.
+            inputs (dict):                  A dict containing file paths, raw texts, section/section-paragraph tuples,
+                                                or section-paragraph-token lists of books and/or images.
             Y (np.ndarray):                 Level (label) for the corresponding text/images in up to 8 categories.
             categories (list of str):       Names of categories.
             levels (list of list of str):   Names of levels per category.
@@ -222,7 +253,7 @@ def get_data(
         raise ValueError('Unknown values in `media`: `{}`. Should include `text` or `images`.'.format(media))
 
     # Read all of the data from the BookCave database.
-    conn = sqlite3.connect(os.path.join(CONTENT_PATH, 'contents.db'))
+    conn = sqlite3.connect(os.path.join(folders.CONTENT_PATH, 'contents.db'))
     all_books_df = pd.read_sql_query('SELECT * FROM BookCaveBooks;', conn)
     all_books_df.sort_values('id', inplace=True)
     all_ratings_df = pd.read_sql_query('SELECT * FROM BookCaveBookRatings;', conn)
@@ -243,7 +274,7 @@ def get_data(
         # Ensure that text AND images are available when `media`==`{'text', 'images'}`.
         text = None
         if 'text' in media:
-            text = get_text(rated_book_row, text_source, text_input, text_min_len, text_max_len)
+            text = get_text(rated_book_row, text_source, text_input, text_min_len, text_max_len, only_categories)
             if text is None:
                 continue
         images = None
@@ -280,14 +311,10 @@ def get_data(
         inputs['images'] = images_list
 
     # Extract category data.
-    if categories_mode == 'hard':
-        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_PATH, 'categories_hard.tsv'), sep='\t')
-    elif categories_mode == 'medium':
-        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_PATH, 'categories_medium.tsv'), sep='\t')
-    elif categories_mode == 'soft':
-        all_categories_df = pd.read_csv(os.path.join(BOOKCAVE_PATH, 'categories_soft.tsv'), sep='\t')
-    else:
+    if categories_mode not in {'hard', 'medium', 'soft'}:
         raise ValueError('Unknown value for `categories_mode`: `{}`'.format(categories_mode))
+    categories_path = os.path.join(folders.BOOKCAVE_CATEGORIES_PATH, 'categories_{}.tsv'.format(categories_mode))
+    all_categories_df = pd.read_csv(categories_path, sep='\t')
 
     # Enumerate category names.
     categories = list(all_categories_df['category'].unique())

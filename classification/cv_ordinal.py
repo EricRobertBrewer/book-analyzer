@@ -3,15 +3,12 @@ import numpy as np
 # Learning.
 from imblearn.ensemble import BalancedBaggingClassifier
 import nltk
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.model_selection import StratifiedKFold
-from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 # Data.
-import bookcave
+from sites.bookcave import bookcave
 from classification import ordinal
 
 
@@ -104,7 +101,7 @@ def main():
         stop_words='english',
         ngram_range=(1, 2),
         min_df=2,
-        max_features=4096,
+        # max_features=4096,
         norm='l2',
         sublinear_tf=True)
 

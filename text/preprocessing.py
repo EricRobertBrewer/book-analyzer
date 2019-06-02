@@ -9,7 +9,7 @@ def normalize(line):
 
     # Replace single quotation marks with prime.
     # Exclude okina `ʻ`.
-    line = re.sub(r'[‘’]', '\'', line)
+    line = re.sub(r'[‘’]', "'", line)
 
     # Replace em-dashes, en-dashes, and non-breaking hyphens with hyphens.
     # Exclude minus sign `−`, horizontal bar `―`, figure dash `‒`,

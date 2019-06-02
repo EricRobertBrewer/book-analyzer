@@ -2,9 +2,8 @@ import os
 import gensim
 import nltk
 
-import bookcave
-import preprocessing
-
+from sites.bookcave import bookcave
+from text import preprocessing
 
 EMBEDDINGS_FOLDER = 'embeddings'
 
@@ -81,7 +80,7 @@ def main():
     tokenizer = nltk.tokenize.treebank.TreebankWordTokenizer()
     kwargs = {
         'lower': True,
-        'endings': {'.', '?', ')', '!', ':', '-', '"', ';', ',', '\''},
+        'endings': {'.', '?', ')', '!', ':', '-', '"', ';', ',', "'"},
         'min_len': 6,
         'normal': True
     }

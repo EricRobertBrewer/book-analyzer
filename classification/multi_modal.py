@@ -7,7 +7,7 @@ from keras import regularizers
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import StratifiedShuffleSplit
 
-import bookcave
+from sites.bookcave import bookcave
 from classification import ordinal
 
 

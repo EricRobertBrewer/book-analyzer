@@ -1,7 +1,7 @@
 # Math.
 import numpy as np
 
-import bookcave
+from sites.bookcave import bookcave
 
 
 def main():

@@ -1,4 +1,6 @@
-embeddings
+embeddings/
+logs/
+models/
 
 ### START Python.gitignore
 # Byte-compiled / optimized / DLL files
