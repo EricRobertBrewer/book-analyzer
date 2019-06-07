@@ -75,25 +75,45 @@ def get_text(
 
     if source == 'paragraphs':
         sections, section_paragraphs = paragraph_io.read_formatted_section_paragraphs(path)
-        # TODO: Incorporate (min|max)_len to filter books with too few/many sections/paragraphs
-        return sections, section_paragraphs
+        paragraphs, section_ids = [], []
+        for section_i in range(len(section_paragraphs)):
+            for paragraph_i in range(len(section_paragraphs[section_i])):
+                paragraphs.append(section_paragraphs[section_i][paragraph_i])
+                section_ids.append(section_i)
+        if not is_between(len(paragraphs), min_len, max_len):
+            return None
+        return paragraphs, section_ids, sections
+
     if source == 'tokens':
         section_paragraphs_tokens = paragraph_io.read_formatted_section_paragraph_tokens(path)
-        # TODO: Incorporate (min|max)_len to filter books with too few/many sections/paragraphs/tokens??
-        return section_paragraphs_tokens
+        tokens, section_ids = [], []
+        for section_i in range(len(section_paragraphs_tokens)):
+            for paragraph_i in range(len(section_paragraphs_tokens[section_i])):
+                tokens.append(section_paragraphs_tokens[section_i][paragraph_i])
+                section_ids.append(section_i)
+        if not is_between(len(tokens), min_len, max_len):
+            return None
+        return tokens, section_ids
+
     if source == 'labels':
-        category_section_paragraphs_labels = []
+        category_labels = []
         for category_index, category in enumerate(CATEGORY_NAMES):
             if only_categories is not None and category_index not in only_categories:
                 continue
             fname = folders.FNAME_TEXT_PARAGRAPHS_LABELS_FORMAT.format(category)
             path = os.path.join(folders.AMAZON_KINDLE_TEXT_PATH, asin, fname)
             if os.path.exists(path):
-                category_section_paragraphs_labels.append(paragraph_io.read_formatted_section_paragraph_labels(path))
-        # TODO: Incorporate (min|max)_len to filter books with too few/many sections/paragraphs
-        if len(category_section_paragraphs_labels) == 0:
+                section_paragraph_labels = paragraph_io.read_formatted_section_paragraph_labels(path)
+                labels = []
+                for section_i in range(len(section_paragraph_labels)):
+                    for paragraph_i in range(len(section_paragraph_labels[section_i])):
+                        labels.append(section_paragraph_labels[section_i][paragraph_i])
+                if not is_between(len(labels), min_len, max_len):
+                    continue
+                category_labels.append(labels)
+        if len(category_labels) == 0:
             return None
-        return category_section_paragraphs_labels
+        return category_labels
 
     # Conditionally open the file.
     text = None

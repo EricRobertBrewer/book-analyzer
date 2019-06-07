@@ -2,7 +2,7 @@ import os
 
 
 CONTENT_PATH = os.path.join('..', 'content')
-AMAZON_KINDLE_PATH = os.path.join(CONTENT_PATH, 'amazon_kindle2')
+AMAZON_KINDLE_PATH = os.path.join(CONTENT_PATH, 'amazon_kindle')
 AMAZON_KINDLE_TEXT_PATH = os.path.join(AMAZON_KINDLE_PATH, 'text')
 FNAME_TEXT = 'text.txt'
 FNAME_PREVIEW = 'preview.txt'

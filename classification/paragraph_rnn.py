@@ -60,12 +60,10 @@ def create_model(category, n_classes, n_tokens, embedding_matrix, hidden_size, d
 def main():
     print('TensorFlow version: {}'.format(tf.__version__))
 
-    label_inputs, Y, categories, labels =\
+    label_inputs, Y, categories, levels, book_ids, books_df, _, _, categories_df =\
         bookcave.get_data({'text'},
                           text_source='labels',
-                          only_categories={bookcave.CATEGORY_INDEX_DRUG_ALCOHOL_TOBACCO_USE,
-                                           bookcave.CATEGORY_INDEX_SEX_AND_INTIMACY,
-                                           bookcave.CATEGORY_INDEX_VIOLENCE_AND_HORROR})
+                          return_meta=True)
     labels = label_inputs['text']
     print(len(labels))
 
