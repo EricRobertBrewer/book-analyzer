@@ -20,7 +20,7 @@ CATEGORY_INDEX_NUDITY = 4
 CATEGORY_INDEX_SEX_AND_INTIMACY = 5
 CATEGORY_INDEX_VIOLENCE_AND_HORROR = 6
 CATEGORY_INDEX_GAY_LESBIAN_CHARACTERS = 7
-CATEGORY_NAMES = [
+CATEGORIES = [
     'crude_humor_language',
     'drug_alcohol_tobacco_use',
     'kissing',
@@ -29,6 +29,16 @@ CATEGORY_NAMES = [
     'sex_and_intimacy',
     'violence_and_horror',
     'gay_lesbian_characters'
+]
+CATEGORY_NAMES = [
+    'Crude Humor & Language',
+    'Drug, Alcohol & Tobacco Use',
+    'Kissing',
+    'Profanity',
+    'Nudity',
+    'Sex and Intimacy',
+    'Violence and Horror',
+    'Gay/Lesbian Characters'
 ]
 
 
@@ -86,19 +96,19 @@ def get_text(
 
     if source == 'tokens':
         section_paragraphs_tokens = paragraph_io.read_formatted_section_paragraph_tokens(path)
-        tokens, section_ids = [], []
+        paragraph_tokens, section_ids = [], []
         for section_i in range(len(section_paragraphs_tokens)):
             for paragraph_i in range(len(section_paragraphs_tokens[section_i])):
-                tokens.append(section_paragraphs_tokens[section_i][paragraph_i])
+                paragraph_tokens.append(section_paragraphs_tokens[section_i][paragraph_i])
                 section_ids.append(section_i)
-        if not is_between(len(tokens), min_len, max_len):
+        if not is_between(len(paragraph_tokens), min_len, max_len):
             return None
-        return tokens, section_ids
+        return paragraph_tokens, section_ids
 
     if source == 'labels':
         category_labels = []
-        for category_index, category in enumerate(CATEGORY_NAMES):
-            if only_categories is not None and category_index not in only_categories:
+        for category_i, category in enumerate(CATEGORIES):
+            if only_categories is not None and category_i not in only_categories:
                 continue
             fname = folders.FNAME_TEXT_PARAGRAPHS_LABELS_FORMAT.format(category)
             path = os.path.join(folders.AMAZON_KINDLE_TEXT_PATH, asin, fname)
@@ -362,7 +372,7 @@ def get_data(
 
     # Map and enumerate level names.
     level_to_category_index = dict()
-    levels = [['None'] for _ in range(len(categories))]
+    category_levels = [['None'] for _ in range(len(categories))]
     for _, category_row in categories_df.iterrows():
         level = category_row['level']
         if level == 'None':
@@ -373,7 +383,7 @@ def get_data(
         for level_part in level.split('|'):
             level_to_category_index[level_part] = category_index
         # Enumerate the level names per category.
-        levels[category_index].append(level)
+        category_levels[category_index].append(level)
 
     # Get a smaller levels DataFrame.
     levels_df = all_levels_df[all_levels_df['book_id'].isin(book_id_to_index) &
@@ -415,10 +425,10 @@ def get_data(
         raise ValueError('Unknown value for `combine_ratings`: `{}`'.format(combine_ratings))
 
     if return_meta:
-        return inputs, Y, categories, levels, \
+        return inputs, Y, categories, category_levels, \
                book_ids, books_df, ratings_df, levels_df, categories_df
 
-    return inputs, Y, categories, levels
+    return inputs, Y, categories, category_levels
 
 
 def main():
