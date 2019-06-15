@@ -60,12 +60,37 @@ def create_model(category, n_classes, n_tokens, embedding_matrix, hidden_size, d
 def main():
     print('TensorFlow version: {}'.format(tf.__version__))
 
-    label_inputs, Y, categories, levels, book_ids, books_df, _, _, categories_df =\
+    # Load data.
+    only_categories = [
+        bookcave.CATEGORY_INDEX_DRUG_ALCOHOL_TOBACCO_USE,
+        bookcave.CATEGORY_INDEX_SEX_AND_INTIMACY,
+        bookcave.CATEGORY_INDEX_VIOLENCE_AND_HORROR
+    ]
+    token_inputs, Y, categories, levels, book_ids, books_df, _, _, categories_df =\
         bookcave.get_data({'text'},
-                          text_source='labels',
+                          text_source='tokens',
+                          only_categories=only_categories,
                           return_meta=True)
-    labels = label_inputs['text']
-    print(len(labels))
+    text_paragraph_tokens = [paragraph_tokens for paragraph_tokens, _ in token_inputs['text']]
+    # book_id_to_index = {book_id: i for i, book_id in enumerate(book_ids)}
+
+    for category_i, category in enumerate(categories):
+        train_locations = []
+        train_tokens = []
+        train_labels = []
+        for text_i, paragraph_tokens in enumerate(text_paragraph_tokens):
+            book_id = book_ids[text_i]
+            asin = books_df[books_df['id'] == book_id].iloc[0]['asin']
+            labels = bookcave.get_labels(asin, category)
+            if labels:
+                for paragraph_i, tokens in enumerate(paragraph_tokens):
+                    label = labels[paragraph_i]
+                    if label == -1:
+                        continue
+                    train_locations.append((text_i, paragraph_i))
+                    train_tokens.append(tokens)
+                    train_labels.append(label)
+        print(len(train_locations))
 
 
 if __name__ == '__main__':

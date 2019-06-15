@@ -55,8 +55,7 @@ def get_text(
         source='book',
         input='content',
         min_len=None,
-        max_len=None,
-        only_categories=None):
+        max_len=None):
     # Skip books without a known ASIN.
     asin = book_row['asin']
     if asin is None:
@@ -71,17 +70,13 @@ def get_text(
         fname = folders.FNAME_TEXT_PARAGRAPHS
     elif source == 'tokens':
         fname = folders.FNAME_TEXT_PARAGRAPHS_TOKENS
-    elif source == 'labels':
-        fname = ''
     else:
         raise ValueError('Unknown value for `source`: `{}`'.format(source))
 
     # Get the file path to the text.
-    path = ''
-    if source != 'labels':
-        path = os.path.join(folders.AMAZON_KINDLE_TEXT_PATH, asin, fname)
-        if not os.path.exists(path):
-            return None
+    path = os.path.join(folders.AMAZON_KINDLE_TEXT_PATH, asin, fname)
+    if not os.path.exists(path):
+        return None
 
     if source == 'paragraphs':
         sections, section_paragraphs = paragraph_io.read_formatted_section_paragraphs(path)
@@ -104,26 +99,6 @@ def get_text(
         if not is_between(len(paragraph_tokens), min_len, max_len):
             return None
         return paragraph_tokens, section_ids
-
-    if source == 'labels':
-        category_labels = []
-        for category_i, category in enumerate(CATEGORIES):
-            if only_categories is not None and category_i not in only_categories:
-                continue
-            fname = folders.FNAME_TEXT_PARAGRAPHS_LABELS_FORMAT.format(category)
-            path = os.path.join(folders.AMAZON_KINDLE_TEXT_PATH, asin, fname)
-            if os.path.exists(path):
-                section_paragraph_labels = paragraph_io.read_formatted_section_paragraph_labels(path)
-                labels = []
-                for section_i in range(len(section_paragraph_labels)):
-                    for paragraph_i in range(len(section_paragraph_labels[section_i])):
-                        labels.append(section_paragraph_labels[section_i][paragraph_i])
-                if not is_between(len(labels), min_len, max_len):
-                    continue
-                category_labels.append(labels)
-        if len(category_labels) == 0:
-            return None
-        return category_labels
 
     # Conditionally open the file.
     text = None
@@ -219,13 +194,12 @@ def get_data(
         The type of media to be retrieved.
         When 'text', only text and associated labels will be returned.
         When 'images', only images and associated labels will be returned.
-    :param text_source: string {'book' (default), 'preview', 'paragraphs', 'tokens', 'labels'}
+    :param text_source: string {'book' (default), 'preview', 'paragraphs', 'tokens'}
         The source of text to retrieve.
         When 'book', the entire raw book texts will be returned.
         When 'preview', the first few chapters of books will be returned.
         When 'paragraphs', the sections and paragraphs will be returned (as tuples).
         When 'tokens', the tokens for each section and paragraph, separated by spaces, will be returned.
-        When 'labels', the categorical maturity rating labels for the specified categories for paragraphs in sections will be returned.
     :param text_input: string {'content' (default), 'filename'}
         The medium by which text will be returned.
         When 'content', raw text content will be returned (as very long strings).
@@ -304,7 +278,7 @@ def get_data(
         # Ensure that text AND images are available when `media`==`{'text', 'images'}`.
         text = None
         if 'text' in media:
-            text = get_text(rated_book_row, text_source, text_input, text_min_len, text_max_len, only_categories)
+            text = get_text(rated_book_row, text_source, text_input, text_min_len, text_max_len)
             if text is None:
                 continue
         images = None
@@ -429,6 +403,32 @@ def get_data(
                book_ids, books_df, ratings_df, levels_df, categories_df
 
     return inputs, Y, categories, category_levels
+
+
+def get_labels(asin, category):
+    fname = folders.FNAME_LABELS_FORMAT.format(category)
+    path = os.path.join(folders.AMAZON_KINDLE_LABELS_PATH, asin, fname)
+    if not os.path.exists(path):
+        return None
+    section_paragraph_labels = paragraph_io.read_formatted_section_paragraph_labels(path)
+    labels = []
+    for section_i in range(len(section_paragraph_labels)):
+        for paragraph_i in range(len(section_paragraph_labels[section_i])):
+            labels.append(section_paragraph_labels[section_i][paragraph_i])
+    return labels
+
+
+def save_labels(asin, category, sections, section_ids, labels, force=False, verbose=0):
+    section_paragraph_labels = [[] for _ in range(len(sections))]
+    for paragraph_i, section_i in enumerate(section_ids):
+        label = labels[paragraph_i]
+        section_paragraph_labels[section_i].append(label)
+    fname = folders.FNAME_LABELS_FORMAT.format(category)
+    asin_path = os.path.join(folders.AMAZON_KINDLE_LABELS_PATH, asin)
+    if not os.path.exists(asin_path):
+        os.mkdir(asin_path)
+    path = os.path.join(asin_path, fname)
+    paragraph_io.write_formatted_section_paragraph_labels(section_paragraph_labels, path, force=force, verbose=verbose)
 
 
 def main():

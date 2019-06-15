@@ -8,7 +8,8 @@ FNAME_TEXT = 'text.txt'
 FNAME_PREVIEW = 'preview.txt'
 FNAME_TEXT_PARAGRAPHS = 'text_paragraphs.txt'
 FNAME_TEXT_PARAGRAPHS_TOKENS = 'text_paragraphs_tokens.txt'
-FNAME_TEXT_PARAGRAPHS_LABELS_FORMAT = 'text_paragraphs_labels_{}.txt'
+AMAZON_KINDLE_LABELS_PATH = os.path.join(AMAZON_KINDLE_PATH, 'labels')
+FNAME_LABELS_FORMAT = 'paragraph_labels_{}.txt'
 AMAZON_KINDLE_IMAGES_PATH = os.path.join(AMAZON_KINDLE_PATH, 'images')
 
 SITES_PATH = 'sites'
