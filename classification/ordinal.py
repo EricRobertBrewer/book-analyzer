@@ -5,7 +5,7 @@ def to_simple_ordinal(y, i):
     return np.array([1 if value > i else 0 for value in y])
 
 
-def get_simple_ordinal_proba(get_classifier, size, X_train, X_test, y_train, y_test):
+def get_simple_ordinal_proba(get_classifier, get_base, size, X_train, X_test, y_train, y_test):
     """
     # See `Frank, Eibe, and Mark Hall. "A simple approach to ordinal classification."
     # European Conference on Machine Learning. Springer, Berlin, Heidelberg, 2001.`.
@@ -15,7 +15,7 @@ def get_simple_ordinal_proba(get_classifier, size, X_train, X_test, y_train, y_t
     for i in range(size - 1):
         # Find P(Target > Class_k) for 0..(k-1)
         y_train_ordinal = to_simple_ordinal(y_train, i)
-        classifier = get_classifier({'y_train': y_train_ordinal})
+        classifier = get_classifier(get_base, {'y_train': y_train_ordinal})
         classifier.fit(X_train, y_train_ordinal)
         ordinal_p[:, i] = classifier.predict(X_test)
 

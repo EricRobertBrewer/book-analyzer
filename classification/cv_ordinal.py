@@ -2,8 +2,10 @@
 import numpy as np
 # Learning.
 from imblearn.ensemble import BalancedBaggingClassifier
-import nltk
+from sklearn.ensemble.forest import RandomForestClassifier
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.model_selection import StratifiedKFold
 from sklearn.svm import LinearSVC
@@ -12,25 +14,17 @@ from sites.bookcave import bookcave
 from classification import ordinal
 
 
-def cross_validate(vectorizer, get_classifier, folds, texts, Y, categories, levels, seed=None, verbose=False):
+def cross_validate(get_base, folds, X, Y, categories, category_levels, seed=None, verbose=0):
     # Validate parameters.
     if folds < 2:
         raise ValueError('Parameter `folds` must be greater than 1. Received: {:d}'.format(folds))
-
-    # Create vectorized representations of the book texts.
-    if verbose:
-        print()
-        print('Vectorizing text...')
-    X = vectorizer.fit_transform(texts)
-    if verbose:
-        print('Vectorized text with {:d} unique words.'.format(len(vectorizer.get_feature_names())))
 
     for category_index, category in enumerate(categories):
         if verbose:
             print()
             print('Classifying category `{}`...'.format(category))
 
-        category_size = len(levels[category_index])
+        category_size = len(category_levels[category_index])
         y = Y[category_index]
 
         # Keep track of overall accuracy, precision, recall, and F1.
@@ -52,24 +46,17 @@ def cross_validate(vectorizer, get_classifier, folds, texts, Y, categories, leve
 
             X_train, X_test = X[train_index], X[test_index]
             y_train, y_test = y[train_index], y[test_index]
-            p = ordinal.get_simple_ordinal_proba(get_classifier, category_size, X_train, X_test, y_train, y_test)
+            p = ordinal.get_simple_ordinal_proba(get_classifier, get_base, category_size, X_train, X_test, y_train, y_test)
 
             # Choose the most likely class label.
             y_pred = np.argmax(p, axis=1)
 
             num_correct = accuracy_score(y_test, y_pred, normalize=False)
             if verbose:
-                print('Accuracy: {:.3%} ({:d}/{:d})'.format(num_correct / len(y_test), int(num_correct), len(y_test)))
+                print('Accuracy: {:.4} ({:d}/{:d})'.format(num_correct / len(y_test), int(num_correct), len(y_test)))
             num_correct_total += num_correct
             num_total += len(y_test)
 
-            if verbose:
-                precision = precision_score(y_test, y_pred, average=score_average)
-                recall = recall_score(y_test, y_pred, average=score_average)
-                f1 = f1_score(y_test, y_pred, average=score_average)
-                print('Precision: {:.3%}'.format(precision))
-                print('Recall: {:.3%}'.format(recall))
-                print('F1: {:.3%}'.format(f1))
             y_test_all.extend(y_test)
             y_pred_all.extend(list(y_pred))
 
@@ -79,59 +66,80 @@ def cross_validate(vectorizer, get_classifier, folds, texts, Y, categories, leve
             confusion_total += confusion
 
         accuracy_total = num_correct_total/num_total
-        precision_total = precision_score(y_test_all, y_pred_all, average=score_average)
-        recall_total = recall_score(y_test_all, y_pred_all, average=score_average)
-        f1_total = f1_score(y_test_all, y_pred_all, average=score_average)
         print()
         print('`{}` ({:d} levels)'.format(category, category_size))
-        print('Overall accuracy: {:.3%}'.format(accuracy_total))
-        print('Overall precision: {:.3%}'.format(precision_total))
-        print('Overall recall: {:.3%}'.format(recall_total))
-        print('Overall F1: {:.3%}'.format(f1_total))
+        print('Overall accuracy: {:.4}'.format(accuracy_total))
         print(confusion_total)
 
 
+def get_classifier(get_base, options):
+    y_train = options['y_train']
+    bincount = np.bincount(y_train)
+    n_estimators = max(bincount) // min(bincount)
+    return BalancedBaggingClassifier(
+        base_estimator=get_base(),
+        n_estimators=min(n_estimators, 8),
+        bootstrap_features=True,
+        sampling_strategy='not minority',
+        replacement=True)
+
+
 def main():
-    tokenizer = nltk.tokenize.treebank.TreebankWordTokenizer()
+    verbose = 1
+
+    def identity(v):
+        return v
+
     vectorizer = TfidfVectorizer(
-        input='filename',
-        encoding='utf-8',
-        lowercase=True,
-        tokenizer=tokenizer.tokenize,
-        stop_words='english',
-        ngram_range=(1, 2),
-        min_df=2,
-        # max_features=4096,
+        preprocessor=identity,
+        tokenizer=identity,
+        analyzer='word',
+        token_pattern=None,
+        max_features=4096,
         norm='l2',
         sublinear_tf=True)
 
-    inputs, Y, categories, levels = bookcave.get_data(
-        media={'text'},
-        text_source='book',
-        text_input='filename',
-        text_min_len=6,
-        only_categories={1, 3, 5, 6},
-        verbose=True)
-    texts = inputs['text']
+    text_min_len = 250
+    text_max_len = 7500
+    only_categories = None
+    token_inputs, Y, categories, category_levels =\
+        bookcave.get_data({'text'},
+                          text_source='tokens',
+                          text_min_len=text_min_len,
+                          text_max_len=text_max_len,
+                          only_categories=only_categories)
+    text_paragraph_tokens = [paragraph_tokens for paragraph_tokens, _ in token_inputs['text']]
+    text_tokens = []
+    for paragraph_tokens in text_paragraph_tokens:
+        all_tokens = []
+        for tokens in paragraph_tokens:
+            all_tokens.extend(tokens)
+        text_tokens.append(all_tokens)
 
-    def get_classifier(options: dict):
-        y_train = options['y_train']
-        bincount = np.bincount(y_train)
-        n_estimators = max(bincount) // min(bincount)
-        print('max={:d}; min={:d}; len={:d}; n_estimators={:d}'.format(max(bincount), min(bincount), len(y_train), n_estimators))
-        return BalancedBaggingClassifier(
-            # base_estimator=MultinomialNB(fit_prior=True),
-            # base_estimator=LogisticRegression(solver='lbfgs'),
-            # base_estimator=RandomForestClassifier(n_estimators=6),
-            base_estimator=LinearSVC(),
-            n_estimators=min(32, n_estimators),
-            bootstrap_features=True,
-            sampling_strategy='not minority',
-            replacement=True)
+    # Create vectorized representations of the book texts.
+    if verbose:
+        print()
+        print('Vectorizing text...')
+    X = vectorizer.fit_transform(text_tokens)
+    if verbose:
+        print('Vectorized text with {:d} unique words.'.format(len(vectorizer.get_feature_names())))
+
+    def get_mnb():
+        return MultinomialNB(fit_prior=True)
+
+    def get_lr():
+        return LogisticRegression(solver='lbfgs')
+
+    def get_rf():
+        return RandomForestClassifier(n_estimators=6)
+
+    def get_svm():
+        return LinearSVC()
 
     folds = 3
     seed = 1
-    cross_validate(vectorizer, get_classifier, folds, texts, Y, categories, levels, seed=seed, verbose=True)
+    for get_base in [get_mnb, get_lr, get_rf, get_svm]:
+        cross_validate(get_base, folds, X, Y, categories, category_levels, seed=seed, verbose=1)
 
 
 if __name__ == '__main__':
