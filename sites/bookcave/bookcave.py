@@ -31,7 +31,7 @@ CATEGORIES = [
     'gay_lesbian_characters'
 ]
 CATEGORY_NAMES = [
-    'Crude Humor & Language',
+    'Crude Humor/Language',
     'Drug, Alcohol & Tobacco Use',
     'Kissing',
     'Profanity',
