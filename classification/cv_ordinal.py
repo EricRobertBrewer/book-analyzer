@@ -6,7 +6,7 @@ from sklearn.ensemble.forest import RandomForestClassifier
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import StratifiedKFold
 from sklearn.svm import LinearSVC
 # Data.
@@ -99,16 +99,12 @@ def main():
         norm='l2',
         sublinear_tf=True)
 
-    text_min_len = 250
-    text_max_len = 7500
-    only_categories = None
-    token_inputs, Y, categories, category_levels =\
-        bookcave.get_data({'text'},
-                          text_source='tokens',
-                          text_min_len=text_min_len,
-                          text_max_len=text_max_len,
-                          only_categories=only_categories)
-    text_paragraph_tokens = [paragraph_tokens for paragraph_tokens, _ in token_inputs['text']]
+    min_len, max_len = 250, 7500
+    inputs, Y, categories, category_levels =\
+        bookcave.get_data({'tokens'},
+                          min_len=min_len,
+                          max_len=max_len)
+    text_paragraph_tokens = [paragraph_tokens for paragraph_tokens, _ in inputs['tokens']]
     text_tokens = []
     for paragraph_tokens in text_paragraph_tokens:
         all_tokens = []

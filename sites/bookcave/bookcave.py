@@ -50,70 +50,74 @@ def is_between(value, _min=None, _max=None):
     return True
 
 
-def get_text(
-        book_row,
-        source='book',
-        input='content',
-        min_len=None,
-        max_len=None):
-    # Skip books without a known ASIN.
-    asin = book_row['asin']
-    if asin is None:
-        return None
-
-    # Determine the type of texts that will be retrieved.
-    if source == 'book':
-        fname = folders.FNAME_TEXT
-    elif source == 'preview':
-        fname = folders.FNAME_PREVIEW
-    elif source == 'paragraphs':
-        fname = folders.FNAME_TEXT_PARAGRAPHS
-    elif source == 'tokens':
-        fname = folders.FNAME_TEXT_PARAGRAPHS_TOKENS
-    else:
-        raise ValueError('Unknown value for `source`: `{}`'.format(source))
-
-    # Get the file path to the text.
-    path = os.path.join(folders.AMAZON_KINDLE_TEXT_PATH, asin, fname)
+def get_book(asin, min_len=None, max_len=None):
+    path = os.path.join(folders.AMAZON_KINDLE_BOOK_PATH, '{}.txt'.format(asin))
     if not os.path.exists(path):
         return None
 
+    # Validate file length.
+    with open(path, 'r', encoding='utf-8') as fd:
+        book = fd.read()
+    if not is_between(len(book), min_len, max_len):
+        return None
+    return book
+
+
+def get_preview(asin, min_len=None, max_len=None):
+    path = os.path.join(folders.AMAZON_KINDLE_PREVIEW_PATH, '{}.txt'.format(asin))
+    if not os.path.exists(path):
+        return None
+
+    # Validate file length.
+    with open(path, 'r', encoding='utf-8') as fd:
+        preview = fd.read()
+    if not is_between(len(preview), min_len, max_len):
+        return None
+    return preview
+
+
+def get_paragraphs(asin, min_len=None, max_len=None):
+    path = os.path.join(folders.AMAZON_KINDLE_PARAGRAPHS_PATH, '{}.txt'.format(asin))
+    if not os.path.exists(path):
+        return None
+
+    sections, section_paragraphs = paragraph_io.read_formatted_section_paragraphs(path)
+    paragraphs, section_ids = [], []
+    for section_i in range(len(section_paragraphs)):
+        for paragraph_i in range(len(section_paragraphs[section_i])):
+            paragraphs.append(section_paragraphs[section_i][paragraph_i])
+            section_ids.append(section_i)
+    if not is_between(len(paragraphs), min_len, max_len):
+        return None
+    return paragraphs, section_ids, sections
+
+
+def get_paragraph_tokens(asin, min_len=None, max_len=None):
+    path = os.path.join(folders.AMAZON_KINDLE_TOKENS_PATH, '{}.txt'.format(asin))
+    if not os.path.exists(path):
+        return None
+
+    section_paragraphs_tokens = paragraph_io.read_formatted_section_paragraph_tokens(path)
+    paragraph_tokens, section_ids = [], []
+    for section_i in range(len(section_paragraphs_tokens)):
+        for paragraph_i in range(len(section_paragraphs_tokens[section_i])):
+            paragraph_tokens.append(section_paragraphs_tokens[section_i][paragraph_i])
+            section_ids.append(section_i)
+    if not is_between(len(paragraph_tokens), min_len, max_len):
+        return None
+    return paragraph_tokens, section_ids
+
+
+def get_input(source, asin, min_len=None, max_len=None):
+    if source == 'book':
+        return get_book(asin, min_len, max_len)
+    if source == 'preview':
+        return get_preview(asin, min_len, max_len)
     if source == 'paragraphs':
-        sections, section_paragraphs = paragraph_io.read_formatted_section_paragraphs(path)
-        paragraphs, section_ids = [], []
-        for section_i in range(len(section_paragraphs)):
-            for paragraph_i in range(len(section_paragraphs[section_i])):
-                paragraphs.append(section_paragraphs[section_i][paragraph_i])
-                section_ids.append(section_i)
-        if not is_between(len(paragraphs), min_len, max_len):
-            return None
-        return paragraphs, section_ids, sections
-
+        return get_paragraphs(asin, min_len, max_len)
     if source == 'tokens':
-        section_paragraphs_tokens = paragraph_io.read_formatted_section_paragraph_tokens(path)
-        paragraph_tokens, section_ids = [], []
-        for section_i in range(len(section_paragraphs_tokens)):
-            for paragraph_i in range(len(section_paragraphs_tokens[section_i])):
-                paragraph_tokens.append(section_paragraphs_tokens[section_i][paragraph_i])
-                section_ids.append(section_i)
-        if not is_between(len(paragraph_tokens), min_len, max_len):
-            return None
-        return paragraph_tokens, section_ids
-
-    # Conditionally open the file.
-    text = None
-    if input == 'content' or min_len is not None or max_len is not None:
-        with open(path, 'r', encoding='utf-8') as fd:
-            text = fd.read()
-        # Validate file length.
-        if not is_between(len(text), min_len, max_len):
-            return None
-
-    if input == 'content':
-        return text
-    elif input == 'filename':
-        return path
-    raise ValueError('Unknown value for `input`: `{}`'.format(input))
+        return get_paragraph_tokens(asin, min_len, max_len)
+    raise ValueError('Unknown source: `{}`.'.format(source))
 
 
 def is_image_file(fname):
@@ -125,13 +129,12 @@ def is_image_file(fname):
 
 
 def get_images(
-        book_row,
+        asin,
         source='cover',
         size=None,
         min_size=None,
         max_size=None):
     # Skip books without a known ASIN.
-    asin = book_row['asin']
     if asin is None:
         return None
 
@@ -174,51 +177,27 @@ def get_images(
 
 
 def get_data(
-        media,
-        text_source='book',
-        text_input='content',
-        text_min_len=None,
-        text_max_len=None,
-        images_source='cover',
-        images_size=None,
-        images_min_size=None,
-        images_max_size=None,
+        sources,
+        min_len=None,
+        max_len=None,
         categories_mode='soft',
         only_categories=None,
         combine_ratings='max',
         return_meta=False,
         verbose=False):
     """
-    Retrieve text and/or images with corresponding labels for books in the BookCave database.
-    :param media: set of str {'text', 'images'}
-        The type of media to be retrieved.
-        When 'text', only text and associated labels will be returned.
-        When 'images', only images and associated labels will be returned.
-    :param text_source: string {'book' (default), 'preview', 'paragraphs', 'tokens'}
-        The source of text to retrieve.
+    Retrieve text with corresponding labels for books in the BookCave database.
+    :param sources: set of str {'book', 'preview', 'paragraphs' (default), 'tokens'}
+        The type(s) of media to be retrieved.
         When 'book', the entire raw book texts will be returned.
         When 'preview', the first few chapters of books will be returned.
         When 'paragraphs', the sections and paragraphs will be returned (as tuples).
-        When 'tokens', the tokens for each section and paragraph, separated by spaces, will be returned.
-    :param text_input: string {'content' (default), 'filename'}
-        The medium by which text will be returned.
-        When 'content', raw text content will be returned (as very long strings).
-        When 'filename', file paths specifying the text contents will be returned.
-            Only considered when `text_source` is 'book' or 'preview'.
-    :param text_min_len: int, optional
+        When 'tokens', the space-separated tokens for each paragraph will be returned.
+        When `None`, paragraphs will be returned.
+    :param min_len: int, optional
         The minimum length of texts that will be returned.
-    :param text_max_len: int, optional
+    :param max_len: int, optional
         The maximum length of texts that will be returned.
-    :param images_source: str {'cover' (default), 'cover soft', 'all'}
-        The quantity of images to retrieve.
-        When 'cover', only the image named exactly `cover.jpg` will be returned for each book.
-        When 'all', all images in the book folder will be returned.
-    :param images_size: tuple of int, optional
-        The exact size of images to retrieve, usually resized from `image_resize.py`.
-    :param images_min_size: int, optional
-        The minimum file size (in bytes) of images that will be returned.
-    :param images_max_size: int, optional
-        The maximum file size (in bytes) of images that will be returned.
     :param categories_mode: string {'soft' (default), 'medium', 'hard'}
         The flexibility of rating levels within categories.
         When 'soft', all levels which would yield the same base overall rating (without a '+') will be merged.
@@ -241,8 +220,8 @@ def get_data(
             inputs (dict):                  A dict containing file paths, raw texts, section/section-paragraph tuples,
                                                 or section-paragraph-token lists of books and/or images.
             Y (np.ndarray):                 Level (label) for the corresponding text/images in up to 8 categories.
-            categories (list of str):       Names of categories.
-            levels (list of list of str):   Names of levels per category.
+            categories ([str]):             Names of categories.
+            category_levels ([[str]]):      Names of levels per category.
         Only when `return_meta` is set to `True`:
             book_ids (np.array)             Alphabetically-sorted array of book IDs parallel with `inputs`.
             books_df (pd.DataFrame):        Metadata for books which have been rated AND have text.
@@ -251,10 +230,8 @@ def get_data(
             categories_df (pd.DataFrame):   Metadata for categories (contains a description for each rating level).
     """
     # Validate `media`.
-    if media is None:
-        raise ValueError('Parameter `media` is None. Should be a set of str.')
-    if 'text' not in media and 'images' not in media:
-        raise ValueError('Unknown values in `media`: `{}`. Should include `text` or `images`.'.format(media))
+    if sources is None:
+        sources = {'paragraphs'}
 
     # Read all of the data from the BookCave database.
     conn = sqlite3.connect(os.path.join(folders.CONTENT_PATH, 'contents.db'))
@@ -270,49 +247,36 @@ def get_data(
     # Determine which books will be retrieved.
     if verbose:
         print('Collecting inputs...')
-    book_id_set = set()
-    book_id_list = []
-    text_list = []
-    images_list = []
+    inputs = dict()
+    for source in sources:
+        inputs[source] = []
+    book_ids = []
     for _, rated_book_row in rated_books_df.iterrows():
-        # Ensure that text AND images are available when `media`==`{'text', 'images'}`.
-        text = None
-        if 'text' in media:
-            text = get_text(rated_book_row, text_source, text_input, text_min_len, text_max_len)
-            if text is None:
-                continue
-        images = None
-        if 'images' in media:
-            images = get_images(rated_book_row, images_source, images_size, images_min_size, images_max_size)
-            if images is None:
-                continue
-        book_id = rated_book_row['id']
-        book_id_list.append(book_id)
-        book_id_set.add(book_id)
-        if 'text' in media:
-            text_list.append(text)
-        if 'images' in media:
-            images_list.append(images)
+        # Skip books without a known ASIN.
+        asin = rated_book_row['asin']
+        if asin is None:
+            continue
+
+        # Ensure that all selected sources exist.
+        has_all_sources = True
+        book_inputs = dict()
+        for source in sources:
+            book_input = get_input(source, asin, min_len, max_len)
+            if book_input is None:
+                has_all_sources = False
+                break
+            book_inputs[source] = book_input
+
+        if has_all_sources:
+            for source, book_input in book_inputs.items():
+                inputs[source].append(book_input)
+            book_ids.append(rated_book_row['id'])
 
     # Consider only books for which text has been collected.
-    if 'text' in media:
-        books_df = rated_books_df[rated_books_df['id'].isin(book_id_set)]
-    # elif 'images' in media:
-    else:
-        books_df = rated_books_df[rated_books_df['id'].isin(book_id_set)]
-
-    # Create a fancy-indexable array of book IDs.
-    book_ids = np.array(books_df['id'].values)
+    books_df = rated_books_df[rated_books_df['id'].isin(set(book_ids))]
 
     # Map book IDs to indices.
     book_id_to_index = {book_id: i for i, book_id in enumerate(book_ids)}
-
-    # Create the return value.
-    inputs = dict()
-    if 'text' in media:
-        inputs['text'] = text_list
-    if 'images' in media:
-        inputs['images'] = images_list
 
     # Extract category data.
     if categories_mode not in {'hard', 'medium', 'soft'}:
@@ -329,8 +293,8 @@ def get_data(
     category_to_index = {category: i for i, category in enumerate(categories)}
 
     # Get smaller ratings and categories DataFrames.
-    ratings_df = all_ratings_df[all_ratings_df['book_id'].isin(book_id_to_index)]
-    categories_df = all_categories_df[all_categories_df['category'].isin(category_to_index)]
+    ratings_df = all_ratings_df[all_ratings_df['book_id'].isin(book_id_to_index.keys())]
+    categories_df = all_categories_df[all_categories_df['category'].isin(category_to_index.keys())]
 
     # Map each level name to its index within its own category.
     level_to_index = dict()
@@ -360,8 +324,8 @@ def get_data(
         category_levels[category_index].append(level)
 
     # Get a smaller levels DataFrame.
-    levels_df = all_levels_df[all_levels_df['book_id'].isin(book_id_to_index) &
-                              all_levels_df['title'].isin(level_to_index)]
+    levels_df = all_levels_df[all_levels_df['book_id'].isin(book_id_to_index.keys()) &
+                              all_levels_df['title'].isin(level_to_index.keys())]
 
     if verbose:
         print('Extracting labels for {} books...'.format(len(book_ids)))
@@ -400,7 +364,7 @@ def get_data(
 
     if return_meta:
         return inputs, Y, categories, category_levels, \
-               book_ids, books_df, ratings_df, levels_df, categories_df
+               np.array(book_ids), books_df, ratings_df, levels_df, categories_df
 
     return inputs, Y, categories, category_levels
 
@@ -429,38 +393,3 @@ def save_labels(asin, category, sections, section_ids, labels, force=False, verb
         os.mkdir(asin_path)
     path = os.path.join(asin_path, fname)
     paragraph_io.write_formatted_section_paragraph_labels(section_paragraph_labels, path, force=force, verbose=verbose)
-
-
-def main():
-    """
-    Test each permutation of parameters.
-    """
-    for text_source in ['description', 'preview', 'book']:
-        # for text_input in ['content', 'filename']:
-        text_input = 'filename'
-        for categories_mode in ['hard', 'medium', 'soft']:
-            for combine_ratings in ['avg ceil', 'max']:  # , 'avg floor'
-                inputs, Y, categories, levels = get_data({'text'},
-                                                         text_source=text_source,
-                                                         text_input=text_input,
-                                                         text_min_len=None,
-                                                         text_max_len=None,
-                                                         categories_mode=categories_mode,
-                                                         only_categories={0, 1, 2, 3, 4, 5, 6},
-                                                         combine_ratings=combine_ratings)
-                print('text_source={}, '
-                      'text_input={}, '
-                      'categories_mode={}, '
-                      'combine_ratings={}: '
-                      'len(inputs)={:d},'
-                      ' Y.shape={}'
-                      .format(text_source,
-                              text_input,
-                              categories_mode,
-                              combine_ratings,
-                              len(inputs['text']),
-                              Y.shape))
-
-
-if __name__ == '__main__':
-    main()

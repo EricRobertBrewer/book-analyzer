@@ -5,20 +5,21 @@ from sites.bookcave import bookcave
 
 
 def main():
-    _, Y, categories, levels = bookcave.get_data(
-        {'text'},
-        text_source='preview',
-        text_input='filename',
-        categories_mode='soft',
-        combine_ratings='max',
-        verbose=True)
-    for category_index, category_name in enumerate(categories):
-        y = Y[:, category_index]
+    min_len, max_len = 250, 7500
+    _, Y, categories, category_levels =\
+        bookcave.get_data({'paragraphs'},
+                          min_len=min_len,
+                          max_len=max_len)
+    print(Y.shape)
+
+    for category_index, category in enumerate(categories):
+        y = Y[category_index]
         bincount = np.bincount(y)
         argmax = np.argmax(bincount)
-        print('`{}` overall accuracy: {:.3%} (`{}`)'.format(category_name,
+        levels = category_levels[category_index]
+        print('`{}` overall accuracy: {:.4f} (`{}`)'.format(category,
                                                             bincount[argmax] / len(y),
-                                                            levels[category_index][argmax]))
+                                                            levels[argmax]))
 
 
 if __name__ == '__main__':

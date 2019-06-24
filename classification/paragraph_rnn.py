@@ -61,17 +61,13 @@ def main():
     print('TensorFlow version: {}'.format(tf.__version__))
 
     # Load data.
-    only_categories = [
-        bookcave.CATEGORY_INDEX_DRUG_ALCOHOL_TOBACCO_USE,
-        bookcave.CATEGORY_INDEX_SEX_AND_INTIMACY,
-        bookcave.CATEGORY_INDEX_VIOLENCE_AND_HORROR
-    ]
-    token_inputs, Y, categories, levels, book_ids, books_df, _, _, categories_df =\
-        bookcave.get_data({'text'},
-                          text_source='tokens',
-                          only_categories=only_categories,
+    min_len, max_len = 250, 7500
+    inputs, Y, categories, levels, book_ids, books_df, _, _, categories_df =\
+        bookcave.get_data({'tokens'},
+                          min_len=min_len,
+                          max_len=max_len,
                           return_meta=True)
-    text_paragraph_tokens = [paragraph_tokens for paragraph_tokens, _ in token_inputs['text']]
+    text_paragraph_tokens = [paragraph_tokens for paragraph_tokens, _ in inputs['tokens']]
     # book_id_to_index = {book_id: i for i, book_id in enumerate(book_ids)}
 
     for category_i, category in enumerate(categories):
