@@ -134,7 +134,14 @@ def main():
 
     folds = 3
     seed = 1
-    for get_base in [get_mnb, get_lr, get_rf, get_svm]:
+    get_bases = [get_mnb, get_lr, get_rf, get_svm]
+    base_names = ['mnb', 'lr', 'rf', 'svm']
+    for i, get_base in enumerate(get_bases):
+        print()
+        print('='*72)
+        print()
+        print(base_names[i])
+        print()
         cross_validate(get_base, folds, X, Y, categories, category_levels, seed=seed, verbose=1)
 
 
