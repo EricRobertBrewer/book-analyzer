@@ -128,58 +128,11 @@ def is_image_file(fname):
            fname.endswith('.bmp')
 
 
-def get_images(
-        asin,
-        source='cover',
-        size=None,
-        min_size=None,
-        max_size=None):
-    # Skip books without a known ASIN.
-    if asin is None:
-        return None
-
-    # Skip books whose content has not yet been scraped.
-    folder = os.path.join(folders.AMAZON_KINDLE_IMAGES_PATH, asin)
-    if not os.path.exists(folder):
-        return None
-
-    if source == 'cover':
-        if size is None:
-            path = os.path.join(folder, 'cover.jpg')
-        else:
-            path = os.path.join(folder, 'cover-' + str(size[0]) + 'x' + str(size[1]) + '.jpg')
-        if os.path.exists(path):
-            size = os.path.getsize(path)
-            if not is_between(size, min_size, max_size):
-                return None
-            return [path]
-
-        # Fail when looking for the cover image by exact name.
-        return None
-
-    if source == 'all':
-        images = []
-        fnames = os.listdir(folder)
-        for fname in fnames:
-            if not is_image_file(fname):
-                continue
-            path = os.path.join(folder, fname)
-            size = os.path.getsize(path)
-            if not is_between(size, min_size, max_size):
-                continue
-            images.append(path)
-
-        if len(images) == 0:
-            return None
-        return images
-
-    raise ValueError('Unknown value for `source`: `{}`'.format(source))
-
-
 def get_data(
         sources,
         min_len=None,
         max_len=None,
+        only_ids=None,
         categories_mode='soft',
         only_categories=None,
         combine_ratings='max',
@@ -188,16 +141,18 @@ def get_data(
     """
     Retrieve text with corresponding labels for books in the BookCave database.
     :param sources: set of str {'book', 'preview', 'paragraphs' (default), 'tokens'}
-        The type(s) of media to be retrieved.
+        The type(s) of text to be retrieved.
         When 'book', the entire raw book texts will be returned.
         When 'preview', the first few chapters of books will be returned.
         When 'paragraphs', the sections and paragraphs will be returned (as tuples).
         When 'tokens', the space-separated tokens for each paragraph will be returned.
-        When `None`, paragraphs will be returned.
+        Default is `paragraphs`.
     :param min_len: int, optional
         The minimum length of texts that will be returned.
     :param max_len: int, optional
         The maximum length of texts that will be returned.
+    :param only_ids: iterable of str, optional
+        Filter the returned books by a set
     :param categories_mode: string {'soft' (default), 'medium', 'hard'}
         The flexibility of rating levels within categories.
         When 'soft', all levels which would yield the same base overall rating (without a '+') will be merged.
@@ -243,6 +198,10 @@ def get_data(
 
     # Consider only books which have at least one rating.
     rated_books_df = all_books_df[all_books_df['community_ratings_count'] > 0]
+
+    # Filter by `only_ids`, if present.
+    if only_ids:
+        rated_books_df = rated_books_df[rated_books_df['id'].isin(set(only_ids))]
 
     # Determine which books will be retrieved.
     if verbose:
@@ -369,8 +328,56 @@ def get_data(
     return inputs, Y, categories, category_levels
 
 
+def get_images(
+        asin,
+        source='cover',
+        size=None,
+        min_size=None,
+        max_size=None):
+    # Skip books without a known ASIN.
+    if asin is None:
+        return None
+
+    # Skip books whose content has not yet been scraped.
+    folder = os.path.join(folders.AMAZON_KINDLE_IMAGES_PATH, asin)
+    if not os.path.exists(folder):
+        return None
+
+    if source == 'cover':
+        if size is None:
+            path = os.path.join(folder, 'cover.jpg')
+        else:
+            path = os.path.join(folder, 'cover-' + str(size[0]) + 'x' + str(size[1]) + '.jpg')
+        if os.path.exists(path):
+            size = os.path.getsize(path)
+            if not is_between(size, min_size, max_size):
+                return None
+            return [path]
+
+        # Fail when looking for the cover image by exact name.
+        return None
+
+    if source == 'all':
+        images = []
+        fnames = os.listdir(folder)
+        for fname in fnames:
+            if not is_image_file(fname):
+                continue
+            path = os.path.join(folder, fname)
+            size = os.path.getsize(path)
+            if not is_between(size, min_size, max_size):
+                continue
+            images.append(path)
+
+        if len(images) == 0:
+            return None
+        return images
+
+    raise ValueError('Unknown value for `source`: `{}`'.format(source))
+
+
 def get_labels(asin, category):
-    fname = folders.FNAME_LABELS_FORMAT.format(category)
+    fname = folders.AMAZON_KINDLE_LABELS_FNAME_FORMAT.format(category)
     path = os.path.join(folders.AMAZON_KINDLE_LABELS_PATH, asin, fname)
     if not os.path.exists(path):
         return None
@@ -387,7 +394,7 @@ def save_labels(asin, category, sections, section_ids, labels, force=False, verb
     for paragraph_i, section_i in enumerate(section_ids):
         label = labels[paragraph_i]
         section_paragraph_labels[section_i].append(label)
-    fname = folders.FNAME_LABELS_FORMAT.format(category)
+    fname = folders.AMAZON_KINDLE_LABELS_FNAME_FORMAT.format(category)
     asin_path = os.path.join(folders.AMAZON_KINDLE_LABELS_PATH, asin)
     if not os.path.exists(asin_path):
         os.mkdir(asin_path)
