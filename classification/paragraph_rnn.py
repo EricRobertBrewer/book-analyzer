@@ -10,33 +10,7 @@ import tensorflow as tf
 from classification import ordinal
 import folders
 from sites.bookcave import bookcave
-
-
-def get_coefs(word, *arr):
-    """
-    Read the GloVe word vectors.
-    """
-    return word, np.asarray(arr, dtype='float32')
-
-
-def get_embedding(tokenizer, fname, max_words=10000):
-    word_index = tokenizer.word_index
-    word_count = min(max_words, len(word_index))
-    with open(fname, 'r', encoding='utf-8') as fd:
-        embeddings_index = dict(get_coefs(*o.strip().split()) for o in fd)
-    all_embeddings = np.stack(embeddings_index.values())
-    embed_size = all_embeddings.shape[1]
-    mean, std = all_embeddings.mean(), all_embeddings.std()
-    # Use these vectors to create our embedding matrix, with random initialization for words that aren't in GloVe.
-    # We'll use the same mean and standard deviation of embeddings that GloVe has when generating the random init.
-    embedding_matrix = np.random.normal(mean, std, (word_count, embed_size))
-    for word, i in word_index.items():
-        if i >= word_count:
-            continue
-        embedding_vector = embeddings_index.get(word)
-        if embedding_vector is not None:
-            embedding_matrix[i] = embedding_vector
-    return embedding_matrix
+from text import load_embeddings
 
 
 def get_input_array(sequence, n_tokens):
@@ -51,9 +25,9 @@ def get_input_array(sequence, n_tokens):
     return x
 
 
-def create_model(n_classes, n_tokens, embedding_matrix, hidden_size, dense_size, train_emb=True):
+def create_model(n_classes, n_tokens, embedding_matrix, hidden_size, dense_size, embedding_trainable=True):
     inp = Input(shape=(n_tokens,))
-    x = Embedding(*embedding_matrix.shape, weights=[embedding_matrix], trainable=train_emb)(inp)
+    x = Embedding(*embedding_matrix.shape, weights=[embedding_matrix], trainable=embedding_trainable)(inp)
     x = Bidirectional(GRU(hidden_size, return_sequences=True, dropout=0.1, recurrent_dropout=0.1))(x)
     x = GlobalMaxPool1D()(x)
     x = Dense(dense_size, activation='relu')(x)
@@ -67,7 +41,7 @@ def create_model(n_classes, n_tokens, embedding_matrix, hidden_size, dense_size,
                                                                       embedding_matrix.shape[1],
                                                                       hidden_size,
                                                                       dense_size,
-                                                                      '' if train_emb else '_static')
+                                                                      '' if embedding_trainable else '_static')
 
     return model, weights_fname
 
@@ -135,7 +109,7 @@ def main(verbose=0):
                           min_len=min_len,
                           max_len=max_len,
                           return_meta=True)
-    text_paragraph_tokens = [paragraph_tokens for paragraph_tokens, _ in inputs['tokens']]
+    text_paragraph_tokens, _ = zip(*inputs['tokens'])
     if verbose:
         print('Books: {:d}'.format(len(text_paragraph_tokens)))
 
@@ -143,7 +117,6 @@ def main(verbose=0):
     if verbose:
         print()
         print('Flattening tokens...')
-    max_words = 8192
     all_locations = []
     all_tokens = []
     for text_i, paragraph_tokens in enumerate(text_paragraph_tokens):
@@ -157,6 +130,7 @@ def main(verbose=0):
     if verbose:
         print()
         print('Tokenizing...')
+    max_words = 8192
     tokenizer = Tokenizer(num_words=max_words, oov_token='__UNKNOWN__')
     tokenizer.fit_on_texts(all_tokens)
     if verbose:
@@ -166,7 +140,7 @@ def main(verbose=0):
     if verbose:
         print()
         print('Loading embedding...')
-    embedding_matrix = get_embedding(tokenizer, folders.EMBEDDING_GLOVE_100_PATH, max_words)
+    embedding_matrix = load_embeddings.get_embedding(tokenizer, folders.EMBEDDING_GLOVE_100_PATH, max_words)
     if verbose:
         print('Finished loading embedding with shape {}.'.format(embedding_matrix.shape))
 
@@ -218,14 +192,14 @@ def main(verbose=0):
         print('Creating model...')
     hidden_size = 64
     dense_size = 32
-    train_emb = True
+    embedding_trainable = True
     n_classes = [len(levels) for levels in category_levels]
     model, weights_fname = create_model(n_classes,
                                         n_tokens,
                                         embedding_matrix,
                                         hidden_size,
                                         dense_size,
-                                        train_emb=train_emb)
+                                        embedding_trainable=embedding_trainable)
     if verbose:
         print(model.summary())
 

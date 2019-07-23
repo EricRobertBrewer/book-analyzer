@@ -18,6 +18,8 @@ BOOKCAVE_CATEGORIES_PATH = os.path.join(BOOKCAVE_PATH, 'categories')
 MODELS_PATH = 'models'
 
 EMBEDDING_GLOVE_100_PATH = os.path.join('..', '..', 'embeddings', 'glove.6B.100d.txt')
+EMBEDDING_GLOVE_200_PATH = os.path.join('..', '..', 'embeddings', 'glove.6B.200d.txt')
+EMBEDDING_GLOVE_300_PATH = os.path.join('..', '..', 'embeddings', 'glove.6B.300d.txt')
 
 CORRELATED_WORDS_PATH = os.path.join('logs', 'correlated_words')
 CORRELATED_WORDS_FNAME_FORMAT = 'words-{}-{:d}-{:d}g{:d}-{:d}f.txt'
