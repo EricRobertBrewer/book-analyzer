@@ -12,43 +12,6 @@ from keras.models import Model
 from nltk import tokenize
 
 
-def create_model(
-        n_classes,
-        n_tokens,
-        embedding_matrix,
-        n_paragraphs,
-        n_tokens_per_paragraph,
-        embedding_trainable=False,
-        l2_regularizer =None,
-        dropout_regularizer=1,
-        rnn=LSTM,
-        rnn_units=128,
-        dense_units=256,
-        activation='softmax'
-):
-    if l2_regularizer is None:
-        kernel_regularizer = None
-    else:
-        kernel_regularizer = regularizers.l2(l2_regularizer)
-
-    input_w = Input(shape=(n_tokens,), dtype='float32')
-    embed_shape = embedding_matrix.shape
-    x_w = Embedding(embed_shape[0], embed_shape[1], weights=[embedding_matrix], trainable=embedding_trainable)(input_w)
-    x_w = Bidirectional(rnn(rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_w)
-    x_w = TimeDistributed(Dense(dense_units, kernel_regularizer=kernel_regularizer))(x_w)
-    x_w = AttentionWithContext()(x_w)
-    model_w = Model(input_w, x_w)
-
-    input_s = Input(shape=(n_paragraphs, n_tokens_per_paragraph), dtype='float32')
-    x_s = TimeDistributed(model_w)(input_s)
-    x_s = Bidirectional(rnn(rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_s)
-    x_s = TimeDistributed(Dense(dense_units, kernel_regularizer=kernel_regularizer))(x_s)
-    x_s = Dropout(dropout_regularizer)(AttentionWithContext()(x_s))
-    outputs = [Dense(n - 1, activation=activation)(x_s) for n in n_classes]
-    model = Model(input_s, outputs)
-    return model
-
-
 class HAN(object):
     """
     HAN model is implemented here.

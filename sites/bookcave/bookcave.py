@@ -82,33 +82,35 @@ def get_paragraphs(asin, min_len=None, max_len=None):
         return None
 
     sections, section_paragraphs = paragraph_io.read_formatted_section_paragraphs(path)
-    paragraphs, section_ids = [], []
-    for section_i in range(len(section_paragraphs)):
-        for paragraph_i in range(len(section_paragraphs[section_i])):
-            paragraphs.append(section_paragraphs[section_i][paragraph_i])
+    all_paragraphs, section_ids = [], []
+    for section_i, paragraphs in enumerate(section_paragraphs):
+        for paragraph_i, paragraph in enumerate(paragraphs):
+            all_paragraphs.append(paragraph)
             section_ids.append(section_i)
-    if not is_between(len(paragraphs), min_len, max_len):
+    if not is_between(len(all_paragraphs), min_len, max_len):
         return None
-    return paragraphs, section_ids, sections
+    return all_paragraphs, section_ids, sections
 
 
-def get_paragraph_tokens(asin, min_len=None, max_len=None):
+def get_paragraph_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None):
     path = os.path.join(folders.AMAZON_KINDLE_TOKENS_PATH, '{}.txt'.format(asin))
     if not os.path.exists(path):
         return None
 
-    section_paragraphs_tokens = paragraph_io.read_formatted_section_paragraph_tokens(path)
-    paragraph_tokens, section_ids = [], []
-    for section_i in range(len(section_paragraphs_tokens)):
-        for paragraph_i in range(len(section_paragraphs_tokens[section_i])):
-            paragraph_tokens.append(section_paragraphs_tokens[section_i][paragraph_i])
+    section_paragraph_tokens = paragraph_io.read_formatted_section_paragraph_tokens(path)
+    all_paragraph_tokens, section_ids = [], []
+    for section_i, paragraph_tokens in enumerate(section_paragraph_tokens):
+        for paragraph_i, tokens in enumerate(paragraph_tokens):
+            if not is_between(len(tokens), min_tokens, max_tokens):
+                continue
+            all_paragraph_tokens.append(tokens)
             section_ids.append(section_i)
-    if not is_between(len(paragraph_tokens), min_len, max_len):
+    if len(all_paragraph_tokens) == 0 or not is_between(len(all_paragraph_tokens), min_len, max_len):
         return None
-    return paragraph_tokens, section_ids
+    return all_paragraph_tokens, section_ids
 
 
-def get_input(source, asin, min_len=None, max_len=None):
+def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None):
     if source == 'book':
         return get_book(asin, min_len, max_len)
     if source == 'preview':
@@ -116,7 +118,7 @@ def get_input(source, asin, min_len=None, max_len=None):
     if source == 'paragraphs':
         return get_paragraphs(asin, min_len, max_len)
     if source == 'tokens':
-        return get_paragraph_tokens(asin, min_len, max_len)
+        return get_paragraph_tokens(asin, min_len, max_len, min_tokens, max_tokens)
     raise ValueError('Unknown source: `{}`.'.format(source))
 
 
@@ -130,9 +132,13 @@ def is_image_file(fname):
 
 def get_data(
         sources,
+        only_ids=None,
+        subset_ratio=None,
+        subset_seed=None,
         min_len=None,
         max_len=None,
-        only_ids=None,
+        min_tokens=None,
+        max_tokens=None,
         categories_mode='soft',
         only_categories=None,
         combine_ratings='max',
@@ -147,12 +153,25 @@ def get_data(
         When 'paragraphs', the sections and paragraphs will be returned (as tuples).
         When 'tokens', the space-separated tokens for each paragraph will be returned.
         Default is `paragraphs`.
-    :param min_len: int, optional
-        The minimum length of texts that will be returned.
-    :param max_len: int, optional
-        The maximum length of texts that will be returned.
     :param only_ids: iterable of str, optional
         Filter the returned books by a set
+    :param subset_ratio: float, optional
+        Used to specify that only a subset of the data should be returned.
+        Ignored when `only_ids` is supplied.
+    :param subset_seed: integer, optional
+        Used to seed the random subset.
+    :param min_len: int, optional
+        When `source` is 'book' or 'preview', this is the minimum file length of text files that will be returned.
+        When `source` is 'paragraphs' or 'tokens', this is the minimum number of paragraphs in each text.
+    :param max_len: int, optional
+        When `source` is 'book' or 'preview', this is the maximum file length of text files that will be returned.
+        When `source` is 'paragraphs' or 'tokens', this is the maximum number of paragraphs in each text.
+    :param min_tokens: int, optional
+        The minimum number of tokens in each paragraph. Paragraphs with fewer tokens will not be returned.
+        Only applied when `source` is 'tokens'.
+    :param max_tokens: int, optional
+        The maximum number of tokens in each paragraph. Paragraphs with more tokens will not be returned.
+        Only applied when `source` is 'tokens'.
     :param categories_mode: string {'soft' (default), 'medium', 'hard'}
         The flexibility of rating levels within categories.
         When 'soft', all levels which would yield the same base overall rating (without a '+') will be merged.
@@ -200,7 +219,10 @@ def get_data(
     rated_books_df = all_books_df[all_books_df['community_ratings_count'] > 0]
 
     # Filter by `only_ids`, if present.
-    if only_ids:
+    if only_ids is None and subset_ratio:
+        np.random.seed(subset_seed)
+        only_ids = np.random.choice(rated_books_df['id'], int(subset_ratio*len(rated_books_df)), replace=False)
+    if only_ids is not None:
         rated_books_df = rated_books_df[rated_books_df['id'].isin(set(only_ids))]
 
     # Determine which books will be retrieved.
@@ -220,7 +242,7 @@ def get_data(
         has_all_sources = True
         book_inputs = dict()
         for source in sources:
-            book_input = get_input(source, asin, min_len, max_len)
+            book_input = get_input(source, asin, min_len, max_len, min_tokens, max_tokens)
             if book_input is None:
                 has_all_sources = False
                 break
