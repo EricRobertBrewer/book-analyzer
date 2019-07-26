@@ -7,8 +7,9 @@ from keras.optimizers import Adam
 from keras.preprocessing.sequence import pad_sequences
 from keras.preprocessing.text import Tokenizer
 import numpy as np
+from sklearn.model_selection import train_test_split
 
-from classification import ordinal
+from classification import evaluation, ordinal
 import folders
 from sites.bookcave import bookcave
 from text import load_embeddings
@@ -123,7 +124,7 @@ class AttentionWithContext(Layer):
             a *= K.cast(mask, K.floatx())
 
         # in some cases especially in the early stages of training the sum may be almost zero
-        # and this results in NaN's. A workaround is to add a very small positive number ε to the sum.
+        # and this results in NaN's. A workaround is to add a very small positive number (epsilon) to the sum.
         # a /= K.cast(K.sum(a, axis=1, keepdims=True), K.floatx())
         a /= K.cast(K.sum(a, axis=1, keepdims=True) + K.epsilon(), K.floatx())
 
@@ -162,6 +163,7 @@ def create_model(
     x_w = AttentionWithContext()(x_w)
     word_encoder = Model(input_w, x_w)
 
+    # Sentence encoder.
     input_s = Input(shape=(n_paragraphs, n_tokens), dtype='float32')
     x_s = TimeDistributed(word_encoder)(input_s)
     x_s = Bidirectional(rnn(rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_s)
@@ -181,12 +183,13 @@ def main(verbose=0):
     min_tokens = 6  # The minimum number of tokens in each paragraph.
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'tokens'},
-                          subset_ratio=.1,
+                          subset_ratio=1/8,
                           subset_seed=1,
                           min_len=min_len,
                           min_tokens=min_tokens)
     text_paragraph_tokens, _ = zip(*inputs['tokens'])
     if verbose:
+        print()
         print('{:d} texts'.format(len(text_paragraph_tokens)))
 
     # Tokenize.
@@ -199,7 +202,7 @@ def main(verbose=0):
     tokenizer.fit_on_texts(all_tokens)
 
     # Convert to sequences.
-    n_paragraphs = 1024  # The maximum number of paragraphs to process in each text.
+    n_paragraphs = 512  # The maximum number of paragraphs to process in each text.
     n_tokens = 128  # The maximum number of tokens to process in each paragraph.
     X = np.zeros((len(text_paragraph_tokens), n_paragraphs, n_tokens), dtype=np.float32)
     for text_i, paragraph_tokens in enumerate(text_paragraph_tokens):
@@ -211,6 +214,13 @@ def main(verbose=0):
             usable_paragraph_tokens = paragraph_tokens
         sequences = tokenizer.texts_to_sequences(usable_paragraph_tokens)
         X[text_i, :len(sequences)] = pad_sequences(sequences, maxlen=n_tokens, padding='pre', truncating='pre')
+
+    # Split data set.
+    test_size = .25  # b
+    random_state = 1
+    YT = Y.transpose()  # (num_texts, C)
+    X_train, X_test, YT_train, YT_test = train_test_split(X, YT, test_size=test_size, random_state=random_state)
+    Y_train, Y_test = YT_train.transpose(), YT_test.transpose()  # ((1 - b)*num_texts, C), (b*num_texts, C)
 
     # Load embedding.
     embedding_matrix = load_embeddings.get_embedding(tokenizer, folders.EMBEDDING_GLOVE_100_PATH, max_words)
@@ -229,38 +239,24 @@ def main(verbose=0):
         loss=loss,
         optimizer=optimizer,
         metrics=metrics)
+    if verbose:
+        print()
+        print(model.summary())
 
     # Train.
     batch_size = 32
-    epochs = 1
-    Y_ordinal = [ordinal.to_multi_hot_ordinal(Y[i], n_classes=n) for i, n in enumerate(n_classes)]
-    history = model.fit(X, Y_ordinal, batch_size=batch_size, epochs=epochs)
-    # han = HAN.HAN(text_paragraph_tokens,
-    #               Y,
-    #               category_levels,
-    #               embedding_matrix,
-    #               n_tokens,
-    #               n_paragraphs,
-    #               ordinal=True,
-    #               validation_split=0.2,
-    #               verbose=1)
-    # print(han.get_model().summary())
-    # han.set_hyperparameters({
-    #     'l2_regularizer': 1e-13,
-    #     'dropout_regularizer': 0.5,
-    #     'rnn': GRU,
-    #     'rnn_units': 128,
-    #     'dense_units': 64,
-    #     'activation': 'sigmoid',
-    #     'optimizer': 'adam',
-    #     'loss': 'binary_crossentropy'
-    # })
-    # han.show_hyperparameters()
-    # print(han.get_model().summary())
-    # han.train_model(epochs=3,
-    #                 batch_size=16,
-    #                 best_model_path='./best_model.h5')
+    epochs = 8
+    Y_train_ordinal = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
+    history = model.fit(X, Y_train_ordinal, batch_size=batch_size, epochs=epochs)
+
+    # Evaluate.
+    Y_preds_ordinal = model.predict(X_test)
+    Y_preds = [ordinal.from_multi_hot_ordinal(y_ordinal, threshold=.5) for y_ordinal in Y_preds_ordinal]
+    for category_i, category in categories:
+        print()
+        print('`{}`'.format(category))
+        evaluation.print_metrics(Y[category_i], Y_preds[category_i])
 
 
 if __name__ == '__main__':
-    main()
+    main(verbose=0)

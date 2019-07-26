@@ -3,11 +3,10 @@ from keras.models import Model
 from keras.optimizers import Adam
 from keras.preprocessing.text import Tokenizer
 import numpy as np
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, mean_squared_error, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 
-from classification import ordinal
+from classification import evaluation, ordinal
 import folders
 from sites.bookcave import bookcave
 from text import load_embeddings
@@ -44,31 +43,6 @@ def create_model(n_classes, n_tokens, embedding_matrix, hidden_size, dense_size,
                                                                       '' if embedding_trainable else '_static')
 
     return model, weights_fname
-
-
-def print_metrics(y_true, y_pred):
-    confusion = confusion_matrix(y_true, y_pred)
-    print(confusion)
-
-    accuracy = accuracy_score(y_true, y_pred)
-    print('Accuracy: {:.4f}'.format(accuracy))
-
-    precision_macro = precision_score(y_true, y_pred, average='macro')
-    print('precision_macro={:.4f}'.format(precision_macro))
-    recall_macro = recall_score(y_true, y_pred, average='macro')
-    print('recall_macro={:.4f}'.format(recall_macro))
-    f1_macro = f1_score(y_true, y_pred, average='macro')
-    print('f1_macro={:.4f}'.format(f1_macro))
-
-    precision_weighted = precision_score(y_true, y_pred, average='weighted')
-    print('precision_weighted={:.4f}'.format(precision_weighted))
-    recall_weighted = recall_score(y_true, y_pred, average='weighted')
-    print('recall_weighted={:.4f}'.format(recall_weighted))
-    f1_weighted = f1_score(y_true, y_pred, average='weighted')
-    print('f1_weighted={:.4f}'.format(f1_weighted))
-
-    mse = mean_squared_error(y_true, y_pred)
-    print('MSE={:.4f}'.format(mse))
 
 
 def predict_book_labels(model, X, locations, Y, get_label):
@@ -218,7 +192,7 @@ def main(verbose=0):
         print('Training...')
     epochs = 8
     batch_size = 32
-    category_Q_train_ordinal = [ordinal.to_multi_hot_ordinal(Q_train[:, category_i], num_classes=n_classes[category_i])
+    category_Q_train_ordinal = [ordinal.to_multi_hot_ordinal(Q_train[:, category_i], n_classes=n_classes[category_i])
                                 for category_i in range(Q_train.shape[1])]  # (C, (1 - b)*n, k_c - 1)
     optimizer = Adam()
     model.compile(optimizer,
@@ -239,7 +213,7 @@ def main(verbose=0):
         q_test = Q_test[:, category_i]
         q_pred_ordinal = category_Q_pred_ordinal[category_i]  # (b*n, k_c - 1)
         q_pred = ordinal.from_multi_hot_ordinal(q_pred_ordinal)  # (b*n,)
-        print_metrics(q_test, q_pred)
+        evaluation.print_metrics(q_test, q_pred)
 
     # Evaluate books.
     def get_label_from_paragraph_labels(q_pred_):
@@ -263,7 +237,7 @@ def main(verbose=0):
         print()
         print('Training set of books for category `{}`:'.format(category))
         y_test, y_pred_test = Y_test[category_i], Y_pred_test[category_i]
-        print_metrics(y_test, y_pred_test)
+        evaluation.print_metrics(y_test, y_pred_test)
 
     # Evaluate all books.
     if verbose:
@@ -276,7 +250,7 @@ def main(verbose=0):
         print()
         print('All books for category `{}`:'.format(category))
         y, y_pred_all = Y[category_i], Y_pred_all[category_i]
-        print_metrics(y, y_pred_all)
+        evaluation.print_metrics(y, y_pred_all)
 
 
 if __name__ == '__main__':
