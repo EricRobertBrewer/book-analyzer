@@ -245,14 +245,14 @@ def main(verbose=0):
 
     # Train.
     batch_size = 32
-    epochs = 4
+    epochs = 8
     Y_train_ordinal = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
     history = model.fit(X_train, Y_train_ordinal, batch_size=batch_size, epochs=epochs)
 
     # Evaluate.
     Y_preds_ordinal = model.predict(X_test)
     Y_preds = [ordinal.from_multi_hot_ordinal(y_ordinal, threshold=.5) for y_ordinal in Y_preds_ordinal]
-    for category_i, category in categories:
+    for category_i, category in enumerate(categories):
         print()
         print('`{}`'.format(category))
         evaluation.print_metrics(Y[category_i], Y_preds[category_i])
