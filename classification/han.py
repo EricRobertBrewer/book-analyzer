@@ -183,7 +183,7 @@ def main(verbose=0):
     min_tokens = 6  # The minimum number of tokens in each paragraph.
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'tokens'},
-                          subset_ratio=1/8,
+                          subset_ratio=1,
                           subset_seed=1,
                           min_len=min_len,
                           min_tokens=min_tokens)
@@ -245,9 +245,9 @@ def main(verbose=0):
 
     # Train.
     batch_size = 32
-    epochs = 8
+    epochs = 4
     Y_train_ordinal = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
-    history = model.fit(X, Y_train_ordinal, batch_size=batch_size, epochs=epochs)
+    history = model.fit(X_train, Y_train_ordinal, batch_size=batch_size, epochs=epochs)
 
     # Evaluate.
     Y_preds_ordinal = model.predict(X_test)
