@@ -8,6 +8,7 @@ from keras.preprocessing.sequence import pad_sequences
 from keras.preprocessing.text import Tokenizer
 import numpy as np
 from sklearn.model_selection import train_test_split
+import sys
 
 from classification import evaluation, ordinal
 import folders
@@ -245,7 +246,6 @@ def main(verbose=0):
 
     # Train.
     batch_size = 32
-    epochs = 8
     Y_train_ordinal = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
     history = model.fit(X_train, Y_train_ordinal, batch_size=batch_size, epochs=epochs)
 
@@ -259,4 +259,7 @@ def main(verbose=0):
 
 
 if __name__ == '__main__':
+    if len(sys.argv) < 1 or len(sys.argv) > 1:
+        raise Exception('Usage: <epochs>')
+    epochs = int(sys.argv[1])
     main(verbose=0)
