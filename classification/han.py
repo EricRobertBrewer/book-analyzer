@@ -255,7 +255,7 @@ def main(verbose=0):
     for category_i, category in enumerate(categories):
         print()
         print('`{}`'.format(category))
-        evaluation.print_metrics(Y[category_i], Y_preds[category_i])
+        evaluation.print_metrics(Y_test[category_i], Y_preds[category_i])
 
 
 if __name__ == '__main__':
