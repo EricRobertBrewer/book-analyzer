@@ -203,7 +203,7 @@ def main(verbose=0):
     tokenizer.fit_on_texts(all_tokens)
 
     # Convert to sequences.
-    n_paragraphs = 512  # The maximum number of paragraphs to process in each text.
+    n_paragraphs = 1024  # The maximum number of paragraphs to process in each text.
     n_tokens = 128  # The maximum number of tokens to process in each paragraph.
     X = np.zeros((len(text_paragraph_tokens), n_paragraphs, n_tokens), dtype=np.float32)
     for text_i, paragraph_tokens in enumerate(text_paragraph_tokens):
@@ -228,6 +228,11 @@ def main(verbose=0):
 
     # Create model.
     n_classes = [len(levels) for levels in category_levels]
+    embedding_trainable = False
+    rnn = GRU
+    rnn_units = 128
+    dense_units = 64
+    is_ordinal = True
     loss = 'binary_crossentropy'
     optimizer = Adam()
     metrics = ['binary_accuracy']
@@ -235,7 +240,12 @@ def main(verbose=0):
         n_classes,
         n_paragraphs,
         n_tokens,
-        embedding_matrix)
+        embedding_matrix,
+        embedding_trainable=embedding_trainable,
+        rnn=rnn,
+        rnn_units=rnn_units,
+        dense_units=dense_units,
+        is_ordinal=is_ordinal)
     model.compile(
         loss=loss,
         optimizer=optimizer,
