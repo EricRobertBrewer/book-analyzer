@@ -259,7 +259,7 @@ def main(verbose=0):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 1 or len(sys.argv) > 1:
+    if len(sys.argv) < 2 or len(sys.argv) > 2:
         raise Exception('Usage: <epochs>')
     epochs = int(sys.argv[1])
     main(verbose=0)
