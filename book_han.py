@@ -226,17 +226,6 @@ def main():
     if verbose:
         print('Done.')
 
-    # Split data set.
-    if verbose:
-        print('\nSplitting data into training and test sets...')
-    test_size = .25  # b
-    random_state = 1
-    YT = Y.transpose()  # (num_texts, C)
-    X_train, X_test, YT_train, YT_test = train_test_split(X, YT, test_size=test_size, random_state=random_state)
-    Y_train, Y_test = YT_train.transpose(), YT_test.transpose()  # ((1 - b)*num_texts, C), (b*num_texts, C)
-    if verbose:
-        print('Done.')
-
     # Load embedding.
     if verbose:
         print('\nLoading embedding matrix...')
@@ -253,9 +242,6 @@ def main():
     rnn_units = 128
     dense_units = 64
     is_ordinal = True
-    loss = 'binary_crossentropy'
-    optimizer = Adam()
-    metrics = ['binary_accuracy']
     model = create_model(
         n_classes,
         n_paragraphs,
@@ -266,17 +252,40 @@ def main():
         rnn_units=rnn_units,
         dense_units=dense_units,
         is_ordinal=is_ordinal)
-    model.compile(
-        loss=loss,
-        optimizer=optimizer,
-        metrics=metrics)
     if verbose:
         print(model.summary())
 
+    # Split data set.
+    if verbose:
+        print('\nSplitting data into training and test sets...')
+    test_size = .25  # b
+    random_state = 1
+    YT = Y.transpose()  # (num_texts, C)
+    X_train, X_test, YT_train, YT_test = train_test_split(X, YT, test_size=test_size, random_state=random_state)
+    Y_train, Y_test = YT_train.transpose(), YT_test.transpose()  # (C, (1 - b) * num_texts), (C, b * num_texts)
+    if verbose:
+        print('Done.')
+
+    # Weight classes inversely proportional to their frequency.
+    class_weights = []
+    for category_i, y_train in enumerate(Y_train):
+        bincount = np.bincount(y_train, minlength=n_classes[category_i])
+        class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
+        class_weights.append(class_weight)
+
     # Train.
     batch_size = 32
+    optimizer = Adam()
+    model.compile(optimizer,
+                  loss='binary_crossentropy',
+                  metrics=['binary_accuracy'])
     Y_train_ordinal = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
-    history = model.fit(X_train, Y_train_ordinal, batch_size=batch_size, epochs=epochs, verbose=verbose)
+    history = model.fit(X_train,
+                        Y_train_ordinal,
+                        batch_size=batch_size,
+                        epochs=epochs,
+                        verbose=verbose,
+                        class_weight=class_weights)
 
     # Evaluate.
     Y_preds_ordinal = model.predict(X_test)
