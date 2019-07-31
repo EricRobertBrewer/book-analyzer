@@ -1,4 +1,4 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import, division, print_function, with_statement
 from keras import backend as K
 from keras import initializers as initializers, regularizers, constraints
 from keras.engine.topology import Layer

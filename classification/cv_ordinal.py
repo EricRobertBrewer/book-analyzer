@@ -1,15 +1,14 @@
-# Math.
-import numpy as np
-# Learning.
+from __future__ import absolute_import, division, print_function
 from imblearn.ensemble import BalancedBaggingClassifier
+import numpy as np
 from sklearn.ensemble.forest import RandomForestClassifier
-from sklearn.naive_bayes import MultinomialNB
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import StratifiedKFold
+from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
-# Data.
+
 from sites.bookcave import bookcave
 from classification import ordinal
 
