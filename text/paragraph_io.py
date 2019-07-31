@@ -1,5 +1,6 @@
 # Serialize and deserialize data structures based on paragraphs.
-
+from __future__ import absolute_import, division, print_function, with_statement
+from io import open
 import os
 
 

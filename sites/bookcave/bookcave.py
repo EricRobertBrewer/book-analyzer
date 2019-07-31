@@ -1,10 +1,7 @@
-# Math.
+from io import open
 import numpy as np
-# Data manipulation.
-import sqlite3
-import pandas as pd
-# File I/O.
 import os
+import pandas as pd
 
 import folders
 from text import paragraph_io
@@ -208,12 +205,9 @@ def get_data(
         sources = {'paragraphs'}
 
     # Read all of the data from the BookCave database.
-    conn = sqlite3.connect(os.path.join(folders.CONTENT_PATH, 'contents.db'))
-    all_books_df = pd.read_sql_query('SELECT * FROM BookCaveBooks;', conn)
-    all_books_df.sort_values('id', inplace=True)
-    all_ratings_df = pd.read_sql_query('SELECT * FROM BookCaveBookRatings;', conn)
-    all_levels_df = pd.read_sql_query('SELECT * FROM BookCaveBookRatingLevels;', conn)
-    conn.close()
+    all_books_df = pd.read_csv(folders.CONTENT_BOOKCAVE_BOOKS_CSV_PATH, encoding='utf-8')
+    all_ratings_df = pd.read_csv(folders.CONTENT_BOOKCAVE_BOOK_RATINGS_CSV_PATH, encoding='utf-8')
+    all_levels_df = pd.read_csv(folders.CONTENT_BOOKCAVE_BOOK_RATING_LEVELS_CSV_PATH, encoding='utf-8')
 
     # Consider only books which have at least one rating.
     rated_books_df = all_books_df[all_books_df['community_ratings_count'] > 0]

@@ -2,6 +2,9 @@ import os
 
 
 CONTENT_PATH = os.path.join('..', 'content')
+CONTENT_BOOKCAVE_BOOKS_CSV_PATH = os.path.join(CONTENT_PATH, 'bookcave_books.csv')
+CONTENT_BOOKCAVE_BOOK_RATINGS_CSV_PATH = os.path.join(CONTENT_PATH, 'bookcave_book_ratings.csv')
+CONTENT_BOOKCAVE_BOOK_RATING_LEVELS_CSV_PATH = os.path.join(CONTENT_PATH, 'bookcave_book_rating_levels.csv')
 AMAZON_KINDLE_PATH = os.path.join(CONTENT_PATH, 'amazon_kindle')
 AMAZON_KINDLE_BOOK_PATH = os.path.join(AMAZON_KINDLE_PATH, 'book')
 AMAZON_KINDLE_PREVIEW_PATH = os.path.join(AMAZON_KINDLE_PATH, 'preview')
