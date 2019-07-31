@@ -1,11 +1,11 @@
-from __future__ import absolute_import, division, print_function
+from __future__ import absolute_import, division, print_function, with_statement
 from keras.layers import Bidirectional, Dense, Dropout, Embedding, GlobalMaxPool1D, GRU, Input
 from keras.models import Model
 from keras.optimizers import Adam
 from keras.preprocessing.text import Tokenizer
 import numpy as np
 from sklearn.model_selection import train_test_split
-import tensorflow as tf
+import sys
 
 from classification import evaluation, ordinal
 import folders
@@ -71,13 +71,10 @@ def predict_book_labels(model, X, locations, Y, get_label):
     return Y_pred
 
 
-def main(verbose=0):
-    print('TensorFlow version: {}'.format(tf.__version__))
-
+def main():
     # Load data.
     if verbose:
-        print()
-        print('Loading book data...')
+        print('\nRetrieving texts...')
     min_len, max_len = 250, 7500
     inputs, Y, categories, category_levels, book_ids, books_df, _, _, categories_df =\
         bookcave.get_data({'tokens'},
@@ -86,12 +83,11 @@ def main(verbose=0):
                           return_meta=True)
     text_paragraph_tokens, _ = zip(*inputs['tokens'])
     if verbose:
-        print('Books: {:d}'.format(len(text_paragraph_tokens)))
+        print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
 
     # Flatten tokens.
     if verbose:
-        print()
-        print('Flattening tokens...')
+        print('\nFlattening tokens...')
     all_locations = []
     all_tokens = []
     for text_i, paragraph_tokens in enumerate(text_paragraph_tokens):
@@ -103,8 +99,7 @@ def main(verbose=0):
 
     # Tokenize.
     if verbose:
-        print()
-        print('Tokenizing...')
+        print('\nTokenizing...')
     max_words = 8192
     tokenizer = Tokenizer(num_words=max_words, oov_token='__UNKNOWN__')
     tokenizer.fit_on_texts(all_tokens)
@@ -113,16 +108,14 @@ def main(verbose=0):
 
     # Load embedding matrix.
     if verbose:
-        print()
-        print('Loading embedding...')
+        print('\nLoading embedding...')
     embedding_matrix = load_embeddings.get_embedding(tokenizer, folders.EMBEDDING_GLOVE_100_PATH, max_words)
     if verbose:
-        print('Finished loading embedding with shape {}.'.format(embedding_matrix.shape))
+        print('Done.')
 
-    # Load labels.
+    # Load paragraph labels.
     if verbose:
-        print()
-        print('Loading labels...')
+        print('\nLoading paragraph labels...')
     tokens_min_len = 3
     train_locations = []
     train_tokens = []
@@ -148,10 +141,9 @@ def main(verbose=0):
 
     # Split data.
     if verbose:
-        print()
-        print('Splitting paragraph data into train and test sets...')
+        print('\nSplitting data into training and test sets...')
     n_tokens = 160  # t
-    test_size = .1  # b
+    test_size = .25  # b
     random_state = 1
     train_sequences = tokenizer.texts_to_sequences(train_tokens)
     P = np.array([get_input_array(sequence, n_tokens) for sequence in train_sequences])  # (n, t)
@@ -163,8 +155,7 @@ def main(verbose=0):
 
     # Create a new model.
     if verbose:
-        print()
-        print('Creating model...')
+        print('\nCreating model...')
     hidden_size = 64
     dense_size = 32
     embedding_trainable = True
@@ -188,17 +179,13 @@ def main(verbose=0):
         class_weights.append(class_weight)
 
     # Train on paragraphs.
-    if verbose:
-        print()
-        print('Training...')
-    epochs = 8
     batch_size = 32
-    category_Q_train_ordinal = [ordinal.to_multi_hot_ordinal(Q_train[:, category_i], n_classes=n_classes[category_i])
-                                for category_i in range(Q_train.shape[1])]  # (C, (1 - b)*n, k_c - 1)
     optimizer = Adam()
     model.compile(optimizer,
                   loss='binary_crossentropy',
                   metrics=['binary_accuracy'])
+    category_Q_train_ordinal = [ordinal.to_multi_hot_ordinal(Q_train[:, category_i], n_classes=n_classes[category_i])
+                                for category_i in range(Q_train.shape[1])]  # (C, (1 - b)*n, k_c - 1)
     _ = model.fit(P_train,
                   category_Q_train_ordinal,
                   batch_size=batch_size,
@@ -209,8 +196,7 @@ def main(verbose=0):
     # Evaluate paragraphs.
     category_Q_pred_ordinal = model.predict(P_test)  # (C, b*n, k_c - 1)
     for category_i, category in enumerate(categories):
-        print()
-        print('Paragraph metrics for category `{}`:'.format(category))
+        print('\nParagraph metrics for category `{}`:'.format(category))
         q_test = Q_test[:, category_i]
         q_pred_ordinal = category_Q_pred_ordinal[category_i]  # (b*n, k_c - 1)
         q_pred = ordinal.from_multi_hot_ordinal(q_pred_ordinal)  # (b*n,)
@@ -222,8 +208,7 @@ def main(verbose=0):
 
     # Evaluate only books from which the training set of paragraphs came.
     if verbose:
-        print()
-        print('Evaluating training set...')
+        print('\nEvaluating training set...')
     test_locations = []
     test_tokens = []
     Y_test = Y[:, test_text_indices]
@@ -235,24 +220,28 @@ def main(verbose=0):
     X_test = np.array([get_input_array(sequence, n_tokens) for sequence in test_sequences])
     Y_pred_test = predict_book_labels(model, X_test, test_locations, Y_test, get_label_from_paragraph_labels)
     for category_i, category in enumerate(categories):
-        print()
-        print('Training set of books for category `{}`:'.format(category))
+        print('\nTraining set of books for category `{}`:'.format(category))
         y_test, y_pred_test = Y_test[category_i], Y_pred_test[category_i]
         evaluation.print_metrics(y_test, y_pred_test)
 
     # Evaluate all books.
     if verbose:
-        print()
-        print('Evaluating all books...')
+        print('\nEvaluating all books...')
     all_sequences = tokenizer.texts_to_sequences(all_tokens)
     X_all = np.array([get_input_array(sequence, n_tokens) for sequence in all_sequences])
     Y_pred_all = predict_book_labels(model, X_all, all_locations, Y, get_label_from_paragraph_labels)
     for category_i, category in enumerate(categories):
-        print()
-        print('All books for category `{}`:'.format(category))
+        print('\nAll books for category `{}`:'.format(category))
         y, y_pred_all = Y[category_i], Y_pred_all[category_i]
         evaluation.print_metrics(y, y_pred_all)
 
 
 if __name__ == '__main__':
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        raise ValueError('Usage: <epochs> [verbose]')
+    epochs = int(sys.argv[1])
+    if len(sys.argv) > 2:
+        verbose = int(sys.argv[2])
+    else:
+        verbose = 0
     main()
