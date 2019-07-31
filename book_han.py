@@ -179,8 +179,10 @@ def create_model(
     return model
 
 
-def main(verbose=0):
+def main():
     # Load data.
+    if verbose:
+        print('\nRetrieving texts...')
     min_len = 250  # The minimum number of paragraphs in each text.
     min_tokens = 6  # The minimum number of tokens in each paragraph.
     inputs, Y, categories, category_levels = \
@@ -191,10 +193,11 @@ def main(verbose=0):
                           min_tokens=min_tokens)
     text_paragraph_tokens, _ = zip(*inputs['tokens'])
     if verbose:
-        print()
-        print('{:d} texts'.format(len(text_paragraph_tokens)))
+        print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
 
     # Tokenize.
+    if verbose:
+        print('\nTokenizing...')
     max_words = 8192  # The maximum size of the vocabulary.
     tokenizer = Tokenizer(num_words=max_words, oov_token='__UNKNOWN__')
     all_tokens = []
@@ -202,8 +205,12 @@ def main(verbose=0):
         for tokens in paragraph_tokens:
             all_tokens.append(tokens)
     tokenizer.fit_on_texts(all_tokens)
+    if verbose:
+        print('Done.')
 
     # Convert to sequences.
+    if verbose:
+        print('\nConverting texts to sequences...')
     n_paragraphs = 1024  # The maximum number of paragraphs to process in each text.
     n_tokens = 128  # The maximum number of tokens to process in each paragraph.
     X = np.zeros((len(text_paragraph_tokens), n_paragraphs, n_tokens), dtype=np.float32)
@@ -216,18 +223,30 @@ def main(verbose=0):
             usable_paragraph_tokens = paragraph_tokens
         sequences = tokenizer.texts_to_sequences(usable_paragraph_tokens)
         X[text_i, :len(sequences)] = pad_sequences(sequences, maxlen=n_tokens, padding='pre', truncating='pre')
+    if verbose:
+        print('Done.')
 
     # Split data set.
+    if verbose:
+        print('\nSplitting data into training and test sets...')
     test_size = .25  # b
     random_state = 1
     YT = Y.transpose()  # (num_texts, C)
     X_train, X_test, YT_train, YT_test = train_test_split(X, YT, test_size=test_size, random_state=random_state)
     Y_train, Y_test = YT_train.transpose(), YT_test.transpose()  # ((1 - b)*num_texts, C), (b*num_texts, C)
+    if verbose:
+        print('Done.')
 
     # Load embedding.
+    if verbose:
+        print('\nLoading embedding matrix...')
     embedding_matrix = load_embeddings.get_embedding(tokenizer, folders.EMBEDDING_GLOVE_100_PATH, max_words)
+    if verbose:
+        print('Done.')
 
     # Create model.
+    if verbose:
+        print('\nCreating model...')
     n_classes = [len(levels) for levels in category_levels]
     embedding_trainable = False
     rnn = GRU
@@ -252,25 +271,27 @@ def main(verbose=0):
         optimizer=optimizer,
         metrics=metrics)
     if verbose:
-        print()
         print(model.summary())
 
     # Train.
     batch_size = 32
     Y_train_ordinal = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
-    history = model.fit(X_train, Y_train_ordinal, batch_size=batch_size, epochs=epochs)
+    history = model.fit(X_train, Y_train_ordinal, batch_size=batch_size, epochs=epochs, verbose=verbose)
 
     # Evaluate.
     Y_preds_ordinal = model.predict(X_test)
     Y_preds = [ordinal.from_multi_hot_ordinal(y_ordinal, threshold=.5) for y_ordinal in Y_preds_ordinal]
     for category_i, category in enumerate(categories):
-        print()
-        print('`{}`'.format(category))
+        print('\n`{}`'.format(category))
         evaluation.print_metrics(Y_test[category_i], Y_preds[category_i])
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2 or len(sys.argv) > 2:
-        raise Exception('Usage: <epochs>')
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        raise ValueError('Usage: <epochs> [verbose]')
     epochs = int(sys.argv[1])
-    main(verbose=0)
+    if len(sys.argv) > 2:
+        verbose = int(sys.argv[2])
+    else:
+        verbose = 0
+    main()
