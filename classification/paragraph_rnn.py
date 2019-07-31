@@ -1,3 +1,4 @@
+from __future__ import absolute_import, division, print_function
 from keras.layers import Bidirectional, Dense, Dropout, Embedding, GlobalMaxPool1D, GRU, Input
 from keras.models import Model
 from keras.optimizers import Adam
