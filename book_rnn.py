@@ -11,7 +11,7 @@ import sys
 from classification import evaluation, ordinal
 import folders
 from sites.bookcave import bookcave
-from text import load_embeddings
+from text import load_embeddings, monkey
 
 
 def create_model(n_classes, n_tokens, embedding_matrix, hidden_size, dense_size, embedding_trainable=True):
@@ -61,8 +61,10 @@ def main():
     if verbose:
         print('\nTokenizing...')
     max_words = 8192
-    tokenizer = Tokenizer(num_words=max_words, oov_token='__UNKNOWN__')
-    tokenizer.fit_on_texts(text_tokens)
+    split = '\t'
+    tokenizer = Tokenizer(num_words=max_words)
+    monkey.patch_tokenizer()
+    tokenizer.fit_on_texts([split.join(tokens) for tokens in text_tokens])
     if verbose:
         print('Done.')
 
@@ -82,10 +84,10 @@ def main():
         if len(tokens) > n_tokens:
             # Truncate two thirds of the remainder at the beginning and one third at the end.
             start = int(2/3*(len(tokens) - n_tokens))
-            usable_tokens = tokens[start:start+n_tokens]
+            usable_tokens = tokens[start:start + n_tokens]
         else:
             usable_tokens = tokens
-        sequences = tokenizer.texts_to_sequences([usable_tokens])[0]
+        sequences = tokenizer.texts_to_sequences([split.join(usable_tokens)])[0]
         X[text_i] = pad_sequences(sequences, maxlen=n_tokens, padding='pre', truncating='pre')
     if verbose:
         print('Done.')
