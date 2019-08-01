@@ -199,12 +199,13 @@ def main():
     if verbose:
         print('\nTokenizing...')
     max_words = 8192  # The maximum size of the vocabulary.
-    tokenizer = Tokenizer(num_words=max_words, oov_token='__UNKNOWN__')
-    all_tokens = []
+    split = '\t'
+    tokenizer = Tokenizer(num_words=max_words, split=split)
+    all_sentences = []
     for paragraph_tokens in text_paragraph_tokens:
         for tokens in paragraph_tokens:
-            all_tokens.append(tokens)
-    tokenizer.fit_on_texts(all_tokens)
+            all_sentences.append(split.join(tokens))
+    tokenizer.fit_on_texts(all_sentences)
     if verbose:
         print('Done.')
 
@@ -221,7 +222,7 @@ def main():
             usable_paragraph_tokens = paragraph_tokens[start:start+n_paragraphs]
         else:
             usable_paragraph_tokens = paragraph_tokens
-        sequences = tokenizer.texts_to_sequences(usable_paragraph_tokens)
+        sequences = tokenizer.texts_to_sequences([split.join(tokens) for tokens in usable_paragraph_tokens])
         X[text_i, :len(sequences)] = pad_sequences(sequences, maxlen=n_tokens, padding='pre', truncating='pre')
     if verbose:
         print('Done.')
