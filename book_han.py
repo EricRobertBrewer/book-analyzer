@@ -167,9 +167,12 @@ def create_model(
         n_tokens,
         embedding_matrix,
         embedding_trainable=False,
-        rnn=GRU,
-        rnn_units=128,
-        dense_units=64,
+        word_rnn=GRU,
+        word_rnn_units=128,
+        word_dense_units=64,
+        paragraph_rnn=GRU,
+        paragraph_rnn_units=128,
+        paragraph_dense_units=64,
         is_ordinal=True,
         dropout_regularizer=.5,
         l2_regularizer=None
@@ -183,22 +186,22 @@ def create_model(
     input_w = Input(shape=(n_tokens,), dtype='float32')
     embed_shape = embedding_matrix.shape
     x_w = Embedding(embed_shape[0], embed_shape[1], weights=[embedding_matrix], trainable=embedding_trainable)(input_w)
-    x_w = Bidirectional(rnn(rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_w)
-    x_w = TimeDistributed(Dense(dense_units, kernel_regularizer=kernel_regularizer))(x_w)
+    x_w = Bidirectional(word_rnn(word_rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_w)
+    x_w = TimeDistributed(Dense(word_dense_units, kernel_regularizer=kernel_regularizer))(x_w)
     x_w = AttentionWithContext()(x_w)
     word_encoder = Model(input_w, x_w)
 
-    # Sentence encoder.
-    input_s = Input(shape=(n_paragraphs, n_tokens), dtype='float32')
-    x_s = TimeDistributed(word_encoder)(input_s)
-    x_s = Bidirectional(rnn(rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_s)
-    x_s = TimeDistributed(Dense(dense_units, kernel_regularizer=kernel_regularizer))(x_s)
-    x_s = AttentionWithContext()(x_s)
-    x_s = Dropout(dropout_regularizer)(x_s)
+    # Paragraph encoder.
+    input_p = Input(shape=(n_paragraphs, n_tokens), dtype='float32')
+    x_p = TimeDistributed(word_encoder)(input_p)
+    x_p = Bidirectional(paragraph_rnn(paragraph_rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_p)
+    x_p = TimeDistributed(Dense(paragraph_dense_units, kernel_regularizer=kernel_regularizer))(x_p)
+    x_p = AttentionWithContext()(x_p)
+    x_p = Dropout(dropout_regularizer)(x_p)
     activation = 'sigmoid' if is_ordinal else 'softmax'
-    outputs = [Dense(n - 1 if is_ordinal else n, activation=activation)(x_s)
+    outputs = [Dense(n - 1 if is_ordinal else n, activation=activation)(x_p)
                for n in n_classes]
-    model = Model(input_s, outputs)
+    model = Model(input_p, outputs)
     return model
 
 
@@ -263,9 +266,12 @@ def main():
         print('\nCreating model...')
     n_classes = [len(levels) for levels in category_levels]
     embedding_trainable = False
-    rnn = GRU
-    rnn_units = 128
-    dense_units = 64
+    word_rnn = GRU
+    word_rnn_units = 128
+    word_dense_units = 64
+    paragraph_rnn = GRU
+    paragraph_rnn_units = 128
+    paragraph_dense_units = 64
     is_ordinal = True
     model = create_model(
         n_classes,
@@ -273,9 +279,12 @@ def main():
         n_tokens,
         embedding_matrix,
         embedding_trainable=embedding_trainable,
-        rnn=rnn,
-        rnn_units=rnn_units,
-        dense_units=dense_units,
+        word_rnn=word_rnn,
+        word_rnn_units=word_rnn_units,
+        word_dense_units=word_dense_units,
+        paragraph_rnn=paragraph_rnn,
+        paragraph_rnn_units=paragraph_rnn_units,
+        paragraph_dense_units=paragraph_dense_units,
         is_ordinal=is_ordinal)
     if verbose:
         print(model.summary())
