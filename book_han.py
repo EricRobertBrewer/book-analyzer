@@ -13,8 +13,9 @@ import sys
 
 from classification import evaluation, ordinal
 import folders
+import monkey
 from sites.bookcave import bookcave
-from text import load_embeddings, monkey
+from text import load_embeddings
 
 
 def dot_product(x, kernel):

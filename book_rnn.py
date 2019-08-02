@@ -10,8 +10,9 @@ import sys
 
 from classification import evaluation, ordinal
 import folders
+import monkey
 from sites.bookcave import bookcave
-from text import load_embeddings, monkey
+from text import load_embeddings
 
 
 def create_model(n_classes, n_tokens, embedding_matrix, hidden_size, dense_size, embedding_trainable=True):
