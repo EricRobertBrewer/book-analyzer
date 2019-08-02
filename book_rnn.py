@@ -88,8 +88,8 @@ def main():
             usable_tokens = tokens[start:start + n_tokens]
         else:
             usable_tokens = tokens
-        sequences = tokenizer.texts_to_sequences([split.join(usable_tokens)])[0]
-        X[text_i] = pad_sequences(sequences, maxlen=n_tokens, padding='pre', truncating='pre')
+        sequences = tokenizer.texts_to_sequences([split.join(usable_tokens)])
+        X[text_i] = pad_sequences(sequences, maxlen=n_tokens, padding='pre', truncating='pre')[0]
     if verbose:
         print('Done.')
 
