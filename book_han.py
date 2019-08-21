@@ -1,4 +1,3 @@
-from __future__ import absolute_import, division, print_function, with_statement
 import numpy as np
 from sklearn.model_selection import train_test_split
 import sys
@@ -13,7 +12,6 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 
 from classification import evaluation, ordinal
 import folders
-import monkey
 from sites.bookcave import bookcave
 from text import load_embeddings
 
@@ -209,7 +207,6 @@ def main():
     for paragraph_tokens in text_paragraph_tokens:
         for tokens in paragraph_tokens:
             all_sentences.append(split.join(tokens))
-    monkey.patch_tokenizer()
     tokenizer.fit_on_texts(all_sentences)
     if verbose:
         print('Done.')

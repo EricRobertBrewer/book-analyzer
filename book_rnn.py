@@ -1,4 +1,3 @@
-from __future__ import absolute_import, division, print_function, with_statement
 import numpy as np
 from sklearn.model_selection import train_test_split
 import sys
@@ -11,7 +10,6 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 
 from classification import evaluation, ordinal
 import folders
-import monkey
 from sites.bookcave import bookcave
 from text import load_embeddings
 
@@ -65,7 +63,6 @@ def main():
     max_words = 8192
     split = '\t'
     tokenizer = Tokenizer(num_words=max_words)
-    monkey.patch_tokenizer()
     tokenizer.fit_on_texts([split.join(tokens) for tokens in text_tokens])
     if verbose:
         print('Done.')
