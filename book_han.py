@@ -1,15 +1,15 @@
 from __future__ import absolute_import, division, print_function, with_statement
-from keras import backend as K
-from keras import initializers as initializers, regularizers, constraints
-from keras.engine.topology import Layer
-from keras.layers import Bidirectional, Dense, Dropout, Embedding, GRU, Input, TimeDistributed
-from keras.models import Model
-from keras.optimizers import Adam
-from keras.preprocessing.sequence import pad_sequences
-from keras.preprocessing.text import Tokenizer
 import numpy as np
 from sklearn.model_selection import train_test_split
 import sys
+import tensorflow as tf
+from tensorflow.keras import backend as K
+from tensorflow.keras import initializers as initializers, regularizers, constraints
+from tensorflow.keras.layers import Bidirectional, Dense, Dropout, Embedding, GRU, Input, Layer, TimeDistributed
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.preprocessing.text import Tokenizer
 
 from classification import evaluation, ordinal
 import folders
