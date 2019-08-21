@@ -185,13 +185,14 @@ def main():
     # Load data.
     if verbose:
         print('\nRetrieving texts...')
-    min_len = 250  # The minimum number of paragraphs in each text.
+    min_len, max_len = 256, 1024  # The minimum/maximum number of paragraphs in each text.
     min_tokens = 6  # The minimum number of tokens in each paragraph.
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'tokens'},
                           subset_ratio=1,
                           subset_seed=1,
                           min_len=min_len,
+                          max_len=max_len,
                           min_tokens=min_tokens)
     text_paragraph_tokens, _ = zip(*inputs['tokens'])
     if verbose:
