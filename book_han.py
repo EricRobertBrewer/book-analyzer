@@ -84,20 +84,21 @@ class AttentionWithContext(Layer):
     def build(self, input_shape):
         assert len(input_shape) == 3
 
+        _dim = int(input_shape[-1])
         self.W = self.add_weight('{}_W'.format(self.name),
-                                 (input_shape[-1], input_shape[-1],),
+                                 (_dim, _dim,),
                                  initializer=self.init,
                                  regularizer=self.W_regularizer,
                                  constraint=self.W_constraint)
         if self.bias:
             self.b = self.add_weight('{}_b'.format(self.name),
-                                     (input_shape[-1],),
+                                     (_dim,),
                                      initializer='zero',
                                      regularizer=self.b_regularizer,
                                      constraint=self.b_constraint)
 
         self.u = self.add_weight('{}_u'.format(self.name),
-                                 (input_shape[-1],),
+                                 (_dim,),
                                  initializer=self.init,
                                  regularizer=self.u_regularizer,
                                  constraint=self.u_constraint)
