@@ -1,4 +1,5 @@
 from io import open
+
 import numpy as np
 
 

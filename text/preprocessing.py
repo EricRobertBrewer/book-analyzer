@@ -1,5 +1,6 @@
-import nltk
 import re
+
+import nltk
 
 
 def normalize(line):

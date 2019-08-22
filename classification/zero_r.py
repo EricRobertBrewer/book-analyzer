@@ -1,4 +1,3 @@
-# Math.
 import numpy as np
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, log_loss, precision_score, recall_score
 

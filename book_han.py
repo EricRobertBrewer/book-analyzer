@@ -1,7 +1,6 @@
-import numpy as np
-from sklearn.model_selection import train_test_split
 import sys
-import tensorflow as tf
+
+import numpy as np
 from tensorflow.keras import backend as K
 from tensorflow.keras import initializers as initializers, regularizers, constraints
 from tensorflow.keras.layers import Bidirectional, Dense, Dropout, Embedding, GRU, Input, Layer, TimeDistributed
@@ -9,6 +8,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
+from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal
 import folders
@@ -84,21 +84,21 @@ class AttentionWithContext(Layer):
     def build(self, input_shape):
         assert len(input_shape) == 3
 
-        self.W = self.add_weight((input_shape[-1], input_shape[-1],),
+        self.W = self.add_weight('{}_W'.format(self.name),
+                                 (input_shape[-1], input_shape[-1],),
                                  initializer=self.init,
-                                 name='{}_W'.format(self.name),
                                  regularizer=self.W_regularizer,
                                  constraint=self.W_constraint)
         if self.bias:
-            self.b = self.add_weight((input_shape[-1],),
+            self.b = self.add_weight('{}_b'.format(self.name),
+                                     (input_shape[-1],),
                                      initializer='zero',
-                                     name='{}_b'.format(self.name),
                                      regularizer=self.b_regularizer,
                                      constraint=self.b_constraint)
 
-        self.u = self.add_weight((input_shape[-1],),
+        self.u = self.add_weight('{}_u'.format(self.name),
+                                 (input_shape[-1],),
                                  initializer=self.init,
-                                 name='{}_u'.format(self.name),
                                  regularizer=self.u_regularizer,
                                  constraint=self.u_constraint)
 

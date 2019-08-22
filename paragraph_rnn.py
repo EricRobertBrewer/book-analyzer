@@ -1,10 +1,11 @@
-import numpy as np
-from sklearn.model_selection import train_test_split
 import sys
+
+import numpy as np
 from tensorflow.keras.layers import Bidirectional, Dense, Dropout, Embedding, GlobalMaxPool1D, GRU, Input
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.text import Tokenizer
+from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal
 import folders
