@@ -3,7 +3,7 @@ import sys
 import numpy as np
 from tensorflow.keras import backend as K
 from tensorflow.keras import initializers as initializers, regularizers, constraints
-from tensorflow.keras.layers import Bidirectional, Concatenate, Dense, Dropout, Embedding, GlobalMaxPooling1D,\
+from tensorflow.keras.layers import Bidirectional, Concatenate, Dense, Dropout, Embedding, GlobalMaxPooling1D, \
     GlobalAveragePooling1D, GRU, Input, Layer, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
@@ -306,14 +306,15 @@ def main():
                   loss='binary_crossentropy',
                   metrics=['binary_accuracy'])
     Y_train_ordinal = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
-    batch_generator = SingleInstanceBatchGenerator(X_train, Y_train_ordinal, shuffle=True)
-    history = model.fit_generator(batch_generator,
+    train_generator = SingleInstanceBatchGenerator(X_train, Y_train_ordinal, shuffle=True)
+    history = model.fit_generator(train_generator,
                                   epochs=epochs,
                                   verbose=verbose,
                                   class_weight=class_weights)
 
     # Evaluate.
-    Y_preds_ordinal = model.predict(X_test)
+    test_generator = SingleInstanceBatchGenerator(X_test, Y_train_ordinal, shuffle=False)
+    Y_preds_ordinal = model.predict_generator(test_generator, steps=len(test_generator))
     Y_preds = [ordinal.from_multi_hot_ordinal(y_ordinal, threshold=.5) for y_ordinal in Y_preds_ordinal]
     for category_i, category in enumerate(categories):
         print('\n`{}`'.format(category))
