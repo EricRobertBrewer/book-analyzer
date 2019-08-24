@@ -3,11 +3,13 @@ import sys
 import numpy as np
 from tensorflow.keras import backend as K
 from tensorflow.keras import initializers as initializers, regularizers, constraints
-from tensorflow.keras.layers import Bidirectional, Dense, Dropout, Embedding, GRU, Input, Layer, TimeDistributed
+from tensorflow.keras.layers import Bidirectional, Concatenate, Dense, Dropout, Embedding, GlobalMaxPooling1D,\
+    GlobalAveragePooling1D, GRU, Input, Layer, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.utils import Sequence
 from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal
@@ -139,16 +141,13 @@ class AttentionWithContext(Layer):
 
 def create_model(
         n_classes,
-        n_paragraphs,
         n_tokens,
         embedding_matrix,
         embedding_trainable=False,
         word_rnn=GRU,
         word_rnn_units=128,
         word_dense_units=64,
-        paragraph_rnn=GRU,
-        paragraph_rnn_units=128,
-        paragraph_dense_units=64,
+        book_dense_units=1024,
         is_ordinal=True,
         dropout_regularizer=.5,
         l2_regularizer=None
@@ -159,21 +158,22 @@ def create_model(
         kernel_regularizer = regularizers.l2(l2_regularizer)
 
     # Word encoder.
-    input_w = Input(shape=(n_tokens,), dtype='float32')
-    embed_shape = embedding_matrix.shape
-    x_w = Embedding(embed_shape[0], embed_shape[1], weights=[embedding_matrix], trainable=embedding_trainable)(input_w)
-    x_w = Bidirectional(word_rnn(word_rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_w)
-    x_w = TimeDistributed(Dense(word_dense_units, kernel_regularizer=kernel_regularizer))(x_w)
-    x_w = AttentionWithContext()(x_w)
+    input_w = Input(shape=(n_tokens,), dtype='float32')  # (t)
+    max_words, d = embedding_matrix.shape
+    x_w = Embedding(max_words, d, weights=[embedding_matrix], trainable=embedding_trainable)(input_w)  # (t, d)
+    x_w = Bidirectional(word_rnn(word_rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_w)  # (t, h_w)
+    x_w = TimeDistributed(Dense(word_dense_units, kernel_regularizer=kernel_regularizer))(x_w)  # (2t, c_w)
+    x_w = AttentionWithContext()(x_w)  # (c_w)
     word_encoder = Model(input_w, x_w)
 
-    # Paragraph encoder.
-    input_p = Input(shape=(n_paragraphs, n_tokens), dtype='float32')
-    x_p = TimeDistributed(word_encoder)(input_p)
-    x_p = Bidirectional(paragraph_rnn(paragraph_rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_p)
-    x_p = TimeDistributed(Dense(paragraph_dense_units, kernel_regularizer=kernel_regularizer))(x_p)
-    x_p = AttentionWithContext()(x_p)
-    x_p = Dropout(dropout_regularizer)(x_p)
+    # Consider maximum and average signals among all paragraphs.
+    input_p = Input(shape=(None, n_tokens), dtype='float32')  # (s, t); s is not constant!
+    x_p = TimeDistributed(word_encoder)(input_p)  # (s, c_w)
+    g_max = GlobalMaxPooling1D()(x_p)  # (c_w)
+    g_avg = GlobalAveragePooling1D()(x_p)  # (c_w)
+    x_p = Concatenate()([g_max, g_avg])  # (2c_w)
+    x_p = Dense(book_dense_units, kernel_regularizer=kernel_regularizer)(x_p)  # (c_b)
+    x_p = Dropout(dropout_regularizer)(x_p)  # (c_b)
     activation = 'sigmoid' if is_ordinal else 'softmax'
     outputs = [Dense(n - 1 if is_ordinal else n, activation=activation)(x_p)
                for n in n_classes]
@@ -181,19 +181,47 @@ def create_model(
     return model
 
 
+class SingleInstanceBatchGenerator(Sequence):
+    """
+    When fitting the model, the batch size must be 1 to accommodate variable numbers of paragraphs per text.
+    See `https://datascience.stackexchange.com/a/48814/66450`.
+    """
+    def __init__(self, X, Y, shuffle=True):
+        super(SingleInstanceBatchGenerator, self).__init__()
+        self.X = [np.array([x]) for x in X]  # `fit_generator` wants each `x` to be a NumPy array, not a list.
+        # Transform Y from shape (C, n, c-1) to (n, C, 1, c-1) where `C` is the number of categories,
+        # `n` is the number of instances, and `c` is the number of classes for the current category.
+        self.Y = [[np.array([y[i]]) for y in Y]
+                  for i in range(len(X))]
+        self.indices = np.arange(len(X))
+        self.shuffle = shuffle
+        self.shuffle_indices()
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, index):
+        i = self.indices[index]
+        return self.X[i], self.Y[i]
+
+    def on_epoch_end(self):
+        self.shuffle_indices()
+
+    def shuffle_indices(self):
+        if self.shuffle:
+            np.random.shuffle(self.indices)
+
+
 def main():
     # Load data.
     if verbose:
         print('\nRetrieving texts...')
-    min_len, max_len = 256, 1024  # The minimum/maximum number of paragraphs in each text.
-    min_tokens = 6  # The minimum number of tokens in each paragraph.
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'tokens'},
                           subset_ratio=1,
                           subset_seed=1,
-                          min_len=min_len,
-                          max_len=max_len,
-                          min_tokens=min_tokens)
+                          min_len=256,
+                          min_tokens=6)
     text_paragraph_tokens, _ = zip(*inputs['tokens'])
     if verbose:
         print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
@@ -215,18 +243,12 @@ def main():
     # Convert to sequences.
     if verbose:
         print('\nConverting texts to sequences...')
-    n_paragraphs = 1024  # The maximum number of paragraphs to process in each text.
     n_tokens = 128  # The maximum number of tokens to process in each paragraph.
-    X = np.zeros((len(text_paragraph_tokens), n_paragraphs, n_tokens), dtype=np.float32)
-    for text_i, paragraph_tokens in enumerate(text_paragraph_tokens):
-        if len(paragraph_tokens) > n_paragraphs:
-            # Truncate two thirds of the remainder at the beginning and one third at the end.
-            start = int(2/3*(len(paragraph_tokens) - n_paragraphs))
-            usable_paragraph_tokens = paragraph_tokens[start:start + n_paragraphs]
-        else:
-            usable_paragraph_tokens = paragraph_tokens
-        sequences = tokenizer.texts_to_sequences([split.join(tokens) for tokens in usable_paragraph_tokens])
-        X[text_i, :len(sequences)] = pad_sequences(sequences, maxlen=n_tokens, padding='pre', truncating='pre')
+    X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in paragraph_tokens]),
+                                maxlen=n_tokens,
+                                padding='pre',
+                                truncating='pre'))
+         for paragraph_tokens in text_paragraph_tokens]
     if verbose:
         print('Done.')
 
@@ -245,22 +267,17 @@ def main():
     word_rnn = GRU
     word_rnn_units = 128
     word_dense_units = 64
-    paragraph_rnn = GRU
-    paragraph_rnn_units = 128
-    paragraph_dense_units = 64
+    book_dense_units = 1024
     is_ordinal = True
     model = create_model(
         n_classes,
-        n_paragraphs,
         n_tokens,
         embedding_matrix,
         embedding_trainable=embedding_trainable,
         word_rnn=word_rnn,
         word_rnn_units=word_rnn_units,
         word_dense_units=word_dense_units,
-        paragraph_rnn=paragraph_rnn,
-        paragraph_rnn_units=paragraph_rnn_units,
-        paragraph_dense_units=paragraph_dense_units,
+        book_dense_units=book_dense_units,
         is_ordinal=is_ordinal)
     if verbose:
         print(model.summary())
@@ -270,9 +287,9 @@ def main():
         print('\nSplitting data into training and test sets...')
     test_size = .25  # b
     random_state = 1
-    YT = Y.transpose()  # (num_texts, C)
+    YT = Y.transpose()  # (n, C)
     X_train, X_test, YT_train, YT_test = train_test_split(X, YT, test_size=test_size, random_state=random_state)
-    Y_train, Y_test = YT_train.transpose(), YT_test.transpose()  # (C, (1 - b) * num_texts), (C, b * num_texts)
+    Y_train, Y_test = YT_train.transpose(), YT_test.transpose()  # (C, (1 - b) * n), (C, b * n)
     if verbose:
         print('Done.')
 
@@ -284,18 +301,16 @@ def main():
         class_weights.append(class_weight)
 
     # Train.
-    batch_size = 32
     optimizer = Adam()
     model.compile(optimizer,
                   loss='binary_crossentropy',
                   metrics=['binary_accuracy'])
     Y_train_ordinal = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
-    history = model.fit(X_train,
-                        Y_train_ordinal,
-                        batch_size=batch_size,
-                        epochs=epochs,
-                        verbose=verbose,
-                        class_weight=class_weights)
+    batch_generator = SingleInstanceBatchGenerator(X_train, Y_train_ordinal, shuffle=True)
+    history = model.fit_generator(batch_generator,
+                                  epochs=epochs,
+                                  verbose=verbose,
+                                  class_weight=class_weights)
 
     # Evaluate.
     Y_preds_ordinal = model.predict(X_test)

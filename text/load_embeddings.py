@@ -15,7 +15,7 @@ def get_embedding(tokenizer, fname, max_words=10000):
     word_count = min(max_words, len(word_index))
     with open(fname, 'r', encoding='utf-8') as fd:
         embeddings_index = dict(get_coefs(*o.strip().split()) for o in fd)
-    all_embeddings = np.stack(embeddings_index.values())
+    all_embeddings = np.stack(list(embeddings_index.values()))
     embed_size = all_embeddings.shape[1]
     mean, std = all_embeddings.mean(), all_embeddings.std()
     # Use these vectors to create our embedding matrix, with random initialization for words that aren't in GloVe.
