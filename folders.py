@@ -14,15 +14,17 @@ AMAZON_KINDLE_LABELS_PATH = os.path.join(AMAZON_KINDLE_PATH, 'labels')
 AMAZON_KINDLE_LABELS_FNAME_FORMAT = 'paragraph_labels_{}.txt'
 AMAZON_KINDLE_IMAGES_PATH = os.path.join(AMAZON_KINDLE_PATH, 'images')
 
-SITES_PATH = 'sites'
-BOOKCAVE_PATH = os.path.join(SITES_PATH, 'bookcave')
-BOOKCAVE_CATEGORIES_PATH = os.path.join(BOOKCAVE_PATH, 'categories')
-
-MODELS_PATH = 'models'
-
 EMBEDDING_GLOVE_100_PATH = os.path.join('..', '..', 'embeddings', 'glove.6B.100d.txt')
 EMBEDDING_GLOVE_200_PATH = os.path.join('..', '..', 'embeddings', 'glove.6B.200d.txt')
 EMBEDDING_GLOVE_300_PATH = os.path.join('..', '..', 'embeddings', 'glove.6B.300d.txt')
 
+HISTORY_PATH = 'history'
+
 CORRELATED_WORDS_PATH = os.path.join('logs', 'correlated_words')
 CORRELATED_WORDS_FNAME_FORMAT = 'words-{}-{:d}-{:d}g{:d}-{:d}f.txt'
+
+MODELS_PATH = 'models'
+
+SITES_PATH = 'sites'
+BOOKCAVE_PATH = os.path.join(SITES_PATH, 'bookcave')
+BOOKCAVE_CATEGORIES_PATH = os.path.join(BOOKCAVE_PATH, 'categories')

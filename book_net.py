@@ -1,4 +1,6 @@
+import os
 import sys
+import time
 
 import numpy as np
 from tensorflow.keras import backend as K
@@ -213,14 +215,19 @@ class SingleInstanceBatchGenerator(Sequence):
 
 
 def main():
+    stamp = int(time.time())
+    print('Stamp: {:d}'.format(stamp))
+
     # Load data.
     if verbose:
         print('\nRetrieving texts...')
+    min_len, max_len = 256, 4096
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'tokens'},
                           subset_ratio=1,
                           subset_seed=1,
-                          min_len=256,
+                          min_len=min_len,
+                          max_len=max_len,
                           min_tokens=6)
     text_paragraph_tokens, _ = zip(*inputs['tokens'])
     if verbose:
@@ -311,6 +318,17 @@ def main():
                                   epochs=epochs,
                                   verbose=verbose,
                                   class_weight=class_weights)
+
+    # Save the history to visualize loss over time.
+    if verbose:
+        print('\nSaving training history...')
+    history_fname = 'book_net-{:d}.txt'.format(stamp)
+    with open(os.path.join(folders.HISTORY_PATH, history_fname), 'w') as fd:
+        for key in history.history.keys():
+            values = history.history.get(key)
+            fd.write('{} {}\n'.format(key, ' '.join(str(value) for value in values)))
+    if verbose:
+        print('Done.')
 
     # Evaluate.
     test_generator = SingleInstanceBatchGenerator(X_test, Y_train_ordinal, shuffle=False)
