@@ -20,7 +20,8 @@ EMBEDDING_GLOVE_300_PATH = os.path.join('..', '..', 'embeddings', 'glove.6B.300d
 
 HISTORY_PATH = 'history'
 
-CORRELATED_WORDS_PATH = os.path.join('logs', 'correlated_words')
+LOGS_PATH = 'logs'
+CORRELATED_WORDS_PATH = os.path.join(LOGS_PATH, 'correlated_words')
 CORRELATED_WORDS_FNAME_FORMAT = 'words-{}-{:d}-{:d}g{:d}-{:d}f.txt'
 
 MODELS_PATH = 'models'
