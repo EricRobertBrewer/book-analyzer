@@ -149,11 +149,14 @@ def create_model(
         word_rnn=GRU,
         word_rnn_units=128,
         word_dense_units=64,
-        book_dense_units=1024,
+        book_dense_units=512,
         is_ordinal=True,
+        category_names=None,
         dropout_regularizer=.5,
         l2_regularizer=None
 ):
+    if category_names is None:
+        category_names = ['dense_{:d}'.format(i + 2) for i in range(len(n_classes))]
     if l2_regularizer is None:
         kernel_regularizer = None
     else:
@@ -177,8 +180,8 @@ def create_model(
     x_p = Dense(book_dense_units, kernel_regularizer=kernel_regularizer)(x_p)  # (c_b)
     x_p = Dropout(dropout_regularizer)(x_p)  # (c_b)
     activation = 'sigmoid' if is_ordinal else 'softmax'
-    outputs = [Dense(n - 1 if is_ordinal else n, activation=activation)(x_p)
-               for n in n_classes]
+    outputs = [Dense(n - 1 if is_ordinal else n, activation=activation, name=category_names[i])(x_p)
+               for i, n in enumerate(n_classes)]
     model = Model(input_p, outputs)
     return model
 
@@ -220,7 +223,7 @@ def main():
 
     # Load data.
     if verbose:
-        print('\nRetrieving texts...')
+        print('Retrieving texts...')
     min_len, max_len = 256, 4096
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'tokens'},
@@ -235,7 +238,7 @@ def main():
 
     # Tokenize.
     if verbose:
-        print('\nTokenizing...')
+        print('Tokenizing...')
     max_words = 8192  # The maximum size of the vocabulary.
     split = '\t'
     tokenizer = Tokenizer(num_words=max_words, split=split)
@@ -249,7 +252,7 @@ def main():
 
     # Convert to sequences.
     if verbose:
-        print('\nConverting texts to sequences...')
+        print('Converting texts to sequences...')
     n_tokens = 128  # The maximum number of tokens to process in each paragraph.
     X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in paragraph_tokens]),
                                 maxlen=n_tokens,
@@ -261,14 +264,14 @@ def main():
 
     # Load embedding.
     if verbose:
-        print('\nLoading embedding matrix...')
+        print('Loading embedding matrix...')
     embedding_matrix = load_embeddings.get_embedding(tokenizer, folders.EMBEDDING_GLOVE_100_PATH, max_words)
     if verbose:
         print('Done.')
 
     # Create model.
     if verbose:
-        print('\nCreating model...')
+        print('Creating model...')
     n_classes = [len(levels) for levels in category_levels]
     embedding_trainable = False
     word_rnn = GRU
@@ -285,13 +288,14 @@ def main():
         word_rnn_units=word_rnn_units,
         word_dense_units=word_dense_units,
         book_dense_units=book_dense_units,
-        is_ordinal=is_ordinal)
+        is_ordinal=is_ordinal,
+        category_names=categories)
     if verbose:
         print(model.summary())
 
     # Split data set.
     if verbose:
-        print('\nSplitting data into training and test sets...')
+        print('Splitting data into training and test sets...')
     test_size = .25  # b
     test_random_state = 1
     val_size = .1  # v
@@ -322,6 +326,7 @@ def main():
     Y_val_ordinal = [ordinal.to_multi_hot_ordinal(Y_val[i], n_classes=n) for i, n in enumerate(n_classes)]
     val_generator = SingleInstanceBatchGenerator(X_val, Y_val_ordinal, shuffle=False)
     history = model.fit_generator(train_generator,
+                                  steps_per_epoch=steps_per_epoch,
                                   epochs=epochs,
                                   verbose=verbose,
                                   validation_data=val_generator,
@@ -329,30 +334,51 @@ def main():
 
     # Save the history to visualize loss over time.
     if verbose:
-        print('\nSaving training history...')
-    history_fname = 'book_net-{:d}.txt'.format(stamp)
-    with open(os.path.join(folders.HISTORY_PATH, history_fname), 'w') as fd:
+        print('Saving training history...')
+    if not os.path.exists(folders.HISTORY_PATH):
+        os.mkdir(folders.HISTORY_PATH)
+    history_path = os.path.join(folders.HISTORY_PATH, 'book_net')
+    if not os.path.exists(history_path):
+        os.mkdir(history_path)
+    with open(os.path.join(history_path, '{:d}.txt'.format(stamp)), 'w') as fd:
         for key in history.history.keys():
             values = history.history.get(key)
             fd.write('{} {}\n'.format(key, ' '.join(str(value) for value in values)))
     if verbose:
         print('Done.')
 
-    # Evaluate.
+    # Predict test instances.
+    if verbose:
+        print('Predicting test instances...')
     test_generator = SingleInstanceBatchGenerator(X_test, Y_train_ordinal, shuffle=False)
     Y_preds_ordinal = model.predict_generator(test_generator, steps=len(test_generator))
     Y_preds = [ordinal.from_multi_hot_ordinal(y_ordinal, threshold=.5) for y_ordinal in Y_preds_ordinal]
-    for category_i, category in enumerate(categories):
-        print('\n`{}`'.format(category))
-        evaluation.print_metrics(Y_test[category_i], Y_preds[category_i])
+    if verbose:
+        print('Done.')
+
+    # Write results.
+    if verbose:
+        print('Writing results....')
+    if not os.path.exists(folders.LOGS_PATH):
+        os.mkdir(folders.LOGS_PATH)
+    logs_path = os.path.join(folders.LOGS_PATH, 'book_net')
+    if not os.path.exists(logs_path):
+        os.mkdir(logs_path)
+    with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+        for category_i, category in enumerate(categories):
+            fd.write('\n`{}`'.format(category))
+            evaluation.print_metrics(Y_test[category_i], Y_preds[category_i])
+    if verbose:
+        print('Done.')
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        raise ValueError('Usage: <epochs> [verbose]')
-    epochs = int(sys.argv[1])
-    if len(sys.argv) > 2:
-        verbose = int(sys.argv[2])
+    if len(sys.argv) < 3 or len(sys.argv) > 4:
+        raise ValueError('Usage: <steps_per_epoch> <epochs> [verbose]')
+    steps_per_epoch = int(sys.argv[1])
+    epochs = int(sys.argv[2])
+    if len(sys.argv) > 3:
+        verbose = int(sys.argv[3])
     else:
         verbose = 0
     main()
