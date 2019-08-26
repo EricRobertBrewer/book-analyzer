@@ -225,13 +225,14 @@ def main():
     if verbose:
         print('Retrieving texts...')
     min_len, max_len = 256, 4096
+    min_tokens = 6
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'tokens'},
                           subset_ratio=1,
                           subset_seed=1,
                           min_len=min_len,
                           max_len=max_len,
-                          min_tokens=6)
+                          min_tokens=min_tokens)
     text_paragraph_tokens, _ = zip(*inputs['tokens'])
     if verbose:
         print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
@@ -254,10 +255,12 @@ def main():
     if verbose:
         print('Converting texts to sequences...')
     n_tokens = 128  # The maximum number of tokens to process in each paragraph.
+    padding = 'pre'
+    truncating = 'pre'
     X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in paragraph_tokens]),
                                 maxlen=n_tokens,
-                                padding='pre',
-                                truncating='pre'))
+                                padding=padding,
+                                truncating=truncating))
          for paragraph_tokens in text_paragraph_tokens]
     if verbose:
         print('Done.')
@@ -265,7 +268,8 @@ def main():
     # Load embedding.
     if verbose:
         print('Loading embedding matrix...')
-    embedding_matrix = load_embeddings.get_embedding(tokenizer, folders.EMBEDDING_GLOVE_100_PATH, max_words)
+    embedding_path = folders.EMBEDDING_GLOVE_100_PATH
+    embedding_matrix = load_embeddings.get_embedding(tokenizer, embedding_path, max_words)
     if verbose:
         print('Done.')
 
@@ -365,6 +369,27 @@ def main():
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
     with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+        fd.write('HYPERPARAMETERS\n')
+        fd.write('min_len={:d}\n'.format(min_len))
+        fd.write('max_len={:d}\n'.format(max_len))
+        fd.write('min_tokens={:d}\n'.format(min_tokens))
+        fd.write('max_words={:d}\n'.format(max_words))
+        fd.write('n_tokens={:d}\n'.format(n_tokens))
+        fd.write('padding={}\n'.format(padding))
+        fd.write('truncating={}\n'.format(truncating))
+        fd.write('embedding_path={}\n'.format(embedding_path))
+        fd.write('embedding_trainable={}\n'.format(embedding_trainable))
+        fd.write('word_rnn={}\n'.format(word_rnn.__name__))
+        fd.write('word_rnn_units={:d}\n'.format(word_rnn_units))
+        fd.write('word_dense_units={:d}\n'.format(word_dense_units))
+        fd.write('book_dense_units={:d}\n'.format(book_dense_units))
+        fd.write('is_ordinal={}\n'.format(is_ordinal))
+        fd.write('test_size={:.2f}\n'.format(test_size))
+        fd.write('test_random_state={:d}\n'.format(test_random_state))
+        fd.write('val_size={:.2f}\n'.format(val_size))
+        fd.write('val_random_state={:d}\n'.format(val_random_state))
+        fd.write('optimizer={}\n'.format(optimizer.__class__.__name__))
+        fd.write('\nRESULTS')
         for category_i, category in enumerate(categories):
             fd.write('\n`{}`'.format(category))
             evaluation.print_metrics(Y_test[category_i], Y_preds[category_i])
