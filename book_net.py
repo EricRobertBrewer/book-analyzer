@@ -216,7 +216,7 @@ class SingleInstanceBatchGenerator(Sequence):
 
 def main():
     stamp = int(time.time())
-    print('Stamp: {:d}'.format(stamp))
+    print('Time stamp: {:d}'.format(stamp))
 
     # Load data.
     if verbose:
@@ -274,7 +274,7 @@ def main():
     word_rnn = GRU
     word_rnn_units = 128
     word_dense_units = 64
-    book_dense_units = 1024
+    book_dense_units = 512
     is_ordinal = True
     model = create_model(
         n_classes,
@@ -293,10 +293,15 @@ def main():
     if verbose:
         print('\nSplitting data into training and test sets...')
     test_size = .25  # b
-    random_state = 1
+    test_random_state = 1
+    val_size = .1  # v
+    val_random_state = 1
     YT = Y.transpose()  # (n, C)
-    X_train, X_test, YT_train, YT_test = train_test_split(X, YT, test_size=test_size, random_state=random_state)
-    Y_train, Y_test = YT_train.transpose(), YT_test.transpose()  # (C, (1 - b) * n), (C, b * n)
+    X_train, X_test, YT_train, YT_test = train_test_split(X, YT, test_size=test_size, random_state=test_random_state)
+    X_train, X_val, YT_train, YT_val = train_test_split(X_train, YT_train, test_size=val_size, random_state=val_random_state)
+    Y_train = YT_train.transpose()  # (C, n * (1 - b) * (1 - v))
+    Y_val = YT_val.transpose()  # (C, n * (1 - b) * v)
+    Y_test = YT_test.transpose()  # (C, n * b)
     if verbose:
         print('Done.')
 
@@ -314,9 +319,12 @@ def main():
                   metrics=['binary_accuracy'])
     Y_train_ordinal = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
     train_generator = SingleInstanceBatchGenerator(X_train, Y_train_ordinal, shuffle=True)
+    Y_val_ordinal = [ordinal.to_multi_hot_ordinal(Y_val[i], n_classes=n) for i, n in enumerate(n_classes)]
+    val_generator = SingleInstanceBatchGenerator(X_val, Y_val_ordinal, shuffle=False)
     history = model.fit_generator(train_generator,
                                   epochs=epochs,
                                   verbose=verbose,
+                                  validation_data=val_generator,
                                   class_weight=class_weights)
 
     # Save the history to visualize loss over time.
