@@ -392,7 +392,7 @@ def main():
         fd.write('\nRESULTS')
         for category_i, category in enumerate(categories):
             fd.write('\n`{}`'.format(category))
-            evaluation.print_metrics(Y_test[category_i], Y_preds[category_i])
+            evaluation.print_metrics(Y_test[category_i], Y_preds[category_i], fd=fd)
     if verbose:
         print('Done.')
 
