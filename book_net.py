@@ -355,7 +355,7 @@ def main():
     if verbose:
         print('Predicting test instances...')
     test_generator = SingleInstanceBatchGenerator(X_test, Y_train_ordinal, shuffle=False)
-    Y_preds_ordinal = model.predict_generator(test_generator, steps=len(test_generator))
+    Y_preds_ordinal = model.predict_generator(test_generator)
     Y_preds = [ordinal.from_multi_hot_ordinal(y_ordinal, threshold=.5) for y_ordinal in Y_preds_ordinal]
     if verbose:
         print('Done.')
@@ -369,7 +369,10 @@ def main():
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
     with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
-        fd.write('HYPERPARAMETERS\n')
+        fd.write('PARAMETERS\n')
+        fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
+        fd.write('epochs={:d}\n'.format(epochs))
+        fd.write('\nHYPERPARAMETERS\n')
         fd.write('min_len={:d}\n'.format(min_len))
         fd.write('max_len={:d}\n'.format(max_len))
         fd.write('min_tokens={:d}\n'.format(min_tokens))
@@ -391,7 +394,7 @@ def main():
         fd.write('optimizer={}\n'.format(optimizer.__class__.__name__))
         fd.write('\nRESULTS')
         for category_i, category in enumerate(categories):
-            fd.write('\n`{}`'.format(category))
+            fd.write('\n`{}`\n'.format(category))
             confusion, metrics = evaluation.get_metrics(Y_test[category_i], Y_preds[category_i])
             fd.write(np.array2string(confusion))
             fd.write('\n')
