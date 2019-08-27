@@ -392,7 +392,12 @@ def main():
         fd.write('\nRESULTS')
         for category_i, category in enumerate(categories):
             fd.write('\n`{}`'.format(category))
-            evaluation.print_metrics(Y_test[category_i], Y_preds[category_i], fd=fd)
+            confusion, metrics = evaluation.get_metrics(Y_test[category_i], Y_preds[category_i])
+            fd.write(np.array2string(confusion))
+            fd.write('\n')
+            for name, value in metrics:
+                fd.write('{}={:.4f}\n'.format(name, value))
+
     if verbose:
         print('Done.')
 
