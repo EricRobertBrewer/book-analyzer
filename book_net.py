@@ -401,6 +401,8 @@ if __name__ == '__main__':
     if len(sys.argv) < 3 or len(sys.argv) > 4:
         raise ValueError('Usage: <steps_per_epoch> <epochs> [verbose]')
     steps_per_epoch = int(sys.argv[1])
+    if steps_per_epoch == -1:
+        steps_per_epoch = None
     epochs = int(sys.argv[2])
     if len(sys.argv) > 3:
         verbose = int(sys.argv[3])
