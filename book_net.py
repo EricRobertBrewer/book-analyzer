@@ -236,12 +236,15 @@ def main():
 
     # Load data.
     print('Retrieving texts...')
-    min_len, max_len = 256, 4096
+    subset_ratio = 1.0
+    subset_seed = 1
+    min_len = 256
+    max_len = 4096
     min_tokens = 6
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'tokens'},
-                          subset_ratio=1,
-                          subset_seed=1,
+                          subset_ratio=subset_ratio,
+                          subset_seed=subset_seed,
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens)
@@ -387,6 +390,8 @@ def main():
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
         fd.write('\nText\n')
+        fd.write('subset_ratio={:.3f}\n'.format(subset_ratio))
+        fd.write('subset_seed={:d}\n'.format(subset_seed))
         fd.write('min_len={:d}\n'.format(min_len))
         fd.write('max_len={:d}\n'.format(max_len))
         fd.write('min_tokens={:d}\n'.format(min_tokens))
