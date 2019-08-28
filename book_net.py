@@ -153,7 +153,7 @@ def create_model(
         word_rnn_dropout=.1,
         word_rnn_recurrent_dropout=.1,
         word_dense_units=64,
-        word_dense_activation='relu',
+        word_dense_activation='linear',
         word_dense_l2=.01,
         book_dense_units=512,
         book_dense_activation='relu',
@@ -294,7 +294,7 @@ def main():
     word_rnn_dropout = .1
     word_rnn_recurrent_dropout = .1
     word_dense_units = 64
-    word_dense_activation = 'relu'
+    word_dense_activation = 'linear'
     word_dense_l2 = .01
     book_dense_units = 512
     book_dense_activation = 'relu'
