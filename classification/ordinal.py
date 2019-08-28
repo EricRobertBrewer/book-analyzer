@@ -31,23 +31,28 @@ def get_simple_ordinal_proba(get_classifier, get_base, size, X_train, X_test, y_
     return p
 
 
+def _to_multi_hot_ordinal(value, n_classes):
+    return [1 if value > i else 0 for i in range(n_classes - 1)]
+
+
 def to_multi_hot_ordinal(y, n_classes=None):
     """
     See `http://orca.st.usm.edu/~zwang/files/rank.pdf`.
     """
     if n_classes is None:
         n_classes = max(y) + 1
-    return np.array([[1 if value > i else 0 for i in range(n_classes - 1)] for value in y])
+    return np.array([_to_multi_hot_ordinal(value, n_classes) for value in y])
 
 
-def from_multi_hot_ordinal(y_ordinal, threshold=0.5):
-    y = []
-    for values in y_ordinal:
-        i = 0
-        while i < len(values) and values[i] > threshold:
-            i += 1
-        y.append(i)
-    return np.array(y)
+def _from_multi_hot_ordinal(value_ordinal, threshold=.5):
+    i = 0
+    while i < len(value_ordinal) and value_ordinal[i] > threshold:
+        i += 1
+    return i
+
+
+def from_multi_hot_ordinal(y_ordinal, threshold=.5):
+    return np.array([_from_multi_hot_ordinal(value_ordinal, threshold) for value_ordinal in y_ordinal])
 
 
 def main():

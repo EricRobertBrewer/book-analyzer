@@ -11,7 +11,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.utils import Sequence
+from tensorflow.keras.utils import Sequence, to_categorical
 from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal
@@ -204,9 +204,12 @@ class SingleInstanceBatchGenerator(Sequence):
     """
     def __init__(self, X, Y, shuffle=True):
         super(SingleInstanceBatchGenerator, self).__init__()
-        self.X = [np.array([x]) for x in X]  # `fit_generator` wants each `x` to be a NumPy array, not a list.
-        # Transform Y from shape (C, n, c-1) to (n, C, 1, c-1) where `C` is the number of categories,
-        # `n` is the number of instances, and `c` is the number of classes for the current category.
+        # `fit_generator` wants each `x` to be a NumPy array, not a list.
+        self.X = [np.array([x]) for x in X]
+        # Transform Y from shape (C, n, c-1) to (n, C, 1, c-1) if Y is ordinal,
+        # or from shape (C, n, c) to (n, C, 1, c) if Y is not ordinal,
+        # where `C` is the number of categories, `n` is the number of instances,
+        # and `c` is the number of classes for the current category.
         self.Y = [[np.array([y[i]]) for y in Y]
                   for i in range(len(X))]
         self.indices = np.arange(len(X))
@@ -333,27 +336,41 @@ def main():
     Y_test = YT_test.transpose()  # (C, n * b)
     print('Done.')
 
-    # Weight classes inversely proportional to their frequency.
-    class_weights = []
-    for category_i, y_train in enumerate(Y_train):
-        bincount = np.bincount(y_train, minlength=n_classes[category_i])
-        class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
-        class_weights.append(class_weight)
-
     # Train.
     optimizer = Adam()
-    model.compile(optimizer,
-                  loss='binary_crossentropy',
-                  metrics=['binary_accuracy'])
-    Y_train_ordinal = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
-    train_generator = SingleInstanceBatchGenerator(X_train, Y_train_ordinal, shuffle=True)
-    Y_val_ordinal = [ordinal.to_multi_hot_ordinal(Y_val[i], n_classes=n) for i, n in enumerate(n_classes)]
-    val_generator = SingleInstanceBatchGenerator(X_val, Y_val_ordinal, shuffle=False)
+    if is_ordinal:
+        loss = 'binary_crossentropy'
+        metric = 'binary_accuracy'
+    else:
+        loss = 'categorical_crossentropy'
+        metric = 'categorical_accuracy'
+    model.compile(optimizer, loss=loss, metrics=[metric])
+    if is_ordinal:
+        Y_train = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
+        Y_val = [ordinal.to_multi_hot_ordinal(Y_val[i], n_classes=n) for i, n in enumerate(n_classes)]
+        category_class_weights = []  # [[dict]]
+        for category_i, y_train in enumerate(Y_train):
+            class_weights = []
+            for i in range(y_train.shape[1]):
+                ones_count = sum(y_train[:, i] == 1)
+                class_weight = {0: 1 / (len(y_train) - ones_count + 1), 1: 1 / (ones_count + 1)}
+                class_weights.append(class_weight)
+            category_class_weights.append(class_weights)
+    else:
+        category_class_weights = []  # [dict]
+        for category_i, y_train in enumerate(Y_train):
+            bincount = np.bincount(y_train, minlength=n_classes[category_i])
+            class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
+            category_class_weights.append(class_weight)
+        Y_train = [to_categorical(Y_train[i], num_classes=n) for i, n in enumerate(n_classes)]
+        Y_val = [to_categorical(Y_val[i], num_classes=n) for i, n in enumerate(n_classes)]
+    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=True)
+    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
                                   validation_data=val_generator,
-                                  class_weight=class_weights)
+                                  class_weight=category_class_weights)
 
     # Save the history to visualize loss over time.
     print('Saving training history...')
@@ -370,9 +387,12 @@ def main():
 
     # Predict test instances.
     print('Predicting test instances...')
-    test_generator = SingleInstanceBatchGenerator(X_test, Y_train_ordinal, shuffle=False)
-    Y_preds_ordinal = model.predict_generator(test_generator)
-    Y_preds = [ordinal.from_multi_hot_ordinal(y_ordinal, threshold=.5) for y_ordinal in Y_preds_ordinal]
+    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)  # Y_test is not used here.
+    Y_preds = model.predict_generator(test_generator)
+    if is_ordinal:
+        Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
+    else:
+        Y_preds = [np.argmax(y, axis=1) for y in Y_preds]
     print('Done.')
 
     # Write results.
@@ -385,7 +405,7 @@ def main():
     with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
         if note is not None:
             fd.write('Note: {}\n\n'.format(note))
-        fd.write('PARAMETERS\n')
+        fd.write('PARAMETERS\n\n')
         fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
@@ -398,10 +418,10 @@ def main():
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
         fd.write('n_tokens={:d}\n'.format(n_tokens))
-        fd.write('padding={}\n'.format(padding))
-        fd.write('truncating={}\n'.format(truncating))
+        fd.write('padding=\'{}\'\n'.format(padding))
+        fd.write('truncating=\'{}\'\n'.format(truncating))
         fd.write('\nWord Embedding\n')
-        fd.write('embedding_path={}\n'.format(embedding_path))
+        fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
         fd.write('word_rnn={}\n'.format(word_rnn.__name__))
@@ -410,10 +430,10 @@ def main():
         fd.write('word_rnn_dropout={:.1f}\n'.format(word_rnn_dropout))
         fd.write('word_rnn_recurrent_dropout={:.1f}\n'.format(word_rnn_recurrent_dropout))
         fd.write('word_dense_units={:d}\n'.format(word_dense_units))
-        fd.write('word_dense_activation={}\n'.format(word_dense_activation))
+        fd.write('word_dense_activation=\'{}\'\n'.format(word_dense_activation))
         fd.write('word_dense_l2={:.3f}\n'.format(word_dense_l2))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
-        fd.write('book_dense_activation={}\n'.format(book_dense_activation))
+        fd.write('book_dense_activation=\'{}\'\n'.format(book_dense_activation))
         fd.write('book_dense_l2={:.3f}\n'.format(book_dense_l2))
         fd.write('book_dropout={:.1f}\n'.format(book_dropout))
         fd.write('is_ordinal={}\n'.format(is_ordinal))
@@ -423,7 +443,13 @@ def main():
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('optimizer={}\n'.format(optimizer.__class__.__name__))
-        fd.write('\nRESULTS')
+        fd.write('loss=\'{}\'\n'.format(loss))
+        fd.write('metric=\'{}\'\n'.format(metric))
+        fd.write('\nRESULTS\n\n')
+        fd.write('data size: {:d}\n'.format(len(text_paragraph_tokens)))
+        fd.write('train size: {:d}\n'.format(len(X_train)))
+        fd.write('validation size: {:d}\n'.format(len(X_val)))
+        fd.write('test size: {:d}\n'.format(len(X_test)))
         for category_i, category in enumerate(categories):
             fd.write('\n`{}`\n'.format(category))
             confusion, metrics = evaluation.get_metrics(Y_test[category_i], Y_preds[category_i])
