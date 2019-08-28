@@ -330,7 +330,7 @@ def main():
     Y_val_ordinal = [ordinal.to_multi_hot_ordinal(Y_val[i], n_classes=n) for i, n in enumerate(n_classes)]
     val_generator = SingleInstanceBatchGenerator(X_val, Y_val_ordinal, shuffle=False)
     history = model.fit_generator(train_generator,
-                                  steps_per_epoch=steps_per_epoch,
+                                  steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
                                   verbose=verbose,
                                   validation_data=val_generator,
@@ -409,8 +409,6 @@ if __name__ == '__main__':
     if len(sys.argv) < 3 or len(sys.argv) > 4:
         raise ValueError('Usage: <steps_per_epoch> <epochs> [verbose]')
     steps_per_epoch = int(sys.argv[1])
-    if steps_per_epoch == -1:
-        steps_per_epoch = None
     epochs = int(sys.argv[2])
     if len(sys.argv) > 3:
         verbose = int(sys.argv[3])
