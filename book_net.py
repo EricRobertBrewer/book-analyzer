@@ -220,10 +220,11 @@ class SingleInstanceBatchGenerator(Sequence):
 def main():
     stamp = int(time.time())
     print('Time stamp: {:d}'.format(stamp))
+    if note is not None:
+        print('Note: {}'.format(note))
 
     # Load data.
-    if verbose:
-        print('Retrieving texts...')
+    print('Retrieving texts...')
     min_len, max_len = 256, 4096
     min_tokens = 6
     inputs, Y, categories, category_levels = \
@@ -234,12 +235,10 @@ def main():
                           max_len=max_len,
                           min_tokens=min_tokens)
     text_paragraph_tokens, _ = zip(*inputs['tokens'])
-    if verbose:
-        print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
+    print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
 
     # Tokenize.
-    if verbose:
-        print('Tokenizing...')
+    print('Tokenizing...')
     max_words = 8192  # The maximum size of the vocabulary.
     split = '\t'
     tokenizer = Tokenizer(num_words=max_words, split=split)
@@ -248,12 +247,10 @@ def main():
         for tokens in paragraph_tokens:
             all_sentences.append(split.join(tokens))
     tokenizer.fit_on_texts(all_sentences)
-    if verbose:
-        print('Done.')
+    print('Done.')
 
     # Convert to sequences.
-    if verbose:
-        print('Converting texts to sequences...')
+    print('Converting texts to sequences...')
     n_tokens = 128  # The maximum number of tokens to process in each paragraph.
     padding = 'pre'
     truncating = 'pre'
@@ -262,20 +259,16 @@ def main():
                                 padding=padding,
                                 truncating=truncating))
          for paragraph_tokens in text_paragraph_tokens]
-    if verbose:
-        print('Done.')
+    print('Done.')
 
     # Load embedding.
-    if verbose:
-        print('Loading embedding matrix...')
+    print('Loading embedding matrix...')
     embedding_path = folders.EMBEDDING_GLOVE_100_PATH
     embedding_matrix = load_embeddings.get_embedding(tokenizer, embedding_path, max_words)
-    if verbose:
-        print('Done.')
+    print('Done.')
 
     # Create model.
-    if verbose:
-        print('Creating model...')
+    print('Creating model...')
     n_classes = [len(levels) for levels in category_levels]
     embedding_trainable = False
     word_rnn = GRU
@@ -294,12 +287,10 @@ def main():
         book_dense_units=book_dense_units,
         is_ordinal=is_ordinal,
         category_names=categories)
-    if verbose:
-        print(model.summary())
+    print(model.summary())
 
     # Split data set.
-    if verbose:
-        print('Splitting data into training and test sets...')
+    print('Splitting data into training and test sets...')
     test_size = .25  # b
     test_random_state = 1
     val_size = .1  # v
@@ -310,8 +301,7 @@ def main():
     Y_train = YT_train.transpose()  # (C, n * (1 - b) * (1 - v))
     Y_val = YT_val.transpose()  # (C, n * (1 - b) * v)
     Y_test = YT_test.transpose()  # (C, n * b)
-    if verbose:
-        print('Done.')
+    print('Done.')
 
     # Weight classes inversely proportional to their frequency.
     class_weights = []
@@ -332,13 +322,11 @@ def main():
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
-                                  verbose=verbose,
                                   validation_data=val_generator,
                                   class_weight=class_weights)
 
     # Save the history to visualize loss over time.
-    if verbose:
-        print('Saving training history...')
+    print('Saving training history...')
     if not os.path.exists(folders.HISTORY_PATH):
         os.mkdir(folders.HISTORY_PATH)
     history_path = os.path.join(folders.HISTORY_PATH, 'book_net')
@@ -348,27 +336,25 @@ def main():
         for key in history.history.keys():
             values = history.history.get(key)
             fd.write('{} {}\n'.format(key, ' '.join(str(value) for value in values)))
-    if verbose:
-        print('Done.')
+    print('Done.')
 
     # Predict test instances.
-    if verbose:
-        print('Predicting test instances...')
+    print('Predicting test instances...')
     test_generator = SingleInstanceBatchGenerator(X_test, Y_train_ordinal, shuffle=False)
     Y_preds_ordinal = model.predict_generator(test_generator)
     Y_preds = [ordinal.from_multi_hot_ordinal(y_ordinal, threshold=.5) for y_ordinal in Y_preds_ordinal]
-    if verbose:
-        print('Done.')
+    print('Done.')
 
     # Write results.
-    if verbose:
-        print('Writing results....')
+    print('Writing results....')
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
     logs_path = os.path.join(folders.LOGS_PATH, 'book_net')
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
     with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+        if note is not None:
+            fd.write('Note: {}\n\n'.format(note))
         fd.write('PARAMETERS\n')
         fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
         fd.write('epochs={:d}\n'.format(epochs))
@@ -400,18 +386,15 @@ def main():
             fd.write('\n')
             for name, value in metrics:
                 fd.write('{}={:.4f}\n'.format(name, value))
-
-    if verbose:
-        print('Done.')
+    print('Done.')
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 3 or len(sys.argv) > 4:
-        raise ValueError('Usage: <steps_per_epoch> <epochs> [verbose]')
+        raise ValueError('Usage: <steps_per_epoch> <epochs> [note]')
     steps_per_epoch = int(sys.argv[1])
     epochs = int(sys.argv[2])
+    note = None
     if len(sys.argv) > 3:
-        verbose = int(sys.argv[3])
-    else:
-        verbose = 0
+        note = sys.argv[3]
     main()
