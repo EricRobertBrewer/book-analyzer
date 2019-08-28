@@ -143,44 +143,55 @@ class AttentionWithContext(Layer):
 
 def create_model(
         n_classes,
+        category_names,
         n_tokens,
         embedding_matrix,
         embedding_trainable=False,
         word_rnn=GRU,
         word_rnn_units=128,
+        word_rnn_l2=.01,
+        word_rnn_dropout=.1,
+        word_rnn_recurrent_dropout=.1,
         word_dense_units=64,
+        word_dense_activation='relu',
+        word_dense_l2=.01,
         book_dense_units=512,
-        is_ordinal=True,
-        category_names=None,
-        dropout_regularizer=.5,
-        l2_regularizer=None
+        book_dense_activation='relu',
+        book_dense_l2=.01,
+        book_dropout=.5,
+        is_ordinal=True
 ):
-    if category_names is None:
-        category_names = ['dense_{:d}'.format(i + 2) for i in range(len(n_classes))]
-    if l2_regularizer is None:
-        kernel_regularizer = None
-    else:
-        kernel_regularizer = regularizers.l2(l2_regularizer)
-
     # Word encoder.
     input_w = Input(shape=(n_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
-    x_w = Embedding(max_words, d, weights=[embedding_matrix], trainable=embedding_trainable)(input_w)  # (t, d)
-    x_w = Bidirectional(word_rnn(word_rnn_units, return_sequences=True, kernel_regularizer=kernel_regularizer))(x_w)  # (t, h_w)
-    x_w = TimeDistributed(Dense(word_dense_units, kernel_regularizer=kernel_regularizer))(x_w)  # (2t, c_w)
+    x_w = Embedding(max_words,
+                    d,
+                    weights=[embedding_matrix],
+                    trainable=embedding_trainable)(input_w)  # (t, d)
+    x_w = Bidirectional(word_rnn(word_rnn_units,
+                                 kernel_regularizer=regularizers.l2(word_rnn_l2),
+                                 dropout=word_rnn_dropout,
+                                 recurrent_dropout=word_rnn_recurrent_dropout,
+                                 return_sequences=True))(x_w)  # (t, h_w)
+    x_w = TimeDistributed(Dense(word_dense_units,
+                                activation=word_dense_activation,
+                                kernel_regularizer=regularizers.l2(word_dense_l2)))(x_w)  # (2t, c_w)
     x_w = AttentionWithContext()(x_w)  # (c_w)
     word_encoder = Model(input_w, x_w)
 
-    # Consider maximum and average signals among all paragraphs.
+    # Consider maximum and average signals among all paragraphs of books.
     input_p = Input(shape=(None, n_tokens), dtype='float32')  # (s, t); s is not constant!
     x_p = TimeDistributed(word_encoder)(input_p)  # (s, c_w)
     g_max = GlobalMaxPooling1D()(x_p)  # (c_w)
     g_avg = GlobalAveragePooling1D()(x_p)  # (c_w)
     x_p = Concatenate()([g_max, g_avg])  # (2c_w)
-    x_p = Dense(book_dense_units, kernel_regularizer=kernel_regularizer)(x_p)  # (c_b)
-    x_p = Dropout(dropout_regularizer)(x_p)  # (c_b)
-    activation = 'sigmoid' if is_ordinal else 'softmax'
-    outputs = [Dense(n - 1 if is_ordinal else n, activation=activation, name=category_names[i])(x_p)
+    x_p = Dense(book_dense_units,
+                activation=book_dense_activation,
+                kernel_regularizer=regularizers.l2(book_dense_l2))(x_p)  # (c_b)
+    x_p = Dropout(book_dropout)(x_p)  # (c_b)
+    outputs = [Dense(n - 1 if is_ordinal else n,
+                     activation='sigmoid' if is_ordinal else 'softmax',
+                     name=category_names[i])(x_p)
                for i, n in enumerate(n_classes)]
     model = Model(input_p, outputs)
     return model
@@ -273,20 +284,36 @@ def main():
     embedding_trainable = False
     word_rnn = GRU
     word_rnn_units = 128
+    word_rnn_l2 = .01
+    word_rnn_dropout = .1
+    word_rnn_recurrent_dropout = .1
     word_dense_units = 64
+    word_dense_activation = 'relu'
+    word_dense_l2 = .01
     book_dense_units = 512
+    book_dense_activation = 'relu'
+    book_dense_l2 = .01
+    book_dropout = .5
     is_ordinal = True
     model = create_model(
         n_classes,
+        categories,
         n_tokens,
         embedding_matrix,
         embedding_trainable=embedding_trainable,
         word_rnn=word_rnn,
         word_rnn_units=word_rnn_units,
+        word_rnn_l2=word_rnn_l2,
+        word_rnn_dropout=word_rnn_dropout,
+        word_rnn_recurrent_dropout=word_rnn_recurrent_dropout,
         word_dense_units=word_dense_units,
+        word_dense_activation=word_dense_activation,
+        word_dense_l2=word_dense_l2,
         book_dense_units=book_dense_units,
-        is_ordinal=is_ordinal,
-        category_names=categories)
+        book_dense_activation=book_dense_activation,
+        book_dense_l2=book_dense_l2,
+        book_dropout=book_dropout,
+        is_ordinal=is_ordinal)
     print(model.summary())
 
     # Split data set.
@@ -359,20 +386,33 @@ def main():
         fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
+        fd.write('\nText\n')
         fd.write('min_len={:d}\n'.format(min_len))
         fd.write('max_len={:d}\n'.format(max_len))
         fd.write('min_tokens={:d}\n'.format(min_tokens))
+        fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
         fd.write('n_tokens={:d}\n'.format(n_tokens))
         fd.write('padding={}\n'.format(padding))
         fd.write('truncating={}\n'.format(truncating))
+        fd.write('\nWord Embedding\n')
         fd.write('embedding_path={}\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
+        fd.write('\nModel\n')
         fd.write('word_rnn={}\n'.format(word_rnn.__name__))
         fd.write('word_rnn_units={:d}\n'.format(word_rnn_units))
+        fd.write('word_rnn_l2={:.3f}\n'.format(word_rnn_l2))
+        fd.write('word_rnn_dropout={:.1f}\n'.format(word_rnn_dropout))
+        fd.write('word_rnn_recurrent_dropout={:.1f}\n'.format(word_rnn_recurrent_dropout))
         fd.write('word_dense_units={:d}\n'.format(word_dense_units))
+        fd.write('word_dense_activation={}\n'.format(word_dense_activation))
+        fd.write('word_dense_l2={:.3f}\n'.format(word_dense_l2))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
+        fd.write('book_dense_activation={}\n'.format(book_dense_activation))
+        fd.write('book_dense_l2={:.3f}\n'.format(book_dense_l2))
+        fd.write('book_dropout={:.1f}\n'.format(book_dropout))
         fd.write('is_ordinal={}\n'.format(is_ordinal))
+        fd.write('\nTraining\n')
         fd.write('test_size={:.2f}\n'.format(test_size))
         fd.write('test_random_state={:d}\n'.format(test_random_state))
         fd.write('val_size={:.2f}\n'.format(val_size))
