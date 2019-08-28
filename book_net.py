@@ -232,7 +232,10 @@ class SingleInstanceBatchGenerator(Sequence):
 
 
 def main():
-    stamp = int(time.time())
+    if 'SLURM_JOB_ID' in os.environ:
+        stamp = int(os.environ['SLURM_JOB_ID'])
+    else:
+        stamp = int(time.time())
     print('Time stamp: {:d}'.format(stamp))
     if note is not None:
         print('Note: {}'.format(note))
