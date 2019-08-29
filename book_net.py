@@ -329,10 +329,11 @@ def main():
         book_dense_l2=book_dense_l2,
         book_dropout=book_dropout,
         is_ordinal=is_ordinal)
-    print(model.summary())
+    print('Done.')
 
     # Compile.
-    optimizer = Adam()
+    lr = .001
+    optimizer = Adam(lr=lr)
     if is_ordinal:
         loss = 'binary_crossentropy'
         metric = 'binary_accuracy'
@@ -451,14 +452,16 @@ def main():
         fd.write('book_dense_l2={:.3f}\n'.format(book_dense_l2))
         fd.write('book_dropout={:.1f}\n'.format(book_dropout))
         fd.write('is_ordinal={}\n'.format(is_ordinal))
+        model.summary(print_fn=lambda x: fd.write('{}\n'.format(x)))
         fd.write('\nTraining\n')
+        fd.write('optimizer={}\n'.format(optimizer.__class__.__name__))
+        fd.write('lr={:.4f}\n'.format(lr))
+        fd.write('loss=\'{}\'\n'.format(loss))
+        fd.write('metric=\'{}\'\n'.format(metric))
         fd.write('test_size={:.2f}\n'.format(test_size))
         fd.write('test_random_state={:d}\n'.format(test_random_state))
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
-        fd.write('optimizer={}\n'.format(optimizer.__class__.__name__))
-        fd.write('loss=\'{}\'\n'.format(loss))
-        fd.write('metric=\'{}\'\n'.format(metric))
         fd.write('\nRESULTS\n\n')
         fd.write('data size: {:d}\n'.format(len(text_paragraph_tokens)))
         fd.write('train size: {:d}\n'.format(len(X_train)))
