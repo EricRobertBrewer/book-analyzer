@@ -143,7 +143,7 @@ class AttentionWithContext(Layer):
 
 def create_model(
         n_classes,
-        category_names,
+        output_names,
         n_tokens,
         embedding_matrix,
         embedding_trainable=False,
@@ -182,16 +182,16 @@ def create_model(
     # Consider maximum and average signals among all paragraphs of books.
     input_p = Input(shape=(None, n_tokens), dtype='float32')  # (s, t); s is not constant!
     x_p = TimeDistributed(word_encoder)(input_p)  # (s, c_w)
-    g_max = GlobalMaxPooling1D()(x_p)  # (c_w)
-    g_avg = GlobalAveragePooling1D()(x_p)  # (c_w)
-    x_p = Concatenate()([g_max, g_avg])  # (2c_w)
+    g_max_p = GlobalMaxPooling1D()(x_p)  # (c_w)
+    g_avg_p = GlobalAveragePooling1D()(x_p)  # (c_w)
+    x_p = Concatenate()([g_max_p, g_avg_p])  # (2c_w)
     x_p = Dense(book_dense_units,
                 activation=book_dense_activation,
                 kernel_regularizer=regularizers.l2(book_dense_l2))(x_p)  # (c_b)
     x_p = Dropout(book_dropout)(x_p)  # (c_b)
     outputs = [Dense(n - 1 if is_ordinal else n,
                      activation='sigmoid' if is_ordinal else 'softmax',
-                     name=category_names[i])(x_p)
+                     name=output_names[i])(x_p)
                for i, n in enumerate(n_classes)]
     model = Model(input_p, outputs)
     return model
@@ -202,7 +202,7 @@ class SingleInstanceBatchGenerator(Sequence):
     When fitting the model, the batch size must be 1 to accommodate variable numbers of paragraphs per text.
     See `https://datascience.stackexchange.com/a/48814/66450`.
     """
-    def __init__(self, X, Y, shuffle=True):
+    def __init__(self, X, Y, sample_weights=None, shuffle=True):
         super(SingleInstanceBatchGenerator, self).__init__()
         # `fit_generator` wants each `x` to be a NumPy array, not a list.
         self.X = [np.array([x]) for x in X]
@@ -212,6 +212,9 @@ class SingleInstanceBatchGenerator(Sequence):
         # and `c` is the number of classes for the current category.
         self.Y = [[np.array([y[i]]) for y in Y]
                   for i in range(len(X))]
+        if sample_weights is not None:
+            self.sample_weights = [[np.array([sample_weight[i]]) for sample_weight in sample_weights]
+                                   for i in range(len(X))]
         self.indices = np.arange(len(X))
         self.shuffle = shuffle
         self.shuffle_indices()
@@ -221,6 +224,8 @@ class SingleInstanceBatchGenerator(Sequence):
 
     def __getitem__(self, index):
         i = self.indices[index]
+        if self.sample_weights is not None:
+            return self.X[i], self.Y[i], self.sample_weights[i]
         return self.X[i], self.Y[i]
 
     def on_epoch_end(self):
@@ -325,21 +330,7 @@ def main():
         is_ordinal=is_ordinal)
     print(model.summary())
 
-    # Split data set.
-    print('Splitting data into training and test sets...')
-    test_size = .25  # b
-    test_random_state = 1
-    val_size = .1  # v
-    val_random_state = 1
-    YT = Y.transpose()  # (n, C)
-    X_train, X_test, YT_train, YT_test = train_test_split(X, YT, test_size=test_size, random_state=test_random_state)
-    X_train, X_val, YT_train, YT_val = train_test_split(X_train, YT_train, test_size=val_size, random_state=val_random_state)
-    Y_train = YT_train.transpose()  # (C, n * (1 - b) * (1 - v))
-    Y_val = YT_val.transpose()  # (C, n * (1 - b) * v)
-    Y_test = YT_test.transpose()  # (C, n * b)
-    print('Done.')
-
-    # Train.
+    # Compile.
     optimizer = Adam()
     if is_ordinal:
         loss = 'binary_crossentropy'
@@ -348,32 +339,45 @@ def main():
         loss = 'categorical_crossentropy'
         metric = 'categorical_accuracy'
     model.compile(optimizer, loss=loss, metrics=[metric])
+
+    # Give each instance (sample) a weight that is inversely proportional to the frequency of its class.
+    sample_weights = np.zeros(Y.shape, dtype=np.float32)  # (C, n)
+    for category_i, y in enumerate(Y):
+        bincount = np.bincount(y, minlength=n_classes[category_i])
+        for j, value in enumerate(y):
+            sample_weights[category_i, j] = 1/(bincount[value] + 1)
+
+    # Split data set.
+    test_size = .25  # b
+    test_random_state = 1
+    val_size = .1  # v
+    val_random_state = 1
+    Y_T = Y.transpose()  # (n, C)
+    sample_weights_T = sample_weights.transpose()  # (n, C)
+    X_train, X_test, Y_train_T, Y_test_T, sample_weights_train_T, sample_weights_test_T = \
+        train_test_split(X, Y_T, sample_weights_T, test_size=test_size, random_state=test_random_state)
+    X_train, X_val, Y_train_T, Y_val_T, sample_weights_train_T, sample_weights_val_T = \
+        train_test_split(X_train, Y_train_T, sample_weights_train_T, test_size=val_size, random_state=val_random_state)
+    Y_train = Y_train_T.transpose()  # (C, n * (1 - b) * (1 - v))
+    Y_val = Y_val_T.transpose()  # (C, n * (1 - b) * v)
+    Y_test = Y_test_T.transpose()  # (C, n * b)
+    sample_weights_train = sample_weights_train_T.transpose()  # (C, n * (1 - b) * (1 - v))
+    sample_weights_val = sample_weights_val_T.transpose()  # (C, n * (1 - b) * v)
+    sample_weights_test = sample_weights_test_T.transpose()  # (C, n * b)
+
+    # Train.
     if is_ordinal:
         Y_train = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
         Y_val = [ordinal.to_multi_hot_ordinal(Y_val[i], n_classes=n) for i, n in enumerate(n_classes)]
-        category_class_weights = []  # [[dict]]
-        for category_i, y_train in enumerate(Y_train):
-            class_weights = []
-            for i in range(y_train.shape[1]):
-                ones_count = sum(y_train[:, i] == 1)
-                class_weight = {0: 1 / (len(y_train) - ones_count + 1), 1: 1 / (ones_count + 1)}
-                class_weights.append(class_weight)
-            category_class_weights.append(class_weights)
     else:
-        category_class_weights = []  # [dict]
-        for category_i, y_train in enumerate(Y_train):
-            bincount = np.bincount(y_train, minlength=n_classes[category_i])
-            class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
-            category_class_weights.append(class_weight)
         Y_train = [to_categorical(Y_train[i], num_classes=n) for i, n in enumerate(n_classes)]
         Y_val = [to_categorical(Y_val[i], num_classes=n) for i, n in enumerate(n_classes)]
-    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=True)
-    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
+    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, sample_weights=sample_weights_train, shuffle=True)
+    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, sample_weights=sample_weights_val, shuffle=False)
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
-                                  validation_data=val_generator,
-                                  class_weight=category_class_weights)
+                                  validation_data=val_generator)
 
     # Save the history to visualize loss over time.
     print('Saving training history...')
@@ -390,7 +394,7 @@ def main():
 
     # Predict test instances.
     print('Predicting test instances...')
-    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)  # Y_test is not used here.
+    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, sample_weights=sample_weights_test, shuffle=False)
     Y_preds = model.predict_generator(test_generator)
     if is_ordinal:
         Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
