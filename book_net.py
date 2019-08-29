@@ -237,10 +237,11 @@ class SingleInstanceBatchGenerator(Sequence):
 
 
 def main():
+    start_time = int(time.time())
     if 'SLURM_JOB_ID' in os.environ:
         stamp = int(os.environ['SLURM_JOB_ID'])
     else:
-        stamp = int(time.time())
+        stamp = start_time
     print('Time stamp: {:d}'.format(stamp))
     if note is not None:
         print('Note: {}'.format(note))
@@ -402,6 +403,12 @@ def main():
         Y_preds = [np.argmax(y, axis=1) for y in Y_preds]
     print('Done.')
 
+    # Calculate elapsed time.
+    end_time = int(time.time())
+    elapsed_s = end_time - start_time
+    elapsed_m, elapsed_s = elapsed_s // 60, elapsed_s % 60
+    elapsed_h, elapsed_m = elapsed_m // 60, elapsed_m % 60
+
     # Write results.
     print('Writing results....')
     if not os.path.exists(folders.LOGS_PATH):
@@ -457,6 +464,7 @@ def main():
         fd.write('train size: {:d}\n'.format(len(X_train)))
         fd.write('validation size: {:d}\n'.format(len(X_val)))
         fd.write('test size: {:d}\n'.format(len(X_test)))
+        fd.write('time elapsed: {:d}h {:d}m {:d}s\n'.format(elapsed_h, elapsed_m, elapsed_s))
         for category_i, category in enumerate(categories):
             fd.write('\n`{}`\n'.format(category))
             confusion, metrics = evaluation.get_metrics(Y_test[category_i], Y_preds[category_i])
