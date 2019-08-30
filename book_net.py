@@ -364,6 +364,11 @@ def main():
     sample_weights_train = sample_weights_train_T.transpose()  # (C, n * (1 - b) * (1 - v))
     sample_weights_val = sample_weights_val_T.transpose()  # (C, n * (1 - b) * v)
     sample_weights_test = sample_weights_test_T.transpose()  # (C, n * b)
+    use_sample_weights = True
+    if not use_sample_weights:
+        sample_weights_train = None
+        sample_weights_val = None
+        sample_weights_test = None
 
     # Train.
     if is_ordinal:
@@ -458,6 +463,7 @@ def main():
         fd.write('test_random_state={:d}\n'.format(test_random_state))
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
+        fd.write('use_sample_weights={}\n'.format(use_sample_weights))
         fd.write('\nRESULTS\n\n')
         fd.write('data size: {:d}\n'.format(len(text_paragraph_tokens)))
         fd.write('train size: {:d}\n'.format(len(X_train)))
