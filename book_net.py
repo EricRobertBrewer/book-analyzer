@@ -212,6 +212,8 @@ class SingleInstanceBatchGenerator(Sequence):
         if sample_weights is not None:
             self.sample_weights = [[np.array([sample_weight[i]]) for sample_weight in sample_weights]
                                    for i in range(len(X))]
+        else:
+            self.sample_weights = None
         self.indices = np.arange(len(X))
         self.shuffle = shuffle
         self.shuffle_indices()
