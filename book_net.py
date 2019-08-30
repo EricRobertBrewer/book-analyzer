@@ -151,8 +151,6 @@ def create_model(
         word_rnn=GRU,
         word_rnn_units=128,
         word_rnn_l2=.01,
-        word_rnn_dropout=.1,
-        word_rnn_recurrent_dropout=.1,
         word_dense_units=64,
         word_dense_activation='linear',
         word_dense_l2=.01,
@@ -171,8 +169,6 @@ def create_model(
                     trainable=embedding_trainable)(input_w)  # (t, d)
     x_w = Bidirectional(word_rnn(word_rnn_units,
                                  kernel_regularizer=regularizers.l2(word_rnn_l2),
-                                 dropout=word_rnn_dropout,
-                                 recurrent_dropout=word_rnn_recurrent_dropout,
                                  return_sequences=True))(x_w)  # (t, h_w)
     x_w = TimeDistributed(Dense(word_dense_units,
                                 activation=word_dense_activation,
@@ -306,8 +302,6 @@ def main():
             word_rnn = CuDNNLSTM
     word_rnn_units = 128
     word_rnn_l2 = .01
-    word_rnn_dropout = .1
-    word_rnn_recurrent_dropout = .1
     word_dense_units = 64
     word_dense_activation = 'linear'
     word_dense_l2 = .01
@@ -325,8 +319,6 @@ def main():
         word_rnn=word_rnn,
         word_rnn_units=word_rnn_units,
         word_rnn_l2=word_rnn_l2,
-        word_rnn_dropout=word_rnn_dropout,
-        word_rnn_recurrent_dropout=word_rnn_recurrent_dropout,
         word_dense_units=word_dense_units,
         word_dense_activation=word_dense_activation,
         word_dense_l2=word_dense_l2,
@@ -448,8 +440,6 @@ def main():
         fd.write('word_rnn={}\n'.format(word_rnn.__name__))
         fd.write('word_rnn_units={:d}\n'.format(word_rnn_units))
         fd.write('word_rnn_l2={:.3f}\n'.format(word_rnn_l2))
-        fd.write('word_rnn_dropout={:.1f}\n'.format(word_rnn_dropout))
-        fd.write('word_rnn_recurrent_dropout={:.1f}\n'.format(word_rnn_recurrent_dropout))
         fd.write('word_dense_units={:d}\n'.format(word_dense_units))
         fd.write('word_dense_activation=\'{}\'\n'.format(word_dense_activation))
         fd.write('word_dense_l2={:.3f}\n'.format(word_dense_l2))
