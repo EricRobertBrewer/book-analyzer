@@ -366,17 +366,31 @@ def main():
     sample_weights_train = sample_weights_train_T.transpose()  # (C, n * (1 - b) * (1 - v))
     sample_weights_val = sample_weights_val_T.transpose()  # (C, n * (1 - b) * v)
     sample_weights_test = sample_weights_test_T.transpose()  # (C, n * b)
-    use_sample_weights = True
+    use_sample_weights = False
     if not use_sample_weights:
         sample_weights_train = None
         sample_weights_val = None
         sample_weights_test = None
 
     # Train.
+    use_class_weights = True
     if is_ordinal:
         Y_train = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
         Y_val = [ordinal.to_multi_hot_ordinal(Y_val[i], n_classes=n) for i, n in enumerate(n_classes)]
+        category_class_weights = []  # [[dict]]
+        for category_i, y_train in enumerate(Y_train):
+            class_weights = []
+            for i in range(y_train.shape[1]):
+                ones_count = sum(y_train[:, i] == 1)
+                class_weight = {0: 1 / (len(y_train) - ones_count + 1), 1: 1 / (ones_count + 1)}
+                class_weights.append(class_weight)
+            category_class_weights.append(class_weights)
     else:
+        category_class_weights = []  # [dict]
+        for category_i, y_train in enumerate(Y_train):
+            bincount = np.bincount(y_train, minlength=n_classes[category_i])
+            class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
+            category_class_weights.append(class_weight)
         Y_train = [to_categorical(Y_train[i], num_classes=n) for i, n in enumerate(n_classes)]
         Y_val = [to_categorical(Y_val[i], num_classes=n) for i, n in enumerate(n_classes)]
     train_generator = SingleInstanceBatchGenerator(X_train, Y_train, sample_weights=sample_weights_train, shuffle=True)
@@ -384,6 +398,7 @@ def main():
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
+                                  class_weight=category_class_weights if use_class_weights else None,
                                   validation_data=val_generator)
 
     # Save the history to visualize loss over time.
@@ -466,6 +481,7 @@ def main():
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_sample_weights={}\n'.format(use_sample_weights))
+        fd.write('use_class_weights={}\n'.format(use_class_weights))
         fd.write('\nRESULTS\n\n')
         fd.write('data size: {:d}\n'.format(len(text_paragraph_tokens)))
         fd.write('train size: {:d}\n'.format(len(X_train)))
