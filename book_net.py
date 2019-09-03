@@ -6,8 +6,8 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras import initializers as initializers, regularizers, constraints
-from tensorflow.keras.layers import Bidirectional, Concatenate, CuDNNGRU, CuDNNLSTM, Dense, Dropout, Embedding, \
-    GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, Layer, LSTM, TimeDistributed
+from tensorflow.keras.layers import Bidirectional, Concatenate, CuDNNGRU, Dense, Dropout, Embedding, \
+    GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, Layer, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
@@ -296,12 +296,7 @@ def main():
     print('Creating model...')
     n_classes = [len(levels) for levels in category_levels]
     embedding_trainable = False
-    word_rnn = GRU
-    if tf.test.is_gpu_available(cuda_only=True):
-        if word_rnn == GRU:
-            word_rnn = CuDNNGRU
-        elif word_rnn == LSTM:
-            word_rnn = CuDNNLSTM
+    word_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
     word_rnn_units = 128
     word_rnn_l2 = .01
     word_dense_units = 64
