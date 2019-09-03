@@ -332,7 +332,7 @@ def main():
     print('Done.')
 
     # Compile.
-    lr = .001
+    lr = .000015625
     optimizer = Adam(lr=lr)
     if is_ordinal:
         loss = 'binary_crossentropy'
