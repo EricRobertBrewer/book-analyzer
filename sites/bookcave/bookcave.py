@@ -28,16 +28,16 @@ CATEGORIES = [
     'violence_and_horror',
     'gay_lesbian_characters'
 ]
-CATEGORY_NAMES = [
-    'Crude Humor/Language',
-    'Drug, Alcohol & Tobacco Use',
-    'Kissing',
-    'Profanity',
-    'Nudity',
-    'Sex and Intimacy',
-    'Violence and Horror',
-    'Gay/Lesbian Characters'
-]
+CATEGORY_NAMES = {
+    'crude_humor_language': 'Crude Humor/Language',
+    'drug_alcohol_tobacco_use': 'Drug, Alcohol & Tobacco Use',
+    'kissing': 'Kissing',
+    'profanity': 'Profanity',
+    'nudity': 'Nudity',
+    'sex_and_intimacy': 'Sex and Intimacy',
+    'violence_and_horror': 'Violence and Horror',
+    'gay_lesbian_characters': 'Gay/Lesbian Characters'
+}
 
 
 def is_between(value, _min=None, _max=None):
