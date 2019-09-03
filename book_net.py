@@ -467,13 +467,44 @@ def main():
         fd.write('validation size: {:d}\n'.format(len(X_val)))
         fd.write('test size: {:d}\n'.format(len(X_test)))
         fd.write('time elapsed: {:d}h {:d}m {:d}s\n'.format(elapsed_h, elapsed_m, elapsed_s))
+        # Calculate statistics for predictions.
+        category_confusion, category_metrics = zip(*[evaluation.get_confusion_and_metrics(Y_test[category_i], Y_preds[category_i])
+                                                     for category_i in range(len(categories))])
+        averages = [sum([metrics[metric_i] for metrics in category_metrics])/len(category_metrics)
+                    for metric_i in range(len(evaluation.METRIC_NAMES))]
+        # Metric abbreviations.
+        fd.write('\n')
+        fd.write('{:>24}'.format('Metric'))
+        for abbreviation in evaluation.METRIC_ABBREVIATIONS:
+            fd.write(' | {:^7}'.format(abbreviation))
+        fd.write(' |\n')
+        # Horizontal line.
+        fd.write('{:>24}'.format(''))
+        for _ in range(len(category_metrics)):
+            fd.write('-+-{}'.format('-'*7))
+        fd.write('-+\n')
+        # Metrics per category.
+        for category_i, metrics in enumerate(category_metrics):
+            fd.write('{:>24}'.format(categories[category_i]))
+            for value in metrics:
+                fd.write(' | {:.5f}'.format(value))
+            fd.write(' |\n')
+        # Horizontal line.
+        fd.write('{:>24}'.format(''))
+        for _ in range(len(category_metrics)):
+            fd.write('-+-{}'.format('-'*7))
+        fd.write('-+\n')
+        # Average metrics.
+        fd.write('{:>24}'.format('Average'))
+        for value in averages:
+            fd.write(' | {:.5f}'.format(value))
+        fd.write(' |\n')
+        # Confusion matrices.
         for category_i, category in enumerate(categories):
             fd.write('\n`{}`\n'.format(category))
-            confusion, metrics = evaluation.get_metrics(Y_test[category_i], Y_preds[category_i])
+            confusion = category_confusion[category_i]
             fd.write(np.array2string(confusion))
             fd.write('\n')
-            for name, value in metrics:
-                fd.write('{}={:.4f}\n'.format(name, value))
     print('Done.')
 
 

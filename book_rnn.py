@@ -144,10 +144,10 @@ def main():
     Y_preds = [ordinal.from_multi_hot_ordinal(y_ordinal, threshold=.5) for y_ordinal in Y_preds_ordinal]
     for category_i, category in enumerate(categories):
         print('\n`{}`'.format(category))
-        confusion, metrics = evaluation.get_metrics(Y_test[category_i], Y_preds[category_i])
+        confusion, metrics = evaluation.get_confusion_and_metrics(Y_test[category_i], Y_preds[category_i])
         print(confusion)
-        for name, value in metrics:
-            print('{}={:.4f}\n'.format(name, value))
+        for metric_i, value in enumerate(metrics):
+            print('{}={:.5f}\n'.format(evaluation.METRIC_NAMES[metric_i], value))
 
 
 if __name__ == '__main__':
