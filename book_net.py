@@ -167,12 +167,16 @@ def create_model(
                     d,
                     weights=[embedding_matrix],
                     trainable=embedding_trainable)(input_w)  # (t, d)
+    if word_rnn_l2 is not None:
+        word_rnn_l2 = regularizers.l2(word_rnn_l2)
     x_w = Bidirectional(word_rnn(word_rnn_units,
-                                 kernel_regularizer=regularizers.l2(word_rnn_l2),
+                                 kernel_regularizer=word_rnn_l2,
                                  return_sequences=True))(x_w)  # (t, h_w)
+    if word_dense_l2 is not None:
+        word_dense_l2 = regularizers.l2(word_dense_l2)
     x_w = TimeDistributed(Dense(word_dense_units,
                                 activation=word_dense_activation,
-                                kernel_regularizer=regularizers.l2(word_dense_l2)))(x_w)  # (2t, c_w)
+                                kernel_regularizer=word_dense_l2))(x_w)  # (2t, c_w)
     x_w = AttentionWithContext()(x_w)  # (c_w)
     word_encoder = Model(input_w, x_w)
 
@@ -182,9 +186,11 @@ def create_model(
     g_max_p = GlobalMaxPooling1D()(x_p)  # (c_w)
     g_avg_p = GlobalAveragePooling1D()(x_p)  # (c_w)
     x_p = Concatenate()([g_max_p, g_avg_p])  # (2c_w)
+    if book_dense_l2 is not None:
+        book_dense_l2 = regularizers.l2(book_dense_l2)
     x_p = Dense(book_dense_units,
                 activation=book_dense_activation,
-                kernel_regularizer=regularizers.l2(book_dense_l2))(x_p)  # (c_b)
+                kernel_regularizer=book_dense_l2)(x_p)  # (c_b)
     x_p = Dropout(book_dropout)(x_p)  # (c_b)
     outputs = [Dense(n - 1 if is_ordinal else n,
                      activation='sigmoid' if is_ordinal else 'softmax',
@@ -361,17 +367,31 @@ def main():
     sample_weights_train = sample_weights_train_T.transpose()  # (C, n * (1 - b) * (1 - v))
     sample_weights_val = sample_weights_val_T.transpose()  # (C, n * (1 - b) * v)
     sample_weights_test = sample_weights_test_T.transpose()  # (C, n * b)
-    use_sample_weights = True
+    use_sample_weights = False
     if not use_sample_weights:
         sample_weights_train = None
         sample_weights_val = None
         sample_weights_test = None
 
     # Train.
+    use_class_weights = True
     if is_ordinal:
         Y_train = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
         Y_val = [ordinal.to_multi_hot_ordinal(Y_val[i], n_classes=n) for i, n in enumerate(n_classes)]
+        category_class_weights = []  # [[dict]]
+        for category_i, y_train in enumerate(Y_train):
+            class_weights = []
+            for i in range(y_train.shape[1]):
+                ones_count = sum(y_train[:, i] == 1)
+                class_weight = {0: 1 / (len(y_train) - ones_count + 1), 1: 1 / (ones_count + 1)}
+                class_weights.append(class_weight)
+            category_class_weights.append(class_weights)
     else:
+        category_class_weights = []  # [dict]
+        for category_i, y_train in enumerate(Y_train):
+            bincount = np.bincount(y_train, minlength=n_classes[category_i])
+            class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
+            category_class_weights.append(class_weight)
         Y_train = [to_categorical(Y_train[i], num_classes=n) for i, n in enumerate(n_classes)]
         Y_val = [to_categorical(Y_val[i], num_classes=n) for i, n in enumerate(n_classes)]
     train_generator = SingleInstanceBatchGenerator(X_train, Y_train, sample_weights=sample_weights_train, shuffle=True)
@@ -379,6 +399,7 @@ def main():
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
+                                  class_weight=category_class_weights if use_class_weights else None,
                                   validation_data=val_generator)
 
     # Save the history to visualize loss over time.
@@ -441,19 +462,19 @@ def main():
         fd.write('\nModel\n')
         fd.write('word_rnn={}\n'.format(word_rnn.__name__))
         fd.write('word_rnn_units={:d}\n'.format(word_rnn_units))
-        fd.write('word_rnn_l2={:.3f}\n'.format(word_rnn_l2))
+        fd.write('word_rnn_l2={}\n'.format(str(word_rnn_l2)))
         fd.write('word_dense_units={:d}\n'.format(word_dense_units))
         fd.write('word_dense_activation=\'{}\'\n'.format(word_dense_activation))
-        fd.write('word_dense_l2={:.3f}\n'.format(word_dense_l2))
+        fd.write('word_dense_l2={}\n'.format(str(word_dense_l2)))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
         fd.write('book_dense_activation=\'{}\'\n'.format(book_dense_activation))
-        fd.write('book_dense_l2={:.3f}\n'.format(book_dense_l2))
+        fd.write('book_dense_l2={}\n'.format(str(book_dense_l2)))
         fd.write('book_dropout={:.1f}\n'.format(book_dropout))
         fd.write('is_ordinal={}\n'.format(is_ordinal))
         model.summary(print_fn=lambda x: fd.write('{}\n'.format(x)))
         fd.write('\nTraining\n')
         fd.write('optimizer={}\n'.format(optimizer.__class__.__name__))
-        fd.write('lr={:.4f}\n'.format(lr))
+        fd.write('lr={}\n'.format(str(lr)))
         fd.write('loss=\'{}\'\n'.format(loss))
         fd.write('metric=\'{}\'\n'.format(metric))
         fd.write('test_size={:.2f}\n'.format(test_size))
@@ -461,6 +482,7 @@ def main():
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_sample_weights={}\n'.format(use_sample_weights))
+        fd.write('use_class_weights={}\n'.format(use_class_weights))
         fd.write('\nRESULTS\n\n')
         fd.write('data size: {:d}\n'.format(len(text_paragraph_tokens)))
         fd.write('train size: {:d}\n'.format(len(X_train)))
