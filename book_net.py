@@ -147,7 +147,7 @@ class AttentionWithContext(Layer):
         return input_shape[0], input_shape[-1]
 
 
-def create_model(n_classes, output_names, n_tokens, embedding_matrix, embedding_trainable,
+def create_model(output_k, output_names, n_tokens, embedding_matrix, embedding_trainable,
                  word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
                  book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
                  label_mode):
@@ -184,11 +184,11 @@ def create_model(n_classes, output_names, n_tokens, embedding_matrix, embedding_
     x_p = book_dense_activation(x_p)  # (c_b)
     x_p = Dropout(book_dropout)(x_p)  # (c_b)
     if label_mode == LABEL_MODE_ORDINAL:
-        outputs = [Dense(n - 1, activation='sigmoid', name=output_names[i])(x_p) for i, n in enumerate(n_classes)]
+        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
     elif label_mode == LABEL_MODE_CATEGORICAL:
-        outputs = [Dense(n, activation='softmax', name=output_names[i])(x_p) for i, n in enumerate(n_classes)]
+        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
     elif label_mode == LABEL_MODE_REGRESSION:
-        outputs = [Dense(1, activation='linear', name=output_names[i])(x_p) for i in range(len(n_classes))]
+        outputs = [Dense(1, activation='linear', name=output_names[i])(x_p) for i in range(len(output_k))]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     model = Model(input_p, outputs)
@@ -204,10 +204,10 @@ class SingleInstanceBatchGenerator(utils.Sequence):
         super(SingleInstanceBatchGenerator, self).__init__()
         # `fit_generator` wants each `x` to be a NumPy array, not a list.
         self.X = [np.array([x]) for x in X]
-        # Transform Y from shape (C, n, c-1) to (n, C, 1, c-1) if Y is ordinal,
-        # or from shape (C, n, c) to (n, C, 1, c) if Y is not ordinal,
-        # where `C` is the number of categories, `n` is the number of instances,
-        # and `c` is the number of classes for the current category.
+        # Transform Y from shape (c, n, k-1) to (n, c, 1, k-1) if Y is ordinal,
+        # or from shape (c, n, k) to (n, c, 1, k) if Y is not ordinal,
+        # where `c` is the number of categories, `n` is the number of instances,
+        # and `k` is the number of classes for the current category.
         self.Y = [[np.array([y[i]]) for y in Y]
                   for i in range(len(X))]
         if sample_weights is not None:
@@ -298,7 +298,7 @@ def main():
 
     # Create model.
     print('Creating model...')
-    n_classes = [len(levels) for levels in category_levels]
+    category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
     word_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
     word_rnn_units = 128
@@ -311,13 +311,10 @@ def main():
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = LABEL_MODE_ORDINAL
-    model = create_model(n_classes, categories, n_tokens, embedding_matrix, embedding_trainable,
+    model = create_model(category_k, categories, n_tokens, embedding_matrix, embedding_trainable,
                          word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
                          book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
                          label_mode)
-    print('Done.')
-
-    # Compile.
     lr = .000015625
     optimizer = Adam(lr=lr)
     if label_mode == LABEL_MODE_ORDINAL:
@@ -332,31 +329,32 @@ def main():
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     model.compile(optimizer, loss=loss, metrics=[metric])
+    print('Done.')
 
     # Give each instance (sample) a weight that is inversely proportional to the frequency of its class.
-    sample_weights = np.zeros(Y.shape, dtype=np.float32)  # (C, n)
-    for category_i, y in enumerate(Y):
-        bincount = np.bincount(y, minlength=n_classes[category_i])
-        for j, value in enumerate(y):
-            sample_weights[category_i, j] = 1/(bincount[value] + 1)
+    sample_weights = np.zeros(Y.shape, dtype=np.float32)  # (c, n)
+    for j, y in enumerate(Y):
+        bincount = np.bincount(y, minlength=category_k[j])
+        for i, value in enumerate(y):
+            sample_weights[j, i] = 1/(bincount[value] + 1)
 
     # Split data set.
     test_size = .25  # b
     test_random_state = 1
     val_size = .1  # v
     val_random_state = 1
-    Y_T = Y.transpose()  # (n, C)
-    sample_weights_T = sample_weights.transpose()  # (n, C)
+    Y_T = Y.transpose()  # (n, c)
+    sample_weights_T = sample_weights.transpose()  # (n, c)
     X_train, X_test, Y_train_T, Y_test_T, sample_weights_train_T, sample_weights_test_T = \
         train_test_split(X, Y_T, sample_weights_T, test_size=test_size, random_state=test_random_state)
     X_train, X_val, Y_train_T, Y_val_T, sample_weights_train_T, sample_weights_val_T = \
         train_test_split(X_train, Y_train_T, sample_weights_train_T, test_size=val_size, random_state=val_random_state)
-    Y_train = Y_train_T.transpose()  # (C, n * (1 - b) * (1 - v))
-    Y_val = Y_val_T.transpose()  # (C, n * (1 - b) * v)
-    Y_test = Y_test_T.transpose()  # (C, n * b)
-    sample_weights_train = sample_weights_train_T.transpose()  # (C, n * (1 - b) * (1 - v))
-    sample_weights_val = sample_weights_val_T.transpose()  # (C, n * (1 - b) * v)
-    sample_weights_test = sample_weights_test_T.transpose()  # (C, n * b)
+    Y_train = Y_train_T.transpose()  # (c, n * (1 - b) * (1 - v))
+    Y_val = Y_val_T.transpose()  # (c, n * (1 - b) * v)
+    Y_test = Y_test_T.transpose()  # (c, n * b)
+    sample_weights_train = sample_weights_train_T.transpose()  # (c, n * (1 - b) * (1 - v))
+    sample_weights_val = sample_weights_val_T.transpose()  # (c, n * (1 - b) * v)
+    sample_weights_test = sample_weights_test_T.transpose()  # (c, n * b)
     use_sample_weights = False
     if not use_sample_weights:
         sample_weights_train = None
@@ -366,10 +364,10 @@ def main():
     # Train.
     use_class_weights = True
     if label_mode == LABEL_MODE_ORDINAL:
-        Y_train = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
-        Y_val = [ordinal.to_multi_hot_ordinal(Y_val[i], n_classes=n) for i, n in enumerate(n_classes)]
+        Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
+        Y_val = [ordinal.to_multi_hot_ordinal(Y_val[j], k=k) for j, k in enumerate(category_k)]
         category_class_weights = []  # [[dict]]
-        for category_i, y_train in enumerate(Y_train):
+        for y_train in Y_train:
             class_weights = []
             for i in range(y_train.shape[1]):
                 ones_count = sum(y_train[:, i] == 1)
@@ -378,16 +376,16 @@ def main():
             category_class_weights.append(class_weights)
     elif label_mode == LABEL_MODE_CATEGORICAL:
         category_class_weights = []  # [dict]
-        for category_i, y_train in enumerate(Y_train):
-            bincount = np.bincount(y_train, minlength=n_classes[category_i])
+        for j, y_train in enumerate(Y_train):
+            bincount = np.bincount(y_train, minlength=category_k[j])
             class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
             category_class_weights.append(class_weight)
-        Y_train = [utils.to_categorical(Y_train[i], num_classes=n) for i, n in enumerate(n_classes)]
-        Y_val = [utils.to_categorical(Y_val[i], num_classes=n) for i, n in enumerate(n_classes)]
+        Y_train = [utils.to_categorical(Y_train[j], num_classes=k) for j, k in enumerate(category_k)]
+        Y_val = [utils.to_categorical(Y_val[j], num_classes=k) for j, k in enumerate(category_k)]
     elif label_mode == LABEL_MODE_REGRESSION:
         category_class_weights = None
-        Y_train = [Y_train[i] / n for i, n in enumerate(n_classes)]
-        Y_val = [Y_val[i] / n for i, n in enumerate(n_classes)]
+        Y_train = [Y_train[j] / k for j, k in enumerate(category_k)]
+        Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     train_generator = SingleInstanceBatchGenerator(X_train, Y_train, sample_weights=sample_weights_train, shuffle=True)
@@ -420,7 +418,7 @@ def main():
     elif label_mode == LABEL_MODE_CATEGORICAL:
         Y_preds = [np.argmax(y, axis=1) for y in Y_preds]
     elif label_mode == LABEL_MODE_REGRESSION:
-        Y_preds = [np.maximum(0, np.minimum(n - 1, np.round(Y_preds[i] * n))) for i, n in enumerate(n_classes)]
+        Y_preds = [np.maximum(0, np.minimum(k - 1, np.round(Y_preds[i] * k))) for i, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     print('Done.')
@@ -510,8 +508,8 @@ def main():
             fd.write('model path: \'{}\''.format(model_path))
         fd.write('time elapsed: {:d}h {:d}m {:d}s\n'.format(elapsed_h, elapsed_m, elapsed_s))
         # Calculate statistics for predictions.
-        category_confusion, category_metrics = zip(*[evaluation.get_confusion_and_metrics(Y_test[category_i], Y_preds[category_i])
-                                                     for category_i in range(len(categories))])
+        category_confusion, category_metrics = zip(*[evaluation.get_confusion_and_metrics(Y_test[j], Y_preds[j])
+                                                     for j in range(len(categories))])
         averages = [sum([metrics[metric_i] for metrics in category_metrics])/len(category_metrics)
                     for metric_i in range(len(evaluation.METRIC_NAMES))]
         # Metric abbreviations.
@@ -526,8 +524,8 @@ def main():
             fd.write('-+-{}'.format('-'*7))
         fd.write('-+\n')
         # Metrics per category.
-        for category_i, metrics in enumerate(category_metrics):
-            fd.write('{:>24}'.format(categories[category_i]))
+        for j, metrics in enumerate(category_metrics):
+            fd.write('{:>24}'.format(categories[j]))
             for value in metrics:
                 fd.write(' | {:.5f}'.format(value))
             fd.write(' |\n')
@@ -542,9 +540,9 @@ def main():
             fd.write(' | {:.5f}'.format(value))
         fd.write(' |\n')
         # Confusion matrices.
-        for category_i, category in enumerate(categories):
+        for j, category in enumerate(categories):
             fd.write('\n`{}`\n'.format(category))
-            confusion = category_confusion[category_i]
+            confusion = category_confusion[j]
             fd.write(np.array2string(confusion))
             fd.write('\n')
     print('Done.')
