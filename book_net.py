@@ -467,7 +467,7 @@ def main():
         fd.write('word_dense_activation=\'{}\'\n'.format(word_dense_activation))
         fd.write('word_dense_l2={}\n'.format(str(word_dense_l2)))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
-        fd.write('book_dense_activation=\'{}\'\n'.format(book_dense_activation))
+        fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__, book_dense_activation.__dict__))
         fd.write('book_dense_l2={}\n'.format(str(book_dense_l2)))
         fd.write('book_dropout={:.1f}\n'.format(book_dropout))
         fd.write('is_ordinal={}\n'.format(is_ordinal))
