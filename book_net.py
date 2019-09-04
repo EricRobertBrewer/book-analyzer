@@ -21,6 +21,11 @@ from sites.bookcave import bookcave
 from text import load_embeddings
 
 
+LABEL_MODE_ORDINAL = 'ordinal'
+LABEL_MODE_CATEGORICAL = 'categorical'
+LABEL_MODE_REGRESSION = 'regression'
+
+
 def dot_product(x, kernel):
     """
     Wrapper for dot product operation, in order to be compatible with both
@@ -145,7 +150,7 @@ class AttentionWithContext(Layer):
 def create_model(n_classes, output_names, n_tokens, embedding_matrix, embedding_trainable,
                  word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
                  book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
-                 is_ordinal):
+                 label_mode):
     # Word encoder.
     input_w = Input(shape=(n_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
@@ -178,10 +183,14 @@ def create_model(n_classes, output_names, n_tokens, embedding_matrix, embedding_
                 kernel_regularizer=book_dense_l2)(x_p)  # (c_b)
     x_p = book_dense_activation(x_p)  # (c_b)
     x_p = Dropout(book_dropout)(x_p)  # (c_b)
-    outputs = [Dense(n - 1 if is_ordinal else n,
-                     activation='sigmoid' if is_ordinal else 'softmax',
-                     name=output_names[i])(x_p)
-               for i, n in enumerate(n_classes)]
+    if label_mode == LABEL_MODE_ORDINAL:
+        outputs = [Dense(n - 1, activation='sigmoid', name=output_names[i])(x_p) for i, n in enumerate(n_classes)]
+    elif label_mode == LABEL_MODE_CATEGORICAL:
+        outputs = [Dense(n, activation='softmax', name=output_names[i])(x_p) for i, n in enumerate(n_classes)]
+    elif label_mode == LABEL_MODE_REGRESSION:
+        outputs = [Dense(1, activation='linear', name=output_names[i])(x_p) for i in range(len(n_classes))]
+    else:
+        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     model = Model(input_p, outputs)
     return model
 
@@ -295,25 +304,30 @@ def main():
     word_dense_activation = 'linear'
     word_dense_l2 = .01
     book_dense_units = 512
-    book_dense_activation = Activation('relu')
+    book_dense_activation = Activation('elu')
     book_dense_l2 = .01
     book_dropout = .5
-    is_ordinal = True
+    label_mode = LABEL_MODE_REGRESSION
     model = create_model(n_classes, categories, n_tokens, embedding_matrix, embedding_trainable,
                          word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
                          book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
-                         is_ordinal)
+                         label_mode)
     print('Done.')
 
     # Compile.
     lr = .000015625
     optimizer = Adam(lr=lr)
-    if is_ordinal:
+    if label_mode == LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
         metric = 'binary_accuracy'
-    else:
+    elif label_mode == LABEL_MODE_CATEGORICAL:
         loss = 'categorical_crossentropy'
         metric = 'categorical_accuracy'
+    elif label_mode == LABEL_MODE_REGRESSION:
+        loss = 'mse'
+        metric = 'accuracy'
+    else:
+        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     model.compile(optimizer, loss=loss, metrics=[metric])
 
     # Give each instance (sample) a weight that is inversely proportional to the frequency of its class.
@@ -348,7 +362,7 @@ def main():
 
     # Train.
     use_class_weights = True
-    if is_ordinal:
+    if label_mode == LABEL_MODE_ORDINAL:
         Y_train = [ordinal.to_multi_hot_ordinal(Y_train[i], n_classes=n) for i, n in enumerate(n_classes)]
         Y_val = [ordinal.to_multi_hot_ordinal(Y_val[i], n_classes=n) for i, n in enumerate(n_classes)]
         category_class_weights = []  # [[dict]]
@@ -359,7 +373,7 @@ def main():
                 class_weight = {0: 1 / (len(y_train) - ones_count + 1), 1: 1 / (ones_count + 1)}
                 class_weights.append(class_weight)
             category_class_weights.append(class_weights)
-    else:
+    elif label_mode == LABEL_MODE_CATEGORICAL:
         category_class_weights = []  # [dict]
         for category_i, y_train in enumerate(Y_train):
             bincount = np.bincount(y_train, minlength=n_classes[category_i])
@@ -367,6 +381,12 @@ def main():
             category_class_weights.append(class_weight)
         Y_train = [utils.to_categorical(Y_train[i], num_classes=n) for i, n in enumerate(n_classes)]
         Y_val = [utils.to_categorical(Y_val[i], num_classes=n) for i, n in enumerate(n_classes)]
+    elif label_mode == LABEL_MODE_REGRESSION:
+        category_class_weights = None
+        Y_train = [Y_train[i] / n for i, n in enumerate(n_classes)]
+        Y_val = [Y_val[i] / n for i, n in enumerate(n_classes)]
+    else:
+        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     train_generator = SingleInstanceBatchGenerator(X_train, Y_train, sample_weights=sample_weights_train, shuffle=True)
     val_generator = SingleInstanceBatchGenerator(X_val, Y_val, sample_weights=sample_weights_val, shuffle=False)
     history = model.fit_generator(train_generator,
@@ -392,10 +412,14 @@ def main():
     print('Predicting test instances...')
     test_generator = SingleInstanceBatchGenerator(X_test, Y_test, sample_weights=sample_weights_test, shuffle=False)
     Y_preds = model.predict_generator(test_generator)
-    if is_ordinal:
+    if label_mode == LABEL_MODE_ORDINAL:
         Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
-    else:
+    elif label_mode == LABEL_MODE_CATEGORICAL:
         Y_preds = [np.argmax(y, axis=1) for y in Y_preds]
+    elif label_mode == LABEL_MODE_REGRESSION:
+        Y_preds = [np.maximum(0, np.minimum(n - 1, np.round(Y_preds[i] * n))) for i, n in enumerate(n_classes)]
+    else:
+        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     print('Done.')
 
     # Calculate elapsed time.
@@ -443,7 +467,7 @@ def main():
         fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__, book_dense_activation.__dict__))
         fd.write('book_dense_l2={}\n'.format(str(book_dense_l2)))
         fd.write('book_dropout={:.1f}\n'.format(book_dropout))
-        fd.write('is_ordinal={}\n'.format(is_ordinal))
+        fd.write('label_mode={}\n'.format(label_mode))
         model.summary(print_fn=lambda x: fd.write('{}\n'.format(x)))
         fd.write('\nTraining\n')
         fd.write('optimizer={}\n'.format(optimizer.__class__.__name__))
