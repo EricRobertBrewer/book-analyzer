@@ -6,13 +6,13 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras import initializers as initializers, regularizers, constraints
-from tensorflow.keras.layers import Bidirectional, Concatenate, CuDNNGRU, Dense, Dropout, Embedding, \
+from tensorflow.keras import utils
+from tensorflow.keras.layers import Activation, Bidirectional, Concatenate, CuDNNGRU, Dense, Dropout, Embedding, \
     GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, Layer, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.utils import Sequence, to_categorical
 from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal
@@ -155,7 +155,7 @@ def create_model(
         word_dense_activation='linear',
         word_dense_l2=.01,
         book_dense_units=512,
-        book_dense_activation='relu',
+        book_dense_activation=Activation('relu'),
         book_dense_l2=.01,
         book_dropout=.5,
         is_ordinal=True
@@ -189,8 +189,8 @@ def create_model(
     if book_dense_l2 is not None:
         book_dense_l2 = regularizers.l2(book_dense_l2)
     x_p = Dense(book_dense_units,
-                activation=book_dense_activation,
                 kernel_regularizer=book_dense_l2)(x_p)  # (c_b)
+    x_p = book_dense_activation(x_p)  # (c_b)
     x_p = Dropout(book_dropout)(x_p)  # (c_b)
     outputs = [Dense(n - 1 if is_ordinal else n,
                      activation='sigmoid' if is_ordinal else 'softmax',
@@ -200,7 +200,7 @@ def create_model(
     return model
 
 
-class SingleInstanceBatchGenerator(Sequence):
+class SingleInstanceBatchGenerator(utils.Sequence):
     """
     When fitting the model, the batch size must be 1 to accommodate variable numbers of paragraphs per text.
     See `https://datascience.stackexchange.com/a/48814/66450`.
@@ -309,7 +309,7 @@ def main():
     word_dense_activation = 'linear'
     word_dense_l2 = .01
     book_dense_units = 512
-    book_dense_activation = 'relu'
+    book_dense_activation = Activation('relu')
     book_dense_l2 = .01
     book_dropout = .5
     is_ordinal = True
@@ -392,8 +392,8 @@ def main():
             bincount = np.bincount(y_train, minlength=n_classes[category_i])
             class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
             category_class_weights.append(class_weight)
-        Y_train = [to_categorical(Y_train[i], num_classes=n) for i, n in enumerate(n_classes)]
-        Y_val = [to_categorical(Y_val[i], num_classes=n) for i, n in enumerate(n_classes)]
+        Y_train = [utils.to_categorical(Y_train[i], num_classes=n) for i, n in enumerate(n_classes)]
+        Y_val = [utils.to_categorical(Y_val[i], num_classes=n) for i, n in enumerate(n_classes)]
     train_generator = SingleInstanceBatchGenerator(X_train, Y_train, sample_weights=sample_weights_train, shuffle=True)
     val_generator = SingleInstanceBatchGenerator(X_val, Y_val, sample_weights=sample_weights_val, shuffle=False)
     history = model.fit_generator(train_generator,
@@ -432,7 +432,7 @@ def main():
     elapsed_h, elapsed_m = elapsed_m // 60, elapsed_m % 60
 
     # Write results.
-    print('Writing results....')
+    print('Writing results...')
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
     logs_path = os.path.join(folders.LOGS_PATH, 'book_net')
