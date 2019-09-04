@@ -142,24 +142,10 @@ class AttentionWithContext(Layer):
         return input_shape[0], input_shape[-1]
 
 
-def create_model(
-        n_classes,
-        output_names,
-        n_tokens,
-        embedding_matrix,
-        embedding_trainable=False,
-        word_rnn=GRU,
-        word_rnn_units=128,
-        word_rnn_l2=.01,
-        word_dense_units=64,
-        word_dense_activation='linear',
-        word_dense_l2=.01,
-        book_dense_units=512,
-        book_dense_activation=Activation('relu'),
-        book_dense_l2=.01,
-        book_dropout=.5,
-        is_ordinal=True
-):
+def create_model(n_classes, output_names, n_tokens, embedding_matrix, embedding_trainable,
+                 word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
+                 book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
+                 is_ordinal):
     # Word encoder.
     input_w = Input(shape=(n_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
@@ -313,23 +299,10 @@ def main():
     book_dense_l2 = .01
     book_dropout = .5
     is_ordinal = True
-    model = create_model(
-        n_classes,
-        categories,
-        n_tokens,
-        embedding_matrix,
-        embedding_trainable=embedding_trainable,
-        word_rnn=word_rnn,
-        word_rnn_units=word_rnn_units,
-        word_rnn_l2=word_rnn_l2,
-        word_dense_units=word_dense_units,
-        word_dense_activation=word_dense_activation,
-        word_dense_l2=word_dense_l2,
-        book_dense_units=book_dense_units,
-        book_dense_activation=book_dense_activation,
-        book_dense_l2=book_dense_l2,
-        book_dropout=book_dropout,
-        is_ordinal=is_ordinal)
+    model = create_model(n_classes, categories, n_tokens, embedding_matrix, embedding_trainable,
+                         word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
+                         book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
+                         is_ordinal)
     print('Done.')
 
     # Compile.
