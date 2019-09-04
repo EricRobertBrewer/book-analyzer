@@ -144,13 +144,12 @@ def get_data(
         verbose=False):
     """
     Retrieve text with corresponding labels for books in the BookCave database.
-    :param sources: set of str {'book', 'preview', 'paragraphs' (default), 'tokens'}
+    :param sources: set of str {'book', 'preview', 'paragraphs', 'tokens'}
         The type(s) of text to be retrieved.
         When 'book', the entire raw book texts will be returned.
         When 'preview', the first few chapters of books will be returned.
         When 'paragraphs', the sections and paragraphs will be returned (as tuples).
         When 'tokens', the space-separated tokens for each paragraph will be returned.
-        Default is `paragraphs`.
     :param only_ids: iterable of str, optional
         Filter the returned books by a set
     :param subset_ratio: float, optional
@@ -201,10 +200,6 @@ def get_data(
             levels_df (pd.DataFrame):       Metadata for book rating levels.
             categories_df (pd.DataFrame):   Metadata for categories (contains a description for each rating level).
     """
-    # Validate `media`.
-    if sources is None:
-        sources = {'paragraphs'}
-
     # Read all of the data from the BookCave database.
     all_books_df = pd.read_csv(folders.CONTENT_BOOKCAVE_BOOKS_CSV_PATH, encoding='utf-8')
     all_ratings_df = pd.read_csv(folders.CONTENT_BOOKCAVE_BOOK_RATINGS_CSV_PATH, encoding='utf-8')

@@ -237,6 +237,9 @@ class SingleInstanceBatchGenerator(utils.Sequence):
 
 
 def main():
+    script_name = os.path.basename(__file__)
+    classifier_name = script_name[:script_name.index('.')]
+
     start_time = int(time.time())
     if 'SLURM_JOB_ID' in os.environ:
         stamp = int(os.environ['SLURM_JOB_ID'])
@@ -268,11 +271,11 @@ def main():
     max_words = 8192  # The maximum size of the vocabulary.
     split = '\t'
     tokenizer = Tokenizer(num_words=max_words, split=split)
-    all_sentences = []
+    all_paragraphs = []
     for paragraph_tokens in text_paragraph_tokens:
         for tokens in paragraph_tokens:
-            all_sentences.append(split.join(tokens))
-    tokenizer.fit_on_texts(all_sentences)
+            all_paragraphs.append(split.join(tokens))
+    tokenizer.fit_on_texts(all_paragraphs)
     print('Done.')
 
     # Convert to sequences.
@@ -307,7 +310,7 @@ def main():
     book_dense_activation = Activation('elu')
     book_dense_l2 = .01
     book_dropout = .5
-    label_mode = LABEL_MODE_REGRESSION
+    label_mode = LABEL_MODE_ORDINAL
     model = create_model(n_classes, categories, n_tokens, embedding_matrix, embedding_trainable,
                          word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
                          book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
@@ -399,7 +402,7 @@ def main():
     print('Saving training history...')
     if not os.path.exists(folders.HISTORY_PATH):
         os.mkdir(folders.HISTORY_PATH)
-    history_path = os.path.join(folders.HISTORY_PATH, 'book_net')
+    history_path = os.path.join(folders.HISTORY_PATH, classifier_name)
     if not os.path.exists(history_path):
         os.mkdir(history_path)
     with open(os.path.join(history_path, '{:d}.txt'.format(stamp)), 'w') as fd:
@@ -422,6 +425,24 @@ def main():
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     print('Done.')
 
+    # Save model.
+    save_model = True
+    if save_model:
+        models_path = os.path.join(folders.MODELS_PATH, classifier_name)
+        label_mode_path = os.path.join(models_path, label_mode)
+        model_path = os.path.join(label_mode_path, '{:d}.h5'.format(stamp))
+        print('Saving model to `{}`...'.format(model_path))
+        if not os.path.exists(folders.MODELS_PATH):
+            os.mkdir(folders.MODELS_PATH)
+        if not os.path.exists(models_path):
+            os.mkdir(models_path)
+        if not os.path.exists(label_mode_path):
+            os.mkdir(label_mode_path)
+        model.save(model_path)
+        print('Done.')
+    else:
+        model_path = None
+
     # Calculate elapsed time.
     end_time = int(time.time())
     elapsed_s = end_time - start_time
@@ -432,7 +453,7 @@ def main():
     print('Writing results...')
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
-    logs_path = os.path.join(folders.LOGS_PATH, 'book_net')
+    logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
     with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
@@ -485,6 +506,8 @@ def main():
         fd.write('train size: {:d}\n'.format(len(X_train)))
         fd.write('validation size: {:d}\n'.format(len(X_val)))
         fd.write('test size: {:d}\n'.format(len(X_test)))
+        if save_model:
+            fd.write('model path: \'{}\''.format(model_path))
         fd.write('time elapsed: {:d}h {:d}m {:d}s\n'.format(elapsed_h, elapsed_m, elapsed_s))
         # Calculate statistics for predictions.
         category_confusion, category_metrics = zip(*[evaluation.get_confusion_and_metrics(Y_test[category_i], Y_preds[category_i])
