@@ -236,7 +236,15 @@ class SingleInstanceBatchGenerator(utils.Sequence):
             np.random.shuffle(self.indices)
 
 
-def main():
+def main(argv):
+    if len(argv) < 2 or len(argv) > 3:
+        raise ValueError('Usage: <steps_per_epoch> <epochs> [note]')
+    steps_per_epoch = int(argv[0])
+    epochs = int(argv[1])
+    note = None
+    if len(argv) > 2:
+        note = argv[2]
+
     script_name = os.path.basename(__file__)
     classifier_name = script_name[:script_name.index('.')]
 
@@ -551,11 +559,4 @@ def main():
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3 or len(sys.argv) > 4:
-        raise ValueError('Usage: <steps_per_epoch> <epochs> [note]')
-    steps_per_epoch = int(sys.argv[1])
-    epochs = int(sys.argv[2])
-    note = None
-    if len(sys.argv) > 3:
-        note = sys.argv[3]
-    main()
+    main(sys.argv[1:])

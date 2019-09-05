@@ -29,3 +29,5 @@ MODELS_PATH = 'models'
 SITES_PATH = 'sites'
 BOOKCAVE_PATH = os.path.join(SITES_PATH, 'bookcave')
 BOOKCAVE_CATEGORIES_PATH = os.path.join(BOOKCAVE_PATH, 'categories')
+
+VECTORS_PATH = 'vectors'

@@ -1,137 +1,106 @@
+import datetime
 import os
+import sys
 
-import gensim
-import nltk
+from gensim.models import KeyedVectors, Word2Vec
+from gensim.models.callbacks import CallbackAny2Vec
 
+import folders
 from sites.bookcave import bookcave
-from text import preprocessing
-
-EMBEDDINGS_FOLDER = 'embeddings'
 
 
-def save_trained_vectors(documents, names, size=50, window=8, min_count=2, max_vocab_size=None, workers=8, epochs=1, verbose=False):
-    if verbose:
-        print('Creating model...')
-    model = gensim.models.Word2Vec(documents,
-                                   size=size,
-                                   window=window,
-                                   min_count=min_count,
-                                   max_vocab_size=max_vocab_size,
-                                   workers=workers)
-    if verbose:
-        print('Training model...')
-    model.train(documents, total_examples=len(documents), epochs=epochs)
-    
-    if verbose:
-        print('Saving vectors...')
-    if isinstance(names, str):
-        name = names
-    else:
-        name = '_'.join(names)
-    fname = 'vectors_{}_{:d}d_{:d}w_{:d}min_{:d}e_{:d}.wv'.format(name, size, window, min_count, epochs, max_vocab_size)
-    model.wv.save(os.path.join(EMBEDDINGS_FOLDER, fname))
-    return fname
+class PrintCallback(CallbackAny2Vec):
+
+    def __init__(self, epochs):
+        super(PrintCallback, self).__init__()
+        self.epochs = epochs
+        self.epoch = 0
+
+    def on_epoch_begin(self, model):
+        now = datetime.datetime.now()
+        self.epoch += 1
+        print('{} Starting epoch {:d}/{:d}...'.format(str(now), self.epoch, self.epochs))
 
 
 def load_vectors(fname):
-    return gensim.models.KeyedVectors.load(os.path.join(EMBEDDINGS_FOLDER, fname))
+    vectors_path = os.path.join(folders.VECTORS_PATH, fname)
+    return KeyedVectors.load(vectors_path)
 
 
-def save_trained_doc_model(documents, names, vector_size=50, window=8, min_count=2, workers=8, epochs=1, verbose=False):
-    if isinstance(names, str):
-        name = names
+def main(argv):
+    if len(argv) < 5 or len(argv) > 6:
+        raise ValueError('Usage: <model_name> <vector_size> <max_vocab_size> <epochs> <window> [min_count]')
+    model_name = argv[0]
+    vector_size = int(argv[1])
+    max_vocab_size = int(argv[2])  # The maximum size of the vocabulary.
+    epochs = int(argv[3])
+    window = int(argv[4])
+    min_count = 4
+    if len(argv) > 5:
+        min_count = int(argv[5])
+
+    # Load data.
+    print('Retrieving texts...')
+    subset_ratio = 1.
+    subset_seed = 1
+    min_len = 256
+    max_len = 4096
+    min_tokens = 6
+    inputs, Y, categories, category_levels = \
+        bookcave.get_data({'tokens'},
+                          subset_ratio=subset_ratio,
+                          subset_seed=subset_seed,
+                          min_len=min_len,
+                          max_len=max_len,
+                          min_tokens=min_tokens)
+    text_paragraph_tokens, _ = zip(*inputs['tokens'])
+    print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
+
+    # Tokenize.
+    print('Tokenizing...')
+    all_paragraph_tokens = []
+    for paragraph_tokens in text_paragraph_tokens:
+        for tokens in paragraph_tokens:
+            all_paragraph_tokens.append(tokens)
+    print('Done.')
+
+    # Create model.
+    print('Creating model...')
+    workers = 8
+    if model_name == 'word2vec':
+        model = Word2Vec(all_paragraph_tokens,
+                         size=vector_size,
+                         window=window,
+                         min_count=min_count,
+                         max_vocab_size=max_vocab_size,
+                         workers=workers)
     else:
-        name = '_'.join(names)
-
-    if verbose:
-        print('Tagging documents...')
-    tagged_docs = [gensim.models.doc2vec.TaggedDocument(doc, [i]) for i, doc in enumerate(documents)]
-    if verbose:
-        print('Creating model...')
-    model = gensim.models.Doc2Vec(tagged_docs,
-                                  vector_size=vector_size,
-                                  window=window,
-                                  min_count=min_count,
-                                  workers=workers)
-    if verbose:
-        print('Training model...')
-    model.train(tagged_docs, total_examples=len(tagged_docs), epochs=epochs)
-    if verbose:
-        print('Saving entire model...')
-    fname = 'docmodel_{}_{:d}d_{:d}w_{:d}min_{:d}e.model'.format(name, vector_size, window, min_count, epochs)
-    model.save(os.path.join(EMBEDDINGS_FOLDER, fname))
-    return fname
-
-
-def load_doc_model(fname):
-    return gensim.models.Doc2Vec.load(os.path.join(EMBEDDINGS_FOLDER, fname))
-
-
-def main():
-    print('Loading BookCave data...')
-    inputs, _, _, _ = bookcave.get_data({'text'},
-                                        text_source='book',
-                                        text_min_len=6)
-    texts = inputs['text']
-
-    print('Splitting text files into lines...')
-    text_lines = [text.split('\n') for text in texts]
-
-    # Do pre-processing.
-    tokenizer = nltk.tokenize.treebank.TreebankWordTokenizer()
-    kwargs = {
-        'lower': True,
-        'endings': {'.', '?', ')', '!', ':', '-', '"', ';', ',', "'"},
-        'min_len': 6,
-        'normal': True
-    }
-    print('Pre-processing lines...')
-    processed_lines = list()
-    for lines in text_lines:
-        processed_lines.extend(list(preprocessing.process_lines(tokenizer, lines, sentences=False, **kwargs)))
-    print('Pre-processing sentences...')
-    processed_sentences = list()
-    for lines in text_lines:
-        processed_sentences.extend(list(preprocessing.process_lines(tokenizer, lines, sentences=True, **kwargs)))
-
-    # Hyper-parameters.
-    data_size = str(len(texts))
-    tokenizer_name = 'treebank'
-    vector_size = 150
-    max_vocab_size = 40000
-    epochs = 32
-    verbose = True
+        raise ValueError('Unknown model name: `{}`'.format(model_name))
+    print('Done.')
 
     # Train word vectors.
-    line_fname = save_trained_vectors(processed_lines,
-                                      ['line', data_size, tokenizer_name],
-                                      size=vector_size,
-                                      max_vocab_size=max_vocab_size,
-                                      epochs=epochs,
-                                      verbose=verbose)
-    print('Saved `line` vectors to `{}`.'.format(line_fname))
-    sentence_fname = save_trained_vectors(processed_sentences,
-                                          ['sentence', data_size, tokenizer_name],
-                                          size=vector_size,
-                                          max_vocab_size=max_vocab_size,
-                                          epochs=epochs,
-                                          verbose=verbose)
-    print('Saved `sentence` vectors to `{}`.'.format(sentence_fname))
+    print('Training model...')
+    print_callback = PrintCallback(epochs)
+    model.train(all_paragraph_tokens,
+                total_examples=len(all_paragraph_tokens),
+                epochs=epochs,
+                callbacks=[print_callback])
+    print('Done.')
 
-    # Train doc2vec embeddings.
-    line_doc_fname = save_trained_doc_model(processed_lines,
-                                            ['line', data_size, tokenizer_name],
-                                            vector_size=vector_size,
-                                            epochs=epochs,
-                                            verbose=verbose)
-    print('Saved `line` doc2vec model to `{}`.'.format(line_doc_fname))
-    sentence_doc_fname = save_trained_doc_model(processed_sentences,
-                                                ['sentence', data_size, tokenizer_name],
-                                                vector_size=vector_size,
-                                                epochs=epochs,
-                                                verbose=verbose)
-    print('Saved `sentence` doc2vec model to `{}`.'.format(sentence_doc_fname))
+    # Save.
+    print('Saving vectors...')
+    if not os.path.exists(folders.VECTORS_PATH):
+        os.mkdir(folders.VECTORS_PATH)
+    fname = '{}_{:d}_{:d}d_{:d}w_{:d}min_{:d}e.wv'.format(model_name,
+                                                          len(text_paragraph_tokens),
+                                                          vector_size,
+                                                          window,
+                                                          min_count,
+                                                          epochs)
+    vectors_path = os.path.join(folders.VECTORS_PATH, fname)
+    model.wv.save(vectors_path)
+    print('Saved vectors to `{}`.'.format(vectors_path))
 
 
 if __name__ == '__main__':
-    main()
+    main(sys.argv[1:])
