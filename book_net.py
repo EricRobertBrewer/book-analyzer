@@ -315,7 +315,7 @@ def main(argv):
     word_dense_activation = 'linear'
     word_dense_l2 = .01
     book_dense_units = 512
-    book_dense_activation = Activation('elu')
+    book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = LABEL_MODE_ORDINAL
