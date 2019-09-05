@@ -251,7 +251,7 @@ def main():
 
     # Load data.
     print('Retrieving texts...')
-    subset_ratio = 1.0
+    subset_ratio = 1.
     subset_seed = 1
     min_len = 256
     max_len = 4096
@@ -424,7 +424,7 @@ def main():
     print('Done.')
 
     # Save model.
-    save_model = True
+    save_model = False
     if save_model:
         models_path = os.path.join(folders.MODELS_PATH, classifier_name)
         label_mode_path = os.path.join(models_path, label_mode)
@@ -500,13 +500,15 @@ def main():
         fd.write('use_sample_weights={}\n'.format(use_sample_weights))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
         fd.write('\nRESULTS\n\n')
-        fd.write('data size: {:d}\n'.format(len(text_paragraph_tokens)))
-        fd.write('train size: {:d}\n'.format(len(X_train)))
-        fd.write('validation size: {:d}\n'.format(len(X_val)))
-        fd.write('test size: {:d}\n'.format(len(X_test)))
+        fd.write('Data size: {:d}\n'.format(len(text_paragraph_tokens)))
+        fd.write('Train size: {:d}\n'.format(len(X_train)))
+        fd.write('Validation size: {:d}\n'.format(len(X_val)))
+        fd.write('Test size: {:d}\n'.format(len(X_test)))
         if save_model:
-            fd.write('model path: \'{}\''.format(model_path))
-        fd.write('time elapsed: {:d}h {:d}m {:d}s\n'.format(elapsed_h, elapsed_m, elapsed_s))
+            fd.write('Model path: \'{}\'\n'.format(model_path))
+        else:
+            fd.write('Model not saved.\n')
+        fd.write('Time elapsed: {:d}h {:d}m {:d}s\n'.format(elapsed_h, elapsed_m, elapsed_s))
         # Calculate statistics for predictions.
         category_confusion, category_metrics = zip(*[evaluation.get_confusion_and_metrics(Y_test[j], Y_preds[j])
                                                      for j in range(len(categories))])

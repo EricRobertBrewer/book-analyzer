@@ -34,7 +34,7 @@ def create_svm():
 def main():
     # Load data.
     print('Retrieving texts...')
-    subset_ratio = 1.0
+    subset_ratio = 1.
     subset_seed = 1
     min_len = 256
     max_len = 4096
