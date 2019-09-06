@@ -168,7 +168,7 @@ def main(argv):
     # Load embedding.
     print('Loading embedding matrix...')
     embedding_path = folders.EMBEDDING_GLOVE_100_PATH
-    embedding_matrix = load_embeddings.get_embedding(tokenizer, embedding_path, max_words)
+    embedding_matrix = load_embeddings.get_embedding(tokenizer, embedding_path, max_words, header=False)
     print('Done.')
 
     # Create model.

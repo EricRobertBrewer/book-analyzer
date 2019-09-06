@@ -10,10 +10,12 @@ def get_coefs(word, *arr):
     return word, np.asarray(arr, dtype='float32')
 
 
-def get_embedding(tokenizer, fname, max_words=10000):
+def get_embedding(tokenizer, fname, max_words=10000, header=False):
     word_index = tokenizer.word_index
     word_count = min(max_words, len(word_index))
     with open(fname, 'r', encoding='utf-8') as fd:
+        if header:
+            fd.readline()
         embeddings_index = dict(get_coefs(*o.strip().split()) for o in fd)
     all_embeddings = np.stack(list(embeddings_index.values()))
     embed_size = all_embeddings.shape[1]

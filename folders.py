@@ -14,9 +14,11 @@ AMAZON_KINDLE_LABELS_PATH = os.path.join(AMAZON_KINDLE_PATH, 'labels')
 AMAZON_KINDLE_LABELS_FNAME_FORMAT = 'paragraph_labels_{}.txt'
 AMAZON_KINDLE_IMAGES_PATH = os.path.join(AMAZON_KINDLE_PATH, 'images')
 
-EMBEDDING_GLOVE_100_PATH = os.path.join('..', '..', 'embeddings', 'glove.6B.100d.txt')
-EMBEDDING_GLOVE_200_PATH = os.path.join('..', '..', 'embeddings', 'glove.6B.200d.txt')
-EMBEDDING_GLOVE_300_PATH = os.path.join('..', '..', 'embeddings', 'glove.6B.300d.txt')
+EMBEDDINGS_PATH = os.path.join('..', '..', 'embeddings')
+EMBEDDING_FASTTEXT_CRAWL_300_PATH = os.path.join(EMBEDDINGS_PATH, 'crawl-300d-2M.vec')
+EMBEDDING_GLOVE_100_PATH = os.path.join(EMBEDDINGS_PATH, 'glove.6B.100d.txt')
+EMBEDDING_GLOVE_200_PATH = os.path.join(EMBEDDINGS_PATH, 'glove.6B.200d.txt')
+EMBEDDING_GLOVE_300_PATH = os.path.join(EMBEDDINGS_PATH, 'glove.6B.300d.txt')
 
 HISTORY_PATH = 'history'
 
