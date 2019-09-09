@@ -13,8 +13,8 @@ from tensorflow.keras import regularizers
 from tensorflow.keras import utils
 from sklearn.model_selection import train_test_split
 
-from classification import evaluation, ordinal
-from classification.net import attention_with_context, parameters
+from classification import evaluation, ordinal, shared_parameters
+from classification.net import attention_with_context
 import folders
 from sites.bookcave import bookcave
 from text import load_embeddings
@@ -59,11 +59,11 @@ def create_model(output_k, output_names, n_paragraphs, n_tokens, embedding_matri
                                 kernel_regularizer=book_dense_l2))(x_p)  # (s, c_b)
     x_p = attention_with_context.AttentionWithContext()(x_p)  # (c_b)
     x_p = Dropout(book_dropout)(x_p)  # (c_b)
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         outputs = [Dense(k, activation='softmax', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         outputs = [Dense(1, activation='linear', name=output_names[i])(x_p) for i in range(len(output_k))]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
@@ -94,11 +94,11 @@ def main(argv):
 
     # Load data.
     print('\nRetrieving texts...')
-    subset_ratio = 1.
-    subset_seed = 1
-    min_len = 256  # The minimum number of paragraphs in each text.
-    max_len = 4096  # The maximum number of paragraphs in each text.
-    min_tokens = 6  # The minimum number of tokens in each paragraph.
+    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    subset_seed = shared_parameters.DATA_SUBSET_SEED
+    min_len = shared_parameters.DATA_MIN_LEN
+    max_len = shared_parameters.DATA_MAX_LEN
+    min_tokens = shared_parameters.DATA_MIN_TOKENS
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'tokens'},
                           subset_ratio=subset_ratio,
@@ -165,20 +165,20 @@ def main(argv):
     book_dense_activation = 'linear'
     book_dense_l2 = .01
     book_dropout = .5
-    label_mode = parameters.LABEL_MODE_ORDINAL
+    label_mode = shared_parameters.LABEL_MODE_ORDINAL
     model = create_model(category_k, categories, n_paragraphs, n_tokens, embedding_matrix, embedding_trainable,
                          word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
                          book_rnn, book_rnn_units, book_rnn_l2, book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, label_mode)
     lr = .000015625
     optimizer = Adam(lr=lr)
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
         metric = 'binary_accuracy'
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         loss = 'categorical_crossentropy'
         metric = 'categorical_accuracy'
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         loss = 'mse'
         metric = 'accuracy'
     else:
@@ -202,7 +202,7 @@ def main(argv):
 
     # Train.
     use_class_weights = True
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
         Y_val = [ordinal.to_multi_hot_ordinal(Y_val[j], k=k) for j, k in enumerate(category_k)]
         if use_class_weights:
@@ -216,7 +216,7 @@ def main(argv):
                 category_class_weights.append(class_weights)
         else:
             category_class_weights = None
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         if use_class_weights:
             category_class_weights = []  # [dict]
             for j, y_train in enumerate(Y_train):
@@ -227,7 +227,7 @@ def main(argv):
             category_class_weights = None
         Y_train = [utils.to_categorical(Y_train[j], num_classes=k) for j, k in enumerate(category_k)]
         Y_val = [utils.to_categorical(Y_val[j], num_classes=k) for j, k in enumerate(category_k)]
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         category_class_weights = None
         Y_train = [Y_train[j] / k for j, k in enumerate(category_k)]
         Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
@@ -255,11 +255,11 @@ def main(argv):
 
     # Predict test instances.
     Y_preds = model.predict(X_test)
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         Y_preds = [np.argmax(y, axis=1) for y in Y_preds]
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         Y_preds = [np.maximum(0, np.minimum(k - 1, np.round(Y_preds[i] * k))) for i, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))

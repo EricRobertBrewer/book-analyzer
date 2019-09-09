@@ -8,7 +8,7 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 
 from sites.bookcave import bookcave
-from classification import ordinal
+from classification import ordinal, shared_parameters
 
 
 def identity(v):
@@ -34,11 +34,11 @@ def create_svm():
 def main():
     # Load data.
     print('Retrieving texts...')
-    subset_ratio = 1.
-    subset_seed = 1
-    min_len = 256
-    max_len = 4096
-    min_tokens = 6
+    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    subset_seed = shared_parameters.DATA_SUBSET_SEED
+    min_len = shared_parameters.DATA_MIN_LEN
+    max_len = shared_parameters.DATA_MAX_LEN
+    min_tokens = shared_parameters.DATA_MIN_TOKENS
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'tokens'},
                           subset_ratio=subset_ratio,
