@@ -21,9 +21,11 @@ def main():
     # ```
     st = nltk.parse.corenlp.CoreNLPParser()
 
+    if not os.path.exists(folders.AMAZON_KINDLE_SENTENCE_TOKENS_PATH):
+        os.mkdir(folders.AMAZON_KINDLE_SENTENCE_TOKENS_PATH)
     force = False
     for text_i, text in enumerate(texts):
-        path = os.path.join(folders.AMAZON_KINDLE_TOKENS_PATH, '{}.txt'.format(asins[text_i]))
+        path = os.path.join(folders.AMAZON_KINDLE_SENTENCE_TOKENS_PATH, '{}.txt'.format(asins[text_i]))
         if os.path.exists(path):
             if force:
                 os.remove(path)
@@ -31,12 +33,17 @@ def main():
                 continue
 
         paragraphs, section_ids, sections = text
-        paragraph_tokens = [list(st.tokenize(paragraph.lower())) for paragraph in paragraphs]
-        section_paragraph_tokens = [[] for _ in range(len(sections))]
-        for paragraph_i, tokens in enumerate(paragraph_tokens):
+        paragraph_sentence_tokens = [[[token['originalText'] or token['word'] for token in sentence['tokens']]
+                                      for sentence in st.api_call(paragraph.lower(),
+                                                                  properties={
+                                                                      'annotators': 'tokenize,ssplit'
+                                                                  })['sentences']]
+                                     for paragraph in paragraphs]
+        section_paragraph_sentence_tokens = [[] for _ in range(len(sections))]
+        for paragraph_i, sentence_tokens in enumerate(paragraph_sentence_tokens):
             section_id = section_ids[paragraph_i]
-            section_paragraph_tokens[section_id].append(tokens)
-        paragraph_io.write_formatted_section_paragraph_tokens(section_paragraph_tokens, path)
+            section_paragraph_sentence_tokens[section_id].append(sentence_tokens)
+        paragraph_io.write_formatted_section_paragraph_sentence_tokens(section_paragraph_sentence_tokens, path)
 
 
 if __name__ == '__main__':

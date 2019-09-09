@@ -35,18 +35,6 @@ def read_formatted_section_paragraphs(path):
     return sections, section_paragraphs
 
 
-def write_formatted_section_paragraph_tokens(section_paragraph_tokens, path):
-    with open(path, 'w', encoding='utf-8') as fd:
-        n_sections = len(section_paragraph_tokens)
-        fd.write(str(n_sections) + '\n')
-        for section_i in range(n_sections):
-            n_paragraphs = len(section_paragraph_tokens[section_i])
-            fd.write(str(n_paragraphs) + '\n')
-            for paragraph_i in range(n_paragraphs):
-                tokens = section_paragraph_tokens[section_i][paragraph_i]
-                fd.write(' '.join(tokens) + '\n')
-
-
 def read_formatted_section_paragraph_tokens(path):
     section_paragraph_tokens = []
     with open(path, 'r', encoding='utf-8') as fd:
@@ -58,6 +46,37 @@ def read_formatted_section_paragraph_tokens(path):
                 tokens = fd.readline()[:-1].split(' ')
                 section_paragraph_tokens[section_i].append(tokens)
     return section_paragraph_tokens
+
+
+def write_formatted_section_paragraph_sentence_tokens(section_paragraph_sentence_tokens, path):
+    with open(path, 'w', encoding='utf-8') as fd:
+        n_sections = len(section_paragraph_sentence_tokens)
+        fd.write(str(n_sections) + '\n')
+        for section_i in range(n_sections):
+            n_paragraphs = len(section_paragraph_sentence_tokens[section_i])
+            fd.write(str(n_paragraphs) + '\n')
+            for paragraph_i in range(n_paragraphs):
+                n_sentences = len(section_paragraph_sentence_tokens[section_i][paragraph_i])
+                fd.write(str(n_sentences) + '\n')
+                for sentence_i in range(n_sentences):
+                    tokens = section_paragraph_sentence_tokens[section_i][paragraph_i][sentence_i]
+                    fd.write(' '.join(tokens) + '\n')
+
+
+def read_formatted_section_paragraph_sentence_tokens(path):
+    section_paragraph_sentence_tokens = []
+    with open(path, 'r', encoding='utf-8') as fd:
+        n_sections = int(fd.readline()[:-1])
+        for section_i in range(n_sections):
+            section_paragraph_sentence_tokens.append([])
+            n_paragraphs = int(fd.readline()[:-1])
+            for paragraph_i in range(n_paragraphs):
+                n_sentences = int(fd.readline()[:-1])
+                section_paragraph_sentence_tokens[section_i].append([])
+                for _ in range(n_sentences):
+                    tokens = fd.readline()[:-1].split(' ')
+                    section_paragraph_sentence_tokens[section_i][paragraph_i].append(tokens)
+    return section_paragraph_sentence_tokens
 
 
 def write_formatted_section_paragraph_labels(section_paragraph_labels, path, force=False, verbose=0):

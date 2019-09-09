@@ -40,13 +40,13 @@ def main():
     max_len = shared_parameters.DATA_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     inputs, Y, categories, category_levels = \
-        bookcave.get_data({'tokens'},
+        bookcave.get_data({'paragraph_tokens'},
                           subset_ratio=subset_ratio,
                           subset_seed=subset_seed,
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens)
-    text_paragraph_tokens, _ = zip(*inputs['tokens'])
+    text_paragraph_tokens, _ = zip(*inputs['paragraph_tokens'])
     print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
 
     # Create vectorized representations of the book texts.

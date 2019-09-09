@@ -91,7 +91,7 @@ def get_paragraphs(asin, min_len=None, max_len=None):
 
 
 def get_paragraph_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None):
-    path = os.path.join(folders.AMAZON_KINDLE_TOKENS_PATH, '{}.txt'.format(asin))
+    path = os.path.join(folders.AMAZON_KINDLE_PARAGRAPH_TOKENS_PATH, '{}.txt'.format(asin))
     if not os.path.exists(path):
         return None
 
@@ -108,6 +108,26 @@ def get_paragraph_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_
     return all_paragraph_tokens, section_ids
 
 
+def get_sentence_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None):
+    path = os.path.join(folders.AMAZON_KINDLE_SENTENCE_TOKENS_PATH, '{}.txt'.format(asin))
+    if not os.path.exists(path):
+        return None
+
+    section_paragraph_sentence_tokens = paragraph_io.read_formatted_section_paragraph_sentence_tokens(path)
+    all_sentence_tokens, section_ids, paragraph_ids = [], [], []
+    for section_i, paragraph_sentence_tokens in enumerate(section_paragraph_sentence_tokens):
+        for paragraph_i, sentence_tokens in enumerate(paragraph_sentence_tokens):
+            if len(sentence_tokens) == 1 and not is_between(len(sentence_tokens[0]), min_tokens, max_tokens):
+                continue
+            for tokens in sentence_tokens:
+                all_sentence_tokens.append(tokens)
+                section_ids.append(section_i)
+                paragraph_ids.append(paragraph_i)
+    if len(all_sentence_tokens) == 0 or not is_between(len(all_sentence_tokens), min_len, max_len):
+        return None
+    return all_sentence_tokens, section_ids, paragraph_ids
+
+
 def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None):
     if source == 'book':
         return get_book(asin, min_len, max_len)
@@ -115,8 +135,10 @@ def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tok
         return get_preview(asin, min_len, max_len)
     if source == 'paragraphs':
         return get_paragraphs(asin, min_len, max_len)
-    if source == 'tokens':
+    if source == 'paragraph_tokens':
         return get_paragraph_tokens(asin, min_len, max_len, min_tokens, max_tokens)
+    if source == 'sentence_tokens':
+        return get_sentence_tokens(asin, min_len, max_len, min_tokens, max_tokens)
     raise ValueError('Unknown source: `{}`.'.format(source))
 
 
@@ -144,12 +166,13 @@ def get_data(
         verbose=False):
     """
     Retrieve text with corresponding labels for books in the BookCave database.
-    :param sources: set of str {'book', 'preview', 'paragraphs', 'tokens'}
+    :param sources: set of str {'book', 'preview', 'paragraphs', 'paragraph_tokens', 'sentence_tokens'}
         The type(s) of text to be retrieved.
         When 'book', the entire raw book texts will be returned.
         When 'preview', the first few chapters of books will be returned.
         When 'paragraphs', the sections and paragraphs will be returned (as tuples).
-        When 'tokens', the space-separated tokens for each paragraph will be returned.
+        When 'paragraph_tokens', the tokens for each paragraph will be returned. (deprecated)
+        When 'sentence_tokens', the tokens for each sentence for each paragraph will be returned.
     :param only_ids: iterable of str, optional
         Filter the returned books by a set
     :param subset_ratio: float, optional
@@ -159,13 +182,15 @@ def get_data(
         Used to seed the random subset.
     :param min_len: int, optional
         When `source` is 'book' or 'preview', this is the minimum file length of text files that will be returned.
-        When `source` is 'paragraphs' or 'tokens', this is the minimum number of paragraphs in each text.
+        When `source` is 'paragraphs' or 'paragraph_tokens', this is the minimum number of paragraphs in each text.
+        When `source` is 'sentence_tokens', this is the minimum number of sentences in each text.
     :param max_len: int, optional
         When `source` is 'book' or 'preview', this is the maximum file length of text files that will be returned.
-        When `source` is 'paragraphs' or 'tokens', this is the maximum number of paragraphs in each text.
+        When `source` is 'paragraphs' or 'paragraph_tokens', this is the maximum number of paragraphs in each text.
+        When `source` is 'sentence_tokens', this is the maximum number of sentences in each text.
     :param min_tokens: int, optional
         The minimum number of tokens in each paragraph. Paragraphs with fewer tokens will not be returned.
-        Only applied when `source` is 'tokens'.
+        Only applied when `source` is 'paragraph_tokens' or 'sentence_tokens'.
     :param max_tokens: int, optional
         The maximum number of tokens in each paragraph. Paragraphs with more tokens will not be returned.
         Only applied when `source` is 'tokens'.
