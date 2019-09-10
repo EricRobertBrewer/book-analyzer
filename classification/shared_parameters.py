@@ -7,3 +7,8 @@ DATA_MIN_TOKENS = 6  # The minimum number of tokens in each paragraph.
 LABEL_MODE_ORDINAL = 'ordinal'
 LABEL_MODE_CATEGORICAL = 'categorical'
 LABEL_MODE_REGRESSION = 'regression'
+
+EVAL_TEST_SIZE = .25
+EVAL_TEST_RANDOM_STATE = 1
+EVAL_VAL_SIZE = .1
+EVAL_VAL_RANDOM_STATE = 1

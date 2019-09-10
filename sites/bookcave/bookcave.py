@@ -171,7 +171,7 @@ def get_data(
         When 'book', the entire raw book texts will be returned.
         When 'preview', the first few chapters of books will be returned.
         When 'paragraphs', the sections and paragraphs will be returned (as tuples).
-        When 'paragraph_tokens', the tokens for each paragraph will be returned. (deprecated)
+        When 'paragraph_tokens', the tokens for each paragraph will be returned.
         When 'sentence_tokens', the tokens for each sentence for each paragraph will be returned.
     :param only_ids: iterable of str, optional
         Filter the returned books by a set
