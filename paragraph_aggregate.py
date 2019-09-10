@@ -22,10 +22,10 @@ from sites.bookcave import bookcave
 from text import load_embeddings
 
 
-def create_model(output_k, output_names, n_tokens, embedding_matrix, embedding_trainable,
+def create_model(n_tokens, embedding_matrix, embedding_trainable,
                  para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                  book_dense_units, book_dense_activation, book_dense_l2,
-                 book_dropout, label_mode):
+                 book_dropout, output_k, output_names, label_mode):
     # Paragraph encoder.
     input_p = Input(shape=(n_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
@@ -95,8 +95,8 @@ def main(argv):
     print('Retrieving texts...')
     subset_ratio = shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
-    min_len = shared_parameters.DATA_MIN_LEN
-    max_len = shared_parameters.DATA_MAX_LEN
+    min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
+    max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'paragraph_tokens'},
@@ -153,10 +153,10 @@ def main(argv):
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = shared_parameters.LABEL_MODE_ORDINAL
-    model = create_model(category_k, categories, n_tokens, embedding_matrix, embedding_trainable,
+    model = create_model(n_tokens, embedding_matrix, embedding_trainable,
                          para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
-                         book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
-                         label_mode)
+                         book_dense_units, book_dense_activation, book_dense_l2,
+                         book_dropout, category_k, categories, label_mode)
     lr = .000015625
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:

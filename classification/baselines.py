@@ -36,8 +36,8 @@ def main():
     print('Retrieving texts...')
     subset_ratio = shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
-    min_len = shared_parameters.DATA_MIN_LEN
-    max_len = shared_parameters.DATA_MAX_LEN
+    min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
+    max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'paragraph_tokens'},
