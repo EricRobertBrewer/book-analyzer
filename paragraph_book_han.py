@@ -13,61 +13,61 @@ from tensorflow.keras import regularizers
 from tensorflow.keras import utils
 from sklearn.model_selection import train_test_split
 
-from classification import evaluation, ordinal
-from classification.net import attention_with_context, parameters
+from classification import evaluation, ordinal, shared_parameters
+from classification.net.attention_with_context import AttentionWithContext
 import folders
 from sites.bookcave import bookcave
 from text import load_embeddings
 
 
-def create_model(output_k, output_names, n_paragraphs, n_tokens, embedding_matrix, embedding_trainable,
-                 word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
+def create_model(n_paragraphs, n_tokens, embedding_matrix, embedding_trainable,
+                 para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                  book_rnn, book_rnn_units, book_rnn_l2, book_dense_units, book_dense_activation, book_dense_l2,
-                 book_dropout, label_mode):
-    # Word encoder.
-    input_w = Input(shape=(n_tokens,), dtype='float32')  # (t)
+                 book_dropout, output_k, output_names, label_mode):
+    # Paragraph encoder.
+    input_p = Input(shape=(n_tokens,), dtype='int32')  # (t)
     max_words, d = embedding_matrix.shape
-    x_w = Embedding(max_words,
+    x_p = Embedding(max_words,
                     d,
                     weights=[embedding_matrix],
-                    trainable=embedding_trainable)(input_w)  # (t, d)
-    if word_rnn_l2 is not None:
-        word_rnn_l2 = regularizers.l2(word_rnn_l2)
-    x_w = Bidirectional(word_rnn(word_rnn_units,
-                                 kernel_regularizer=word_rnn_l2,
-                                 return_sequences=True))(x_w)  # (t, h_w)
-    if word_dense_l2 is not None:
-        word_dense_l2 = regularizers.l2(word_dense_l2)
-    x_w = TimeDistributed(Dense(word_dense_units,
-                                activation=word_dense_activation,
-                                kernel_regularizer=word_dense_l2))(x_w)  # (2t, c_w)
-    x_w = attention_with_context.AttentionWithContext()(x_w)  # (c_w)
-    word_encoder = Model(input_w, x_w)
+                    trainable=embedding_trainable)(input_p)  # (t, d)
+    if para_rnn_l2 is not None:
+        para_rnn_l2 = regularizers.l2(para_rnn_l2)
+    x_p = Bidirectional(para_rnn(para_rnn_units,
+                                 kernel_regularizer=para_rnn_l2,
+                                 return_sequences=True))(x_p)  # (2t, h_p)
+    if para_dense_l2 is not None:
+        para_dense_l2 = regularizers.l2(para_dense_l2)
+    x_p = TimeDistributed(Dense(para_dense_units,
+                                activation=para_dense_activation,
+                                kernel_regularizer=para_dense_l2))(x_p)  # (2t, c_p)
+    x_p = AttentionWithContext()(x_p)  # (c_p)
+    paragraph_encoder = Model(input_p, x_p)
 
-    # Paragraph encoder.
-    input_p = Input(shape=(n_paragraphs, n_tokens), dtype='float32')  # (s, t)
-    x_p = TimeDistributed(word_encoder)(input_p)  # (s, c_w)
+    # Book encoder.
+    input_b = Input(shape=(n_paragraphs, n_tokens), dtype='float32')  # (p, t)
+    x_b = TimeDistributed(paragraph_encoder)(input_b)  # (p, c_p)
     if book_rnn_l2 is not None:
         book_rnn_l2 = regularizers.l2(book_rnn_l2)
-    x_p = Bidirectional(book_rnn(book_rnn_units,
+    x_b = Bidirectional(book_rnn(book_rnn_units,
                                  kernel_regularizer=book_rnn_l2,
-                                 return_sequences=True))(x_p)  # (s, h_b)
+                                 return_sequences=True))(x_b)  # (2p, h_b)
     if book_dense_l2 is not None:
         book_dense_l2 = regularizers.l2(book_dense_l2)
-    x_p = TimeDistributed(Dense(book_dense_units,
+    x_b = TimeDistributed(Dense(book_dense_units,
                                 activation=book_dense_activation,
-                                kernel_regularizer=book_dense_l2))(x_p)  # (s, c_b)
-    x_p = attention_with_context.AttentionWithContext()(x_p)  # (c_b)
-    x_p = Dropout(book_dropout)(x_p)  # (c_b)
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
-        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
-        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
-        outputs = [Dense(1, activation='linear', name=output_names[i])(x_p) for i in range(len(output_k))]
+                                kernel_regularizer=book_dense_l2))(x_b)  # (2p, c_b)
+    x_b = AttentionWithContext()(x_b)  # (c_b)
+    x_b = Dropout(book_dropout)(x_b)  # (c_b)
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
+        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
+        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
+        outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
-    model = Model(input_p, outputs)
+    model = Model(input_b, outputs)
     return model
 
 
@@ -94,19 +94,19 @@ def main(argv):
 
     # Load data.
     print('\nRetrieving texts...')
-    subset_ratio = 1.
-    subset_seed = 1
-    min_len = 256  # The minimum number of paragraphs in each text.
-    max_len = 4096  # The maximum number of paragraphs in each text.
-    min_tokens = 6  # The minimum number of tokens in each paragraph.
+    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    subset_seed = shared_parameters.DATA_SUBSET_SEED
+    min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
+    max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
+    min_tokens = shared_parameters.DATA_MIN_TOKENS
     inputs, Y, categories, category_levels = \
-        bookcave.get_data({'tokens'},
+        bookcave.get_data({'paragraph_tokens'},
                           subset_ratio=subset_ratio,
                           subset_seed=subset_seed,
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens)
-    text_paragraph_tokens, _ = zip(*inputs['tokens'])
+    text_paragraph_tokens, _ = zip(*inputs['paragraph_tokens'])
     print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
 
     # Tokenize.
@@ -152,12 +152,12 @@ def main(argv):
     print('\nCreating model...')
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
-    word_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
-    word_rnn_units = 128
-    word_rnn_l2 = .01
-    word_dense_units = 64
-    word_dense_activation = 'linear'
-    word_dense_l2 = .01
+    para_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
+    para_rnn_units = 128
+    para_rnn_l2 = .01
+    para_dense_units = 64
+    para_dense_activation = 'linear'
+    para_dense_l2 = .01
     book_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
     book_rnn_units = 128
     book_rnn_l2 = .01
@@ -165,20 +165,20 @@ def main(argv):
     book_dense_activation = 'linear'
     book_dense_l2 = .01
     book_dropout = .5
-    label_mode = parameters.LABEL_MODE_ORDINAL
-    model = create_model(category_k, categories, n_paragraphs, n_tokens, embedding_matrix, embedding_trainable,
-                         word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
+    label_mode = shared_parameters.LABEL_MODE_ORDINAL
+    model = create_model(n_paragraphs, n_tokens, embedding_matrix, embedding_trainable,
+                         para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                          book_rnn, book_rnn_units, book_rnn_l2, book_dense_units, book_dense_activation, book_dense_l2,
-                         book_dropout, label_mode)
+                         book_dropout, category_k, categories, label_mode)
     lr = .000015625
     optimizer = Adam(lr=lr)
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
         metric = 'binary_accuracy'
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         loss = 'categorical_crossentropy'
         metric = 'categorical_accuracy'
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         loss = 'mse'
         metric = 'accuracy'
     else:
@@ -187,10 +187,10 @@ def main(argv):
     print('Done.')
 
     # Split data set.
-    test_size = .25  # b
-    test_random_state = 1
-    val_size = .1  # v
-    val_random_state = 1
+    test_size = shared_parameters.EVAL_TEST_SIZE  # b
+    test_random_state = shared_parameters.EVAL_TEST_RANDOM_STATE
+    val_size = shared_parameters.EVAL_VAL_SIZE  # v
+    val_random_state = shared_parameters.EVAL_VAL_RANDOM_STATE
     Y_T = Y.transpose()  # (n, c)
     X_train, X_test, Y_train_T, Y_test_T = \
         train_test_split(X, Y_T, test_size=test_size, random_state=test_random_state)
@@ -202,7 +202,7 @@ def main(argv):
 
     # Train.
     use_class_weights = True
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
         Y_val = [ordinal.to_multi_hot_ordinal(Y_val[j], k=k) for j, k in enumerate(category_k)]
         if use_class_weights:
@@ -216,7 +216,7 @@ def main(argv):
                 category_class_weights.append(class_weights)
         else:
             category_class_weights = None
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         if use_class_weights:
             category_class_weights = []  # [dict]
             for j, y_train in enumerate(Y_train):
@@ -227,7 +227,7 @@ def main(argv):
             category_class_weights = None
         Y_train = [utils.to_categorical(Y_train[j], num_classes=k) for j, k in enumerate(category_k)]
         Y_val = [utils.to_categorical(Y_val[j], num_classes=k) for j, k in enumerate(category_k)]
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         category_class_weights = None
         Y_train = [Y_train[j] / k for j, k in enumerate(category_k)]
         Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
@@ -255,11 +255,11 @@ def main(argv):
 
     # Predict test instances.
     Y_preds = model.predict(X_test)
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         Y_preds = [np.argmax(y, axis=1) for y in Y_preds]
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         Y_preds = [np.maximum(0, np.minimum(k - 1, np.round(Y_preds[i] * k))) for i, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
@@ -319,12 +319,12 @@ def main(argv):
         fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
-        fd.write('word_rnn={}\n'.format(word_rnn.__name__))
-        fd.write('word_rnn_units={:d}\n'.format(word_rnn_units))
-        fd.write('word_rnn_l2={}\n'.format(str(word_rnn_l2)))
-        fd.write('word_dense_units={:d}\n'.format(word_dense_units))
-        fd.write('word_dense_activation=\'{}\'\n'.format(word_dense_activation))
-        fd.write('word_dense_l2={}\n'.format(str(word_dense_l2)))
+        fd.write('para_rnn={}\n'.format(para_rnn.__name__))
+        fd.write('para_rnn_units={:d}\n'.format(para_rnn_units))
+        fd.write('para_rnn_l2={}\n'.format(str(para_rnn_l2)))
+        fd.write('para_dense_units={:d}\n'.format(para_dense_units))
+        fd.write('para_dense_activation=\'{}\'\n'.format(para_dense_activation))
+        fd.write('para_dense_l2={}\n'.format(str(para_dense_l2)))
         fd.write('book_rnn={}\n'.format(book_rnn.__name__))
         fd.write('book_rnn_units={:d}\n'.format(book_rnn_units))
         fd.write('book_rnn_l2={}\n'.format(str(book_rnn_l2)))

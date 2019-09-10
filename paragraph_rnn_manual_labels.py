@@ -77,11 +77,11 @@ def main():
         print('\nRetrieving texts...')
     min_len, max_len = 250, 7500
     inputs, Y, categories, category_levels, book_ids, books_df, _, _, categories_df =\
-        bookcave.get_data({'tokens'},
+        bookcave.get_data({'paragraph_tokens'},
                           min_len=min_len,
                           max_len=max_len,
                           return_meta=True)
-    text_paragraph_tokens, _ = zip(*inputs['tokens'])
+    text_paragraph_tokens, _ = zip(*inputs['paragraph_tokens'])
     if verbose:
         print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
 
@@ -159,8 +159,8 @@ def main():
     hidden_size = 64
     dense_size = 32
     embedding_trainable = True
-    n_classes = [len(levels) for levels in category_levels]
-    model, weights_fname = create_model(n_classes,
+    category_k = [len(levels) for levels in category_levels]
+    model, weights_fname = create_model(category_k,
                                         n_tokens,
                                         embedding_matrix,
                                         hidden_size,
@@ -170,11 +170,10 @@ def main():
         print(model.summary())
 
     # Weight classes inversely proportional to their frequency.
-    n_classes = [len(levels) for levels in category_levels]
     class_weights = []
-    for category_i in range(Q_train.shape[1]):
-        q_train = Q_train[:, category_i]
-        bincount = np.bincount(q_train, minlength=n_classes[category_i])
+    for j in range(Q_train.shape[1]):
+        q_train = Q_train[:, j]
+        bincount = np.bincount(q_train, minlength=category_k[j])
         class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
         class_weights.append(class_weight)
 
@@ -184,8 +183,8 @@ def main():
     model.compile(optimizer,
                   loss='binary_crossentropy',
                   metrics=['binary_accuracy'])
-    category_Q_train_ordinal = [ordinal.to_multi_hot_ordinal(Q_train[:, category_i], n_classes=n_classes[category_i])
-                                for category_i in range(Q_train.shape[1])]  # (C, (1 - b)*n, k_c - 1)
+    category_Q_train_ordinal = [ordinal.to_multi_hot_ordinal(Q_train[:, j], k=k)
+                                for j, k in enumerate(category_k)]  # (C, (1 - b)*n, k_c - 1)
     _ = model.fit(P_train,
                   category_Q_train_ordinal,
                   batch_size=batch_size,

@@ -14,93 +14,77 @@ from tensorflow.keras import regularizers
 from tensorflow.keras import utils
 from sklearn.model_selection import train_test_split
 
-from classification import evaluation, ordinal
-from classification.net import attention_with_context, parameters
+from classification import evaluation, ordinal, shared_parameters
+from classification.net.attention_with_context import AttentionWithContext
+from classification.net.batch_generators import SingleInstanceBatchGenerator
 import folders
 from sites.bookcave import bookcave
 from text import load_embeddings
 
 
-def create_model(output_k, output_names, n_tokens, embedding_matrix, embedding_trainable,
-                 word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
+def create_model(n_sentences, n_tokens, embedding_matrix, embedding_trainable,
+                 sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
+                 para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                  book_dense_units, book_dense_activation, book_dense_l2,
-                 book_dropout, label_mode):
-    # Word encoder.
-    input_w = Input(shape=(n_tokens,), dtype='float32')  # (t)
+                 book_dropout, output_k, output_names, label_mode):
+    # Sentence encoder.
+    input_s = Input(shape=(n_tokens,), dtype='int32')  # (t)
     max_words, d = embedding_matrix.shape
-    x_w = Embedding(max_words,
+    x_s = Embedding(max_words,
                     d,
                     weights=[embedding_matrix],
-                    trainable=embedding_trainable)(input_w)  # (t, d)
-    if word_rnn_l2 is not None:
-        word_rnn_l2 = regularizers.l2(word_rnn_l2)
-    x_w = Bidirectional(word_rnn(word_rnn_units,
-                                 kernel_regularizer=word_rnn_l2,
-                                 return_sequences=True))(x_w)  # (t, h_w)
-    if word_dense_l2 is not None:
-        word_dense_l2 = regularizers.l2(word_dense_l2)
-    x_w = TimeDistributed(Dense(word_dense_units,
-                                activation=word_dense_activation,
-                                kernel_regularizer=word_dense_l2))(x_w)  # (2t, c_w)
-    x_w = attention_with_context.AttentionWithContext()(x_w)  # (c_w)
-    word_encoder = Model(input_w, x_w)
+                    trainable=embedding_trainable)(input_s)  # (t, d)
+    if sent_rnn_l2 is not None:
+        sent_rnn_l2 = regularizers.l2(sent_rnn_l2)
+    x_s = Bidirectional(sent_rnn(sent_rnn_units,
+                                 kernel_regularizer=sent_rnn_l2,
+                                 return_sequences=True))(x_s)  # (2t, h_s)
+    if sent_dense_l2 is not None:
+        sent_dense_l2 = regularizers.l2(sent_dense_l2)
+    x_s = TimeDistributed(Dense(sent_dense_units,
+                                activation=sent_dense_activation,
+                                kernel_regularizer=sent_dense_l2))(x_s)  # (2t, c_s)
+    x_s = AttentionWithContext()(x_s)  # (c_s)
+    sentence_encoder = Model(input_s, x_s)
+
+    # Paragraph encoder.
+    input_p = Input(shape=(n_sentences, n_tokens), dtype='float32')  # (s, t)
+    x_p = TimeDistributed(sentence_encoder)(input_p)  # (s, c_s)
+    if para_rnn_l2 is not None:
+        para_rnn_l2 = regularizers.l2(para_rnn_l2)
+    x_p = Bidirectional(para_rnn(para_rnn_units,
+                                 kernel_regularizer=para_rnn_l2,
+                                 return_sequences=True))(x_p)  # (2s, h_p)
+    if para_dense_l2 is not None:
+        para_dense_l2 = regularizers.l2(para_dense_l2)
+    x_p = TimeDistributed(Dense(para_dense_units,
+                                activation=para_dense_activation,
+                                kernel_regularizer=para_dense_l2))(x_p)  # (2s, c_p)
+    x_p = AttentionWithContext()(x_p)  # (c_p)
+    paragraph_encoder = Model(input_p, x_p)
 
     # Consider maximum and average signals among all paragraphs of books.
-    input_p = Input(shape=(None, n_tokens), dtype='float32')  # (s, t); s is not constant!
-    x_p = TimeDistributed(word_encoder)(input_p)  # (s, c_w)
-    g_max_p = GlobalMaxPooling1D()(x_p)  # (c_w)
-    g_avg_p = GlobalAveragePooling1D()(x_p)  # (c_w)
-    x_p = Concatenate()([g_max_p, g_avg_p])  # (2c_w)
+    input_b = Input(shape=(None, n_sentences, n_tokens), dtype='float32')  # (p, s, t); p is not constant!
+    x_b = TimeDistributed(paragraph_encoder)(input_b)  # (p, c_p)
+    g_max_b = GlobalMaxPooling1D()(x_b)  # (c_p)
+    g_avg_b = GlobalAveragePooling1D()(x_b)  # (c_p)
+    x_b = Concatenate()([g_max_b, g_avg_b])  # (2c_p)
     if book_dense_l2 is not None:
         book_dense_l2 = regularizers.l2(book_dense_l2)
-    x_p = Dense(book_dense_units,
-                kernel_regularizer=book_dense_l2)(x_p)  # (c_b)
-    x_p = book_dense_activation(x_p)  # (c_b)
-    x_p = Dropout(book_dropout)(x_p)  # (c_b)
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
-        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
-        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
-        outputs = [Dense(1, activation='linear', name=output_names[i])(x_p) for i in range(len(output_k))]
+    x_b = Dense(book_dense_units,
+                kernel_regularizer=book_dense_l2)(x_b)  # (c_b)
+    x_b = book_dense_activation(x_b)  # (c_b)
+    x_b = Dropout(book_dropout)(x_b)  # (c_b)
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
+        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
+        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
+        outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
-    model = Model(input_p, outputs)
+    model = Model(input_b, outputs)
     return model
-
-
-class SingleInstanceBatchGenerator(utils.Sequence):
-    """
-    When fitting the model, the batch size must be 1 to accommodate variable numbers of paragraphs per text.
-    See `https://datascience.stackexchange.com/a/48814/66450`.
-    """
-    def __init__(self, X, Y, shuffle=True):
-        super(SingleInstanceBatchGenerator, self).__init__()
-        # `fit_generator` wants each `x` to be a NumPy array, not a list.
-        self.X = [np.array([x]) for x in X]
-        # Transform Y from shape (c, n, k-1) to (n, c, 1, k-1) if Y is ordinal,
-        # or from shape (c, n, k) to (n, c, 1, k) if Y is not ordinal,
-        # where `c` is the number of categories, `n` is the number of instances,
-        # and `k` is the number of classes for the current category.
-        self.Y = [[np.array([y[i]]) for y in Y]
-                  for i in range(len(X))]
-        self.indices = np.arange(len(X))
-        self.shuffle = shuffle
-        self.shuffle_indices()
-
-    def __len__(self):
-        return len(self.indices)
-
-    def __getitem__(self, index):
-        i = self.indices[index]
-        return self.X[i], self.Y[i]
-
-    def on_epoch_end(self):
-        self.shuffle_indices()
-
-    def shuffle_indices(self):
-        if self.shuffle:
-            np.random.shuffle(self.indices)
 
 
 def main(argv):
@@ -126,43 +110,65 @@ def main(argv):
 
     # Load data.
     print('Retrieving texts...')
-    subset_ratio = 1.
-    subset_seed = 1
-    min_len = 256
-    max_len = 4096
-    min_tokens = 6
+    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    subset_seed = shared_parameters.DATA_SUBSET_SEED
+    min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
+    max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
+    min_tokens = shared_parameters.DATA_MIN_TOKENS
     inputs, Y, categories, category_levels = \
-        bookcave.get_data({'tokens'},
+        bookcave.get_data({'sentence_tokens'},
                           subset_ratio=subset_ratio,
                           subset_seed=subset_seed,
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens)
-    text_paragraph_tokens, _ = zip(*inputs['tokens'])
-    print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
+    text_sentence_tokens, text_section_ids, text_paragraph_ids = zip(*inputs['sentence_tokens'])
+    print('Retrieved {:d} texts.'.format(len(text_sentence_tokens)))
 
     # Tokenize.
     print('Tokenizing...')
     max_words = 8192  # The maximum size of the vocabulary.
     split = '\t'
     tokenizer = Tokenizer(num_words=max_words, split=split)
-    all_paragraphs = []
-    for paragraph_tokens in text_paragraph_tokens:
-        for tokens in paragraph_tokens:
-            all_paragraphs.append(split.join(tokens))
-    tokenizer.fit_on_texts(all_paragraphs)
+    all_sentences = []
+    for sentence_tokens in text_sentence_tokens:
+        for tokens in sentence_tokens:
+            all_sentences.append(split.join(tokens))
+    tokenizer.fit_on_texts(all_sentences)
     print('Done.')
 
     # Convert to sequences.
     print('Converting texts to sequences...')
-    n_tokens = 128  # The maximum number of tokens to process in each paragraph.
+    n_sentences = 16  # The maximum number of sentences to process in each paragraph.
+    n_tokens = 48  # The maximum number of tokens to process in each sentence.
     padding = 'pre'
     truncating = 'pre'
-    X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in paragraph_tokens]),
-                                maxlen=n_tokens,
-                                padding=padding,
-                                truncating=truncating))
-         for paragraph_tokens in text_paragraph_tokens]
+    text_sentence_tensors = [pad_sequences(tokenizer.texts_to_sequences([split.join(tokens)
+                                                                         for tokens in sentence_tokens]),
+                                           maxlen=n_tokens,
+                                           padding=padding,
+                                           truncating=truncating)
+                             for sentence_tokens in text_sentence_tokens]
+    X = []  # [text_i][paragraph_i][sentence_i][token_i]
+    for text_i, sentence_tensors in enumerate(text_sentence_tensors):
+        section_ids = text_section_ids[text_i]
+        paragraph_ids = text_paragraph_ids[text_i]
+        paragraph_sentence_tensors = []
+        paragraph_sentence_tensor = np.zeros((n_sentences, n_tokens), dtype=np.int32)
+        sentence_i = 0
+        last_section_paragraph_id = None
+        for i, sentence_tensor in enumerate(sentence_tensors):
+            section_paragraph_id = (section_ids[i], paragraph_ids[i])
+            if last_section_paragraph_id is not None and section_paragraph_id != last_section_paragraph_id:
+                paragraph_sentence_tensors.append(paragraph_sentence_tensor)
+                paragraph_sentence_tensor = np.zeros((n_sentences, n_tokens), dtype=np.int32)
+                sentence_i = 0
+            if sentence_i < len(paragraph_sentence_tensor):
+                paragraph_sentence_tensor[sentence_i] = sentence_tensor
+            sentence_i += 1
+            last_section_paragraph_id = section_paragraph_id
+        paragraph_sentence_tensors.append(paragraph_sentence_tensor)
+        X.append(np.array(paragraph_sentence_tensors))
     print('Done.')
 
     # Load embedding.
@@ -175,30 +181,37 @@ def main(argv):
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
-    word_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
-    word_rnn_units = 128
-    word_rnn_l2 = .01
-    word_dense_units = 64
-    word_dense_activation = 'linear'
-    word_dense_l2 = .01
-    book_dense_units = 512
+    sent_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
+    sent_rnn_units = 64
+    sent_rnn_l2 = .01
+    sent_dense_units = 64
+    sent_dense_activation = 'linear'
+    sent_dense_l2 = .01
+    para_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
+    para_rnn_units = 64
+    para_rnn_l2 = .01
+    para_dense_units = 64
+    para_dense_activation = 'linear'
+    para_dense_l2 = .01
+    book_dense_units = 128
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
     book_dropout = .5
-    label_mode = parameters.LABEL_MODE_ORDINAL
-    model = create_model(category_k, categories, n_tokens, embedding_matrix, embedding_trainable,
-                         word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
-                         book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
-                         label_mode)
+    label_mode = shared_parameters.LABEL_MODE_ORDINAL
+    model = create_model(n_sentences, n_tokens, embedding_matrix, embedding_trainable,
+                         sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
+                         para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
+                         book_dense_units, book_dense_activation, book_dense_l2,
+                         book_dropout, category_k, categories, label_mode)
     lr = .000015625
     optimizer = Adam(lr=lr)
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
         metric = 'binary_accuracy'
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         loss = 'categorical_crossentropy'
         metric = 'categorical_accuracy'
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         loss = 'mse'
         metric = 'accuracy'
     else:
@@ -207,10 +220,10 @@ def main(argv):
     print('Done.')
 
     # Split data set.
-    test_size = .25  # b
-    test_random_state = 1
-    val_size = .1  # v
-    val_random_state = 1
+    test_size = shared_parameters.EVAL_TEST_SIZE  # b
+    test_random_state = shared_parameters.EVAL_TEST_RANDOM_STATE
+    val_size = shared_parameters.EVAL_VAL_SIZE  # v
+    val_random_state = shared_parameters.EVAL_VAL_RANDOM_STATE
     Y_T = Y.transpose()  # (n, c)
     X_train, X_test, Y_train_T, Y_test_T = \
         train_test_split(X, Y_T, test_size=test_size, random_state=test_random_state)
@@ -222,7 +235,7 @@ def main(argv):
 
     # Train.
     use_class_weights = True
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
         Y_val = [ordinal.to_multi_hot_ordinal(Y_val[j], k=k) for j, k in enumerate(category_k)]
         if use_class_weights:
@@ -236,7 +249,7 @@ def main(argv):
                 category_class_weights.append(class_weights)
         else:
             category_class_weights = None
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         if use_class_weights:
             category_class_weights = []  # [dict]
             for j, y_train in enumerate(Y_train):
@@ -247,7 +260,7 @@ def main(argv):
             category_class_weights = None
         Y_train = [utils.to_categorical(Y_train[j], num_classes=k) for j, k in enumerate(category_k)]
         Y_val = [utils.to_categorical(Y_val[j], num_classes=k) for j, k in enumerate(category_k)]
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         category_class_weights = None
         Y_train = [Y_train[j] / k for j, k in enumerate(category_k)]
         Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
@@ -278,11 +291,11 @@ def main(argv):
     print('Predicting test instances...')
     test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
     Y_preds = model.predict_generator(test_generator)
-    if label_mode == parameters.LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
-    elif label_mode == parameters.LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         Y_preds = [np.argmax(y, axis=1) for y in Y_preds]
-    elif label_mode == parameters.LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         Y_preds = [np.maximum(0, np.minimum(k - 1, np.round(Y_preds[i] * k))) for i, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
@@ -341,14 +354,21 @@ def main(argv):
         fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
-        fd.write('word_rnn={}\n'.format(word_rnn.__name__))
-        fd.write('word_rnn_units={:d}\n'.format(word_rnn_units))
-        fd.write('word_rnn_l2={}\n'.format(str(word_rnn_l2)))
-        fd.write('word_dense_units={:d}\n'.format(word_dense_units))
-        fd.write('word_dense_activation=\'{}\'\n'.format(word_dense_activation))
-        fd.write('word_dense_l2={}\n'.format(str(word_dense_l2)))
+        fd.write('sent_rnn={}\n'.format(sent_rnn.__name__))
+        fd.write('sent_rnn_units={:d}\n'.format(sent_rnn_units))
+        fd.write('sent_rnn_l2={}\n'.format(str(sent_rnn_l2)))
+        fd.write('sent_dense_units={:d}\n'.format(sent_dense_units))
+        fd.write('sent_dense_activation=\'{}\'\n'.format(sent_dense_activation))
+        fd.write('sent_dense_l2={}\n'.format(str(sent_dense_l2)))
+        fd.write('para_rnn={}\n'.format(para_rnn.__name__))
+        fd.write('para_rnn_units={:d}\n'.format(para_rnn_units))
+        fd.write('para_rnn_l2={}\n'.format(str(para_rnn_l2)))
+        fd.write('para_dense_units={:d}\n'.format(para_dense_units))
+        fd.write('para_dense_activation=\'{}\'\n'.format(para_dense_activation))
+        fd.write('para_dense_l2={}\n'.format(str(para_dense_l2)))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
-        fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__, book_dense_activation.__dict__))
+        fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__,
+                                                        book_dense_activation.__dict__))
         fd.write('book_dense_l2={}\n'.format(str(book_dense_l2)))
         fd.write('book_dropout={:.1f}\n'.format(book_dropout))
         fd.write('label_mode={}\n'.format(label_mode))
@@ -364,7 +384,7 @@ def main(argv):
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
         fd.write('\nRESULTS\n\n')
-        fd.write('Data size: {:d}\n'.format(len(text_paragraph_tokens)))
+        fd.write('Data size: {:d}\n'.format(len(text_sentence_tokens)))
         fd.write('Train size: {:d}\n'.format(len(X_train)))
         fd.write('Validation size: {:d}\n'.format(len(X_val)))
         fd.write('Test size: {:d}\n'.format(len(X_test)))
