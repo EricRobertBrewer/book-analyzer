@@ -4,8 +4,8 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Bidirectional, Concatenate, Conv2D, Dense, Dropout, Embedding, \
-    GlobalMaxPooling1D, GlobalAveragePooling1D, Input, MaxPool2D, TimeDistributed
+from tensorflow.keras.layers import Concatenate, Conv2D, Dense, Dropout, Embedding, Flatten, \
+    GlobalMaxPooling1D, GlobalAveragePooling1D, Input, MaxPool2D, Reshape, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import regularizers
@@ -30,6 +30,7 @@ def create_model(n_tokens, embedding_matrix, embedding_trainable,
                     d,
                     weights=[embedding_matrix],
                     trainable=embedding_trainable)(input_s)  # (t, d)
+    x_s = Reshape((n_tokens, d, 1))(x_s)  # (t, d, 1)
     if sent_cnn_l2 is not None:
         sent_cnn_l2 = regularizers.l2(sent_cnn_l2)
     X_s = [Conv2D(sent_cnn_filters,
@@ -38,12 +39,13 @@ def create_model(n_tokens, embedding_matrix, embedding_trainable,
                   padding='valid',
                   activation=sent_cnn_activation,
                   kernel_regularizer=sent_cnn_l2)(x_s)
-           for filter_size in sent_cnn_filter_sizes]  # [(z, f)]; z = filter_size, f = filters
-    X_s = [MaxPool2D(pool_size=(max_words - sent_cnn_filter_sizes[i] + 1, 1),
+           for filter_size in sent_cnn_filter_sizes]  # [(t - z + 1, f)]; z = filter_size, f = filters
+    X_s = [MaxPool2D(pool_size=(n_tokens - sent_cnn_filter_sizes[i] + 1, 1),
                      strides=(1, 1),
                      padding='valid')(x_s)
            for i, x_s in enumerate(X_s)]  # [(f, 1)]
     x_s = Concatenate(axis=1)(X_s)  # (f * |Z|); |Z| = length of filter_sizes
+    x_s = Flatten()(x_s)
     sentence_encoder = Model(input_s, x_s)
 
     # Consider maximum and average signals among all sentences of books.
