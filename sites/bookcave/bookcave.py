@@ -7,9 +7,7 @@ import pandas as pd
 import folders
 from text import paragraph_io
 
-# Declare file path constants.
 
-# Category indices.
 CATEGORY_INDEX_CRUDE_HUMOR_LANGUAGE = 0
 CATEGORY_INDEX_DRUG_ALCOHOL_TOBACCO_USE = 1
 CATEGORY_INDEX_KISSING = 2
@@ -37,6 +35,148 @@ CATEGORY_NAMES = {
     'sex_and_intimacy': 'Sex and Intimacy',
     'violence_and_horror': 'Violence and Horror',
     'gay_lesbian_characters': 'Gay/Lesbian Characters'
+}
+CATEGORY_LEVELS = {
+    'soft': [[
+        'None',
+        'Mild crude humor',
+        'Moderate crude humor/language|Significant crude humor/language',
+        'Extensive crude humor/language'
+    ], [
+        'None',
+        'Mild substance use|Some substance use',
+        'Moderate substance use by adults and/or some use by minors|Significant substance use',
+        'Extensive substance abuse'
+    ], [
+        'None',
+        'Mild kissing|Passionate kissing'
+    ], [
+        'None',
+        'Mild language',
+        'Some profanity (6 to 40)|Moderate profanity (41 to 100)',
+        'Significant profanity (101 to 200)|Significant profanity (201 to 500)|Extensive profanity (501+)'
+    ], [
+        'None',
+        'Brief (nonsexual) nudity|Brief nudity',
+        'Some nudity',
+        'Extensive nudity'
+    ], [
+        'None',
+        'Mild sensuality',
+        'Non-graphic sexual references|Non-detailed fade-out sensuality|Fade-out intimacy with details or significant sexual discussion',
+        'Semi-detailed onscreen love scenes|Detailed onscreen love scenes|Repeated graphic sex|Menage or BDSM sex'
+    ], [
+        'None',
+        'Mild (nonsexual) violence or horror|Some violence or horror',
+        'Moderate violence or horror',
+        'Graphic violence or horror|Extended gruesome and depraved violence or horror'
+    ], [
+        'None',
+        'Minor gay/lesbian characters or elements',
+        'Prominent gay/lesbian character(s)'
+    ]],
+    'medium': [[
+        'None',
+        'Mild crude humor',
+        'Moderate crude humor/language',
+        'Significant crude humor/language',
+        'Extensive crude humor/language'
+    ], [
+        'None',
+        'Mild substance use',
+        'Some substance use',
+        'Moderate substance use by adults and/or some use by minors',
+        'Significant substance use',
+        'Extensive substance abuse'
+    ], [
+        'None',
+        'Mild kissing',
+        'Passionate kissing'
+    ], [
+        'None',
+        'Mild language',
+        'Some profanity (6 to 40)',
+        'Moderate profanity (41 to 100)',
+        'Significant profanity (101 to 200)|Significant profanity (201 to 500)',
+        'Extensive profanity (501+)'
+    ], [
+        'None',
+        'Brief (nonsexual) nudity',
+        'Brief nudity',
+        'Some nudity',
+        'Extensive nudity'
+    ], [
+        'None',
+        'Mild sensuality',
+        'Non-graphic sexual references|Non-detailed fade-out sensuality',
+        'Fade-out intimacy with details or significant sexual discussion',
+        'Semi-detailed onscreen love scenes|Detailed onscreen love scenes',
+        'Repeated graphic sex|Menage or BDSM sex'
+    ], [
+        'None',
+        'Mild (nonsexual) violence or horror',
+        'Some violence or horror',
+        'Moderate violence or horror',
+        'Graphic violence or horror',
+        'Extended gruesome and depraved violence or horror'
+    ], [
+        'None',
+        'Minor gay/lesbian characters or elements',
+        'Prominent gay/lesbian character(s)'
+    ]],
+    'hard': [[
+        'None',
+        'Mild crude humor',
+        'Moderate crude humor/language',
+        'Significant crude humor/language',
+        'Extensive crude humor/language'
+    ], [
+        'None',
+        'Mild substance use',
+        'Some substance use',
+        'Moderate substance use by adults and/or some use by minors',
+        'Significant substance use',
+        'Extensive substance abuse'
+    ], [
+        'None',
+        'Mild kissing',
+        'Passionate kissing'
+    ], [
+        'None',
+        'Mild language',
+        'Some profanity (6 to 40)',
+        'Moderate profanity (41 to 100)',
+        'Significant profanity (101 to 200)',
+        'Significant profanity (201 to 500)',
+        'Extensive profanity (501+)'
+    ], [
+        'None',
+        'Brief (nonsexual) nudity',
+        'Brief nudity',
+        'Some nudity',
+        'Extensive nudity'
+    ], [
+        'None',
+        'Mild sensuality',
+        'Non-graphic sexual references',
+        'Non-detailed fade-out sensuality',
+        'Fade-out intimacy with details or significant sexual discussion',
+        'Semi-detailed onscreen love scenes',
+        'Detailed onscreen love scenes',
+        'Repeated graphic sex',
+        'Menage or BDSM sex'
+    ], [
+        'None',
+        'Mild (nonsexual) violence or horror',
+        'Some violence or horror',
+        'Moderate violence or horror',
+        'Graphic violence or horror',
+        'Extended gruesome and depraved violence or horror'
+    ], [
+        'None',
+        'Minor gay/lesbian characters or elements',
+        'Prominent gay/lesbian character(s)'
+    ]]
 }
 
 
@@ -213,8 +353,9 @@ def get_data(
         When `True`, function progress will be printed to the console.
     :return:
         Always:
-            inputs (dict):                  A dict containing file paths, raw texts, section/section-paragraph tuples,
-                                                or section-paragraph-token lists of books and/or images.
+            inputs (dict):                  A dict containing raw texts, section/section-paragraph tuples,
+                                                section-paragraph-token lists,
+                                                or section-paragraph-sentence-token lists of books.
             Y (np.ndarray):                 Level (label) for the corresponding text/images in up to 8 categories.
             categories ([str]):             Names of categories.
             category_levels ([[str]]):      Names of levels per category.
@@ -277,7 +418,7 @@ def get_data(
     # Extract category data.
     if categories_mode not in {'hard', 'medium', 'soft'}:
         raise ValueError('Unknown value for `categories_mode`: `{}`'.format(categories_mode))
-    categories_path = os.path.join(folders.BOOKCAVE_CATEGORIES_PATH, 'categories_{}.tsv'.format(categories_mode))
+    categories_path = os.path.join(folders.BOOKCAVE_CATEGORIES_PATH, '{}.tsv'.format(categories_mode))
     all_categories_df = pd.read_csv(categories_path, sep='\t')
 
     # Enumerate category names.
@@ -296,9 +437,9 @@ def get_data(
     level_to_index = dict()
     for category in categories:
         category_rows = categories_df[categories_df['category'].str.match(category)]
-        category_levels = category_rows['level']
+        levels = category_rows['level']
         category_level_to_index = dict()
-        for j, level in enumerate(category_levels):
+        for j, level in enumerate(levels):
             category_level_to_index[level] = j
             for level_part in level.split('|'):
                 category_level_to_index[level_part] = j

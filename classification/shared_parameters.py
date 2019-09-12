@@ -2,8 +2,8 @@ DATA_SUBSET_RATIO = 1.
 DATA_SUBSET_SEED = 1
 DATA_PARAGRAPH_MIN_LEN = 256  # The minimum number of paragraphs in each text.
 DATA_PARAGRAPH_MAX_LEN = 4096  # The maximum number of paragraphs in each text.
-DATA_SENTENCE_MIN_LEN = 1000  # The minimum number of sentences in each text.
-DATA_SENTENCE_MAX_LEN = 20000  # The maximum number of sentences in each text.
+DATA_SENTENCE_MIN_LEN = 512  # The minimum number of sentences in each text.
+DATA_SENTENCE_MAX_LEN = 16384  # The maximum number of sentences in each text.
 DATA_MIN_TOKENS = 6  # The minimum number of tokens in each paragraph.
 
 LABEL_MODE_ORDINAL = 'ordinal'

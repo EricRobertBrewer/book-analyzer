@@ -4,60 +4,59 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.layers import Bidirectional, CuDNNGRU, Dense, Dropout, Embedding, GRU, Input, TimeDistributed
+from tensorflow.keras.layers import Bidirectional, Concatenate, Conv2D, Dense, Dropout, Embedding, \
+    GlobalMaxPooling1D, GlobalAveragePooling1D, Input, MaxPool2D, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras import regularizers
 from tensorflow.keras import utils
 from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal, shared_parameters
-from classification.net.attention_with_context import AttentionWithContext
+from classification.net.batch_generators import SingleInstanceBatchGenerator
 import folders
-from sites.bookcave import bookcave
-from text import load_embeddings
+from sites.bookcave import bookcave, bookcave_ids
+from text import sentence_data
 
 
-def create_model(n_paragraphs, n_tokens, embedding_matrix, embedding_trainable,
-                 para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
-                 book_rnn, book_rnn_units, book_rnn_l2, book_dense_units, book_dense_activation, book_dense_l2,
+def create_model(n_tokens, embedding_matrix, embedding_trainable,
+                 sent_cnn_filters, sent_cnn_filter_sizes, sent_cnn_activation, sent_cnn_l2,
+                 book_dense_units, book_dense_activation, book_dense_l2,
                  book_dropout, output_k, output_names, label_mode):
-    # Paragraph encoder.
-    input_p = Input(shape=(n_tokens,), dtype='int32')  # (t)
+    # Sentence encoder.
+    input_s = Input(shape=(n_tokens,), dtype='int32')  # (t)
     max_words, d = embedding_matrix.shape
-    x_p = Embedding(max_words,
+    x_s = Embedding(max_words,
                     d,
                     weights=[embedding_matrix],
-                    trainable=embedding_trainable)(input_p)  # (t, d)
-    if para_rnn_l2 is not None:
-        para_rnn_l2 = regularizers.l2(para_rnn_l2)
-    x_p = Bidirectional(para_rnn(para_rnn_units,
-                                 kernel_regularizer=para_rnn_l2,
-                                 return_sequences=True))(x_p)  # (2t, h_p)
-    if para_dense_l2 is not None:
-        para_dense_l2 = regularizers.l2(para_dense_l2)
-    x_p = TimeDistributed(Dense(para_dense_units,
-                                activation=para_dense_activation,
-                                kernel_regularizer=para_dense_l2))(x_p)  # (2t, c_p)
-    x_p = AttentionWithContext()(x_p)  # (c_p)
-    paragraph_encoder = Model(input_p, x_p)
+                    trainable=embedding_trainable)(input_s)  # (t, d)
+    if sent_cnn_l2 is not None:
+        sent_cnn_l2 = regularizers.l2(sent_cnn_l2)
+    X_s = [Conv2D(sent_cnn_filters,
+                  (filter_size, d),
+                  strides=(1, 1),
+                  padding='valid',
+                  activation=sent_cnn_activation,
+                  kernel_regularizer=sent_cnn_l2)(x_s)
+           for filter_size in sent_cnn_filter_sizes]  # [(z, f)]; z = filter_size, f = filters
+    X_s = [MaxPool2D(pool_size=(max_words - sent_cnn_filter_sizes[i] + 1, 1),
+                     strides=(1, 1),
+                     padding='valid')(x_s)
+           for i, x_s in enumerate(X_s)]  # [(f, 1)]
+    x_s = Concatenate(axis=1)(X_s)  # (f * |Z|); |Z| = length of filter_sizes
+    sentence_encoder = Model(input_s, x_s)
 
-    # Book encoder.
-    input_b = Input(shape=(n_paragraphs, n_tokens), dtype='float32')  # (p, t)
-    x_b = TimeDistributed(paragraph_encoder)(input_b)  # (p, c_p)
-    if book_rnn_l2 is not None:
-        book_rnn_l2 = regularizers.l2(book_rnn_l2)
-    x_b = Bidirectional(book_rnn(book_rnn_units,
-                                 kernel_regularizer=book_rnn_l2,
-                                 return_sequences=True))(x_b)  # (2p, h_b)
+    # Consider maximum and average signals among all sentences of books.
+    input_b = Input(shape=(None, n_tokens), dtype='float32')  # (s, t); s is not constant!
+    x_b = TimeDistributed(sentence_encoder)(input_b)  # (p, c_s)
+    g_max_b = GlobalMaxPooling1D()(x_b)  # (c_s)
+    g_avg_b = GlobalAveragePooling1D()(x_b)  # (c_s)
+    x_b = Concatenate()([g_max_b, g_avg_b])  # (2c_s)
     if book_dense_l2 is not None:
         book_dense_l2 = regularizers.l2(book_dense_l2)
-    x_b = TimeDistributed(Dense(book_dense_units,
-                                activation=book_dense_activation,
-                                kernel_regularizer=book_dense_l2))(x_b)  # (2p, c_b)
-    x_b = AttentionWithContext()(x_b)  # (c_b)
+    x_b = Dense(book_dense_units,
+                kernel_regularizer=book_dense_l2)(x_b)  # (c_b)
+    x_b = book_dense_activation(x_b)  # (c_b)
     x_b = Dropout(book_dropout)(x_b)  # (c_b)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
@@ -72,16 +71,18 @@ def create_model(n_paragraphs, n_tokens, embedding_matrix, embedding_trainable,
 
 
 def main(argv):
-    if len(argv) < 2 or len(argv) > 3:
-        raise ValueError('Usage: <batch_size> <epochs> [note]')
-    batch_size = int(argv[0])
-    epochs = int(argv[1])
+    if len(argv) < 4 or len(argv) > 5:
+        raise ValueError('Usage: <max_words> <n_tokens> <steps_per_epoch> <epochs> [note]')
+    max_words = int(argv[0])  # The maximum size of the vocabulary.
+    n_tokens = int(argv[1])  # The maximum number of tokens to process in each sentence.
+    steps_per_epoch = int(argv[2])
+    epochs = int(argv[3])
     note = None
-    if len(argv) > 2:
-        note = argv[2]
+    if len(argv) > 4:
+        note = argv[4]
 
     script_name = os.path.basename(__file__)
-    classifier_name = script_name[:script_name.index('.')]
+    classifier_name = script_name[:script_name.rindex('.')]
 
     start_time = int(time.time())
     if 'SLURM_JOB_ID' in os.environ:
@@ -93,82 +94,37 @@ def main(argv):
         print('Note: {}'.format(note))
 
     # Load data.
-    print('\nRetrieving texts...')
-    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
-    subset_seed = shared_parameters.DATA_SUBSET_SEED
-    min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
-    max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
-    min_tokens = shared_parameters.DATA_MIN_TOKENS
-    inputs, Y, categories, category_levels = \
-        bookcave.get_data({'paragraph_tokens'},
-                          subset_ratio=subset_ratio,
-                          subset_seed=subset_seed,
-                          min_len=min_len,
-                          max_len=max_len,
-                          min_tokens=min_tokens)
-    text_paragraph_tokens, _ = zip(*inputs['paragraph_tokens'])
-    print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
-
-    # Tokenize.
-    print('\nTokenizing...')
-    max_words = 8192  # The maximum size of the vocabulary.
-    split = '\t'
-    tokenizer = Tokenizer(num_words=max_words, split=split)
-    all_sentences = []
-    for paragraph_tokens in text_paragraph_tokens:
-        for tokens in paragraph_tokens:
-            all_sentences.append(split.join(tokens))
-    tokenizer.fit_on_texts(all_sentences)
-    print('Done.')
-
-    # Convert to sequences.
-    print('\nConverting texts to sequences...')
-    n_paragraphs = max_len  # The maximum number of paragraphs to process in each text.
-    n_tokens = 128  # The maximum number of tokens to process in each paragraph.
+    print('Loading data...')
+    embedding_path = folders.EMBEDDING_GLOVE_100_PATH
     padding = 'pre'
     truncating = 'pre'
-    X = np.zeros((len(text_paragraph_tokens), n_paragraphs, n_tokens), dtype=np.float32)
-    for text_i, paragraph_tokens in enumerate(text_paragraph_tokens):
-        if len(paragraph_tokens) > n_paragraphs:
-            # Truncate two thirds of the remainder at the beginning and one third at the end.
-            start = int(2/3*(len(paragraph_tokens) - n_paragraphs))
-            usable_paragraph_tokens = paragraph_tokens[start:start + n_paragraphs]
-        else:
-            usable_paragraph_tokens = paragraph_tokens
-        sequences = tokenizer.texts_to_sequences([split.join(tokens) for tokens in usable_paragraph_tokens])
-        X[text_i, :len(sequences)] = pad_sequences(sequences,
-                                                   maxlen=n_tokens,
-                                                   padding=padding,
-                                                   truncating=truncating)
-    print('Done.')
-
-    # Load embedding.
-    print('\nLoading embedding matrix...')
-    embedding_path = folders.EMBEDDING_GLOVE_100_PATH
-    embedding_matrix = load_embeddings.get_embedding_matrix(tokenizer, embedding_path, max_words)
+    categories_mode = 'soft'
+    X, Y, embedding_matrix = sentence_data.load_sentence_data(max_words,
+                                                              n_tokens,
+                                                              padding=padding,
+                                                              truncating=truncating,
+                                                              categories_mode=categories_mode,
+                                                              embedding_path=embedding_path)
+    categories = bookcave.CATEGORIES
+    category_levels = bookcave.CATEGORY_LEVELS[categories_mode]
     print('Done.')
 
     # Create model.
-    print('\nCreating model...')
+    print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
-    para_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
-    para_rnn_units = 128
-    para_rnn_l2 = .01
-    para_dense_units = 64
-    para_dense_activation = 'linear'
-    para_dense_l2 = .01
-    book_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
-    book_rnn_units = 128
-    book_rnn_l2 = .01
-    book_dense_units = 64
-    book_dense_activation = 'linear'
+    sent_cnn_filters = 16
+    sent_cnn_filter_sizes = [2, 3, 4]
+    sent_cnn_activation = 'elu'
+    sent_cnn_l2 = .01
+    book_dense_units = 128
+    book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = shared_parameters.LABEL_MODE_ORDINAL
-    model = create_model(n_paragraphs, n_tokens, embedding_matrix, embedding_trainable,
-                         para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
-                         book_rnn, book_rnn_units, book_rnn_l2, book_dense_units, book_dense_activation, book_dense_l2,
+    model = create_model(n_tokens, embedding_matrix, embedding_trainable,
+                         sent_cnn_filters, sent_cnn_filter_sizes, sent_cnn_activation, sent_cnn_l2,
+                         book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, category_k, categories, label_mode)
     lr = .000015625
     optimizer = Adam(lr=lr)
@@ -233,12 +189,13 @@ def main(argv):
         Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
-    history = model.fit(X_train,
-                        Y_train,
-                        batch_size=batch_size,
-                        epochs=epochs,
-                        validation_data=Y_val,
-                        class_weight=category_class_weights)
+    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=True)
+    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
+    history = model.fit_generator(train_generator,
+                                  steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
+                                  epochs=epochs,
+                                  class_weight=category_class_weights,
+                                  validation_data=val_generator)
 
     # Save the history to visualize loss over time.
     print('Saving training history...')
@@ -254,7 +211,9 @@ def main(argv):
     print('Done.')
 
     # Predict test instances.
-    Y_preds = model.predict(X_test)
+    print('Predicting test instances...')
+    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
+    Y_preds = model.predict_generator(test_generator)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
     elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
@@ -298,20 +257,17 @@ def main(argv):
         os.mkdir(logs_path)
     with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
         if note is not None:
-            fd.write('Note: {}\n\n'.format(note))
+            fd.write('{}\n\n'.format(note))
         fd.write('PARAMETERS\n\n')
-        fd.write('batch_size={:d}\n'.format(batch_size))
+        fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
         fd.write('\nText\n')
-        fd.write('subset_ratio={:.3f}\n'.format(subset_ratio))
-        fd.write('subset_seed={:d}\n'.format(subset_seed))
-        fd.write('min_len={:d}\n'.format(min_len))
-        fd.write('max_len={:d}\n'.format(max_len))
-        fd.write('min_tokens={:d}\n'.format(min_tokens))
+        fd.write('ids_fname={}'.format(bookcave_ids.get_fname()))
+        fd.write('\nLabels\n')
+        fd.write('categories_mode=\'{}\''.format(categories_mode))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
-        fd.write('n_paragraphs={:d}\n'.format(n_paragraphs))
         fd.write('n_tokens={:d}\n'.format(n_tokens))
         fd.write('padding=\'{}\'\n'.format(padding))
         fd.write('truncating=\'{}\'\n'.format(truncating))
@@ -319,17 +275,13 @@ def main(argv):
         fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
-        fd.write('para_rnn={}\n'.format(para_rnn.__name__))
-        fd.write('para_rnn_units={:d}\n'.format(para_rnn_units))
-        fd.write('para_rnn_l2={}\n'.format(str(para_rnn_l2)))
-        fd.write('para_dense_units={:d}\n'.format(para_dense_units))
-        fd.write('para_dense_activation=\'{}\'\n'.format(para_dense_activation))
-        fd.write('para_dense_l2={}\n'.format(str(para_dense_l2)))
-        fd.write('book_rnn={}\n'.format(book_rnn.__name__))
-        fd.write('book_rnn_units={:d}\n'.format(book_rnn_units))
-        fd.write('book_rnn_l2={}\n'.format(str(book_rnn_l2)))
+        fd.write('sent_cnn_filters={:d}\n'.format(sent_cnn_filters))
+        fd.write('sent_cnn_filter_sizes={}\n'.format(str(sent_cnn_filter_sizes)))
+        fd.write('sent_cnn_activation=\'{}\'\n'.format(sent_cnn_activation))
+        fd.write('sent_cnn_l2={}\n'.format(str(sent_cnn_l2)))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
-        fd.write('book_dense_activation=\'{}\'\n'.format(book_dense_activation))
+        fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__,
+                                                        book_dense_activation.__dict__))
         fd.write('book_dense_l2={}\n'.format(str(book_dense_l2)))
         fd.write('book_dropout={:.1f}\n'.format(book_dropout))
         fd.write('label_mode={}\n'.format(label_mode))
@@ -345,7 +297,7 @@ def main(argv):
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
         fd.write('\nRESULTS\n\n')
-        fd.write('Data size: {:d}\n'.format(len(text_paragraph_tokens)))
+        fd.write('Data size: {:d}\n'.format(len(X)))
         fd.write('Train size: {:d}\n'.format(len(X_train)))
         fd.write('Validation size: {:d}\n'.format(len(X_val)))
         fd.write('Test size: {:d}\n'.format(len(X_test)))
