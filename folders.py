@@ -23,7 +23,7 @@ EMBEDDING_GLOVE_300_PATH = os.path.join(EMBEDDINGS_PATH, 'glove.6B.300d.txt')
 
 FIGURES_PATH = os.path.join('..', 'figures')
 
-GENERATED_PATH = 'generated'
+GENERATED_PATH = os.path.join('..', 'generated')
 
 HISTORY_PATH = 'history'
 
