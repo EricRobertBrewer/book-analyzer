@@ -13,7 +13,7 @@ from tensorflow.keras import utils
 from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal, shared_parameters
-from classification.net.batch_generators import SingleInstanceBatchGenerator
+from classification.net.batch_generators import VariableLengthBatchGenerator
 import folders
 from sites.bookcave import bookcave, bookcave_ids
 from text import sentence_data
@@ -118,7 +118,7 @@ def main(argv):
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
-    sent_cnn_filters = 16
+    sent_cnn_filters = 8
     sent_cnn_filter_sizes = [2, 3, 4]
     sent_cnn_activation = 'elu'
     sent_cnn_l2 = .01
@@ -194,8 +194,10 @@ def main(argv):
         Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
-    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=True)
-    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
+    X_shape = (n_tokens,)
+    Y_shape = [(len(y[0]),) for y in Y_train]
+    train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, 8, shuffle=True)
+    val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, 8, shuffle=False)
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
@@ -217,7 +219,7 @@ def main(argv):
 
     # Predict test instances.
     print('Predicting test instances...')
-    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
+    test_generator = VariableLengthBatchGenerator(X_test, X_shape, Y_test, Y_shape, 8, shuffle=False)
     Y_preds = model.predict_generator(test_generator)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
