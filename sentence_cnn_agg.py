@@ -94,6 +94,9 @@ def main(argv):
     print('Time stamp: {:d}'.format(stamp))
     if note is not None:
         print('Note: {}'.format(note))
+        base_fname = '{:d}_{}'.format(stamp, note)
+    else:
+        base_fname = format(stamp, 'd')
 
     # Load data.
     print('Loading data...')
@@ -206,7 +209,7 @@ def main(argv):
     history_path = os.path.join(folders.HISTORY_PATH, classifier_name)
     if not os.path.exists(history_path):
         os.mkdir(history_path)
-    with open(os.path.join(history_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+    with open(os.path.join(history_path, '{}.txt'.format(base_fname)), 'w') as fd:
         for key in history.history.keys():
             values = history.history.get(key)
             fd.write('{} {}\n'.format(key, ' '.join(str(value) for value in values)))
@@ -231,7 +234,7 @@ def main(argv):
     if save_model:
         models_path = os.path.join(folders.MODELS_PATH, classifier_name)
         label_mode_path = os.path.join(models_path, label_mode)
-        model_path = os.path.join(label_mode_path, '{:d}.h5'.format(stamp))
+        model_path = os.path.join(label_mode_path, '{}.h5'.format(base_fname))
         print('Saving model to `{}`...'.format(model_path))
         if not os.path.exists(folders.MODELS_PATH):
             os.mkdir(folders.MODELS_PATH)
@@ -257,7 +260,7 @@ def main(argv):
     logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
-    with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+    with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
         if note is not None:
             fd.write('{}\n\n'.format(note))
         fd.write('PARAMETERS\n\n')
@@ -265,9 +268,9 @@ def main(argv):
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
         fd.write('\nText\n')
-        fd.write('ids_fname={}'.format(bookcave_ids.get_fname()))
+        fd.write('ids_fname={}\n'.format(bookcave_ids.get_fname()))
         fd.write('\nLabels\n')
-        fd.write('categories_mode=\'{}\''.format(categories_mode))
+        fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
         fd.write('n_tokens={:d}\n'.format(n_tokens))
