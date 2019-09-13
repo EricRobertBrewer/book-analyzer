@@ -73,15 +73,16 @@ def create_model(n_tokens, embedding_matrix, embedding_trainable,
 
 
 def main(argv):
-    if len(argv) < 4 or len(argv) > 5:
-        raise ValueError('Usage: <max_words> <n_tokens> <steps_per_epoch> <epochs> [note]')
+    if len(argv) < 5 or len(argv) > 6:
+        raise ValueError('Usage: <max_words> <n_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
     max_words = int(argv[0])  # The maximum size of the vocabulary.
     n_tokens = int(argv[1])  # The maximum number of tokens to process in each sentence.
-    steps_per_epoch = int(argv[2])
-    epochs = int(argv[3])
+    batch_size = int(argv[2])
+    steps_per_epoch = int(argv[3])
+    epochs = int(argv[4])
     note = None
-    if len(argv) > 4:
-        note = argv[4]
+    if len(argv) > 5:
+        note = argv[5]
 
     script_name = os.path.basename(__file__)
     classifier_name = script_name[:script_name.rindex('.')]
@@ -118,8 +119,8 @@ def main(argv):
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
-    sent_cnn_filters = 8
-    sent_cnn_filter_sizes = [2, 3, 4]
+    sent_cnn_filters = 16
+    sent_cnn_filter_sizes = [1, 2, 3, 4]
     sent_cnn_activation = 'elu'
     sent_cnn_l2 = .01
     book_dense_units = 128
@@ -131,7 +132,7 @@ def main(argv):
                          sent_cnn_filters, sent_cnn_filter_sizes, sent_cnn_activation, sent_cnn_l2,
                          book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, category_k, categories, label_mode)
-    lr = 1/(2**23)
+    lr = 1/(2**27)
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
@@ -196,8 +197,8 @@ def main(argv):
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     X_shape = (n_tokens,)
     Y_shape = [(len(y[0]),) for y in Y_train]
-    train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, 8, shuffle=True)
-    val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, 8, shuffle=False)
+    train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=True)
+    val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, batch_size, shuffle=False)
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
@@ -219,7 +220,7 @@ def main(argv):
 
     # Predict test instances.
     print('Predicting test instances...')
-    test_generator = VariableLengthBatchGenerator(X_test, X_shape, Y_test, Y_shape, 8, shuffle=False)
+    test_generator = VariableLengthBatchGenerator(X_test, X_shape, Y_test, Y_shape, batch_size, shuffle=False)
     Y_preds = model.predict_generator(test_generator)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
