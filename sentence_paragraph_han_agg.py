@@ -8,8 +8,6 @@ from tensorflow.keras.layers import Bidirectional, Concatenate, CuDNNGRU, Dense,
     GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras import regularizers
 from tensorflow.keras import utils
 from sklearn.model_selection import train_test_split
@@ -18,8 +16,8 @@ from classification import evaluation, ordinal, shared_parameters
 from classification.net.attention_with_context import AttentionWithContext
 from classification.net.batch_generators import VariableLengthBatchGenerator
 import folders
-from sites.bookcave import bookcave
-from text import load_embeddings
+from sites.bookcave import bookcave, bookcave_ids
+from text import generate_data
 
 
 def create_model(n_sentences, n_tokens, embedding_matrix, embedding_trainable,
@@ -88,14 +86,17 @@ def create_model(n_sentences, n_tokens, embedding_matrix, embedding_trainable,
 
 
 def main(argv):
-    if len(argv) < 3 or len(argv) > 4:
-        raise ValueError('Usage: <batch_size> <steps_per_epoch> <epochs> [note]')
-    batch_size = int(argv[0])
-    steps_per_epoch = int(argv[1])
-    epochs = int(argv[2])
+    if len(argv) < 6 or len(argv) > 7:
+        raise ValueError('Usage: <max_words> <n_sentences> <n_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
+    max_words = int(argv[0])  # The maximum size of the vocabulary.
+    n_sentences = int(argv[1])  # The maximum number of sentences to process in each paragraph.
+    n_tokens = int(argv[2])  # The maximum number of tokens to process in each sentence.
+    batch_size = int(argv[3])
+    steps_per_epoch = int(argv[4])
+    epochs = int(argv[5])
     note = None
-    if len(argv) > 3:
-        note = argv[3]
+    if len(argv) > 6:
+        note = argv[6]
 
     script_name = os.path.basename(__file__)
     classifier_name = script_name[:script_name.index('.')]
@@ -110,72 +111,20 @@ def main(argv):
         print('Note: {}'.format(note))
 
     # Load data.
-    print('Retrieving texts...')
-    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
-    subset_seed = shared_parameters.DATA_SUBSET_SEED
-    min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
-    max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
-    min_tokens = shared_parameters.DATA_MIN_TOKENS
-    inputs, Y, categories, category_levels = \
-        bookcave.get_data({'sentence_tokens'},
-                          subset_ratio=subset_ratio,
-                          subset_seed=subset_seed,
-                          min_len=min_len,
-                          max_len=max_len,
-                          min_tokens=min_tokens)
-    text_sentence_tokens, text_section_ids, text_paragraph_ids = zip(*inputs['sentence_tokens'])
-    print('Retrieved {:d} texts.'.format(len(text_sentence_tokens)))
-
-    # Tokenize.
-    print('Tokenizing...')
-    max_words = 8192  # The maximum size of the vocabulary.
-    split = '\t'
-    tokenizer = Tokenizer(num_words=max_words, split=split)
-    all_sentences = []
-    for sentence_tokens in text_sentence_tokens:
-        for tokens in sentence_tokens:
-            all_sentences.append(split.join(tokens))
-    tokenizer.fit_on_texts(all_sentences)
-    print('Done.')
-
-    # Convert to sequences.
-    print('Converting texts to sequences...')
-    n_sentences = 16  # The maximum number of sentences to process in each paragraph.
-    n_tokens = 48  # The maximum number of tokens to process in each sentence.
+    print('Loading data...')
+    embedding_path = folders.EMBEDDING_GLOVE_100_PATH
     padding = 'pre'
     truncating = 'pre'
-    text_sentence_tensors = [pad_sequences(tokenizer.texts_to_sequences([split.join(tokens)
-                                                                         for tokens in sentence_tokens]),
-                                           maxlen=n_tokens,
-                                           padding=padding,
-                                           truncating=truncating)
-                             for sentence_tokens in text_sentence_tokens]
-    X = []  # [text_i][paragraph_i][sentence_i][token_i]
-    for text_i, sentence_tensors in enumerate(text_sentence_tensors):
-        section_ids = text_section_ids[text_i]
-        paragraph_ids = text_paragraph_ids[text_i]
-        paragraph_sentence_tensors = []
-        paragraph_sentence_tensor = np.zeros((n_sentences, n_tokens), dtype=np.int32)
-        sentence_i = 0
-        last_section_paragraph_id = None
-        for i, sentence_tensor in enumerate(sentence_tensors):
-            section_paragraph_id = (section_ids[i], paragraph_ids[i])
-            if last_section_paragraph_id is not None and section_paragraph_id != last_section_paragraph_id:
-                paragraph_sentence_tensors.append(paragraph_sentence_tensor)
-                paragraph_sentence_tensor = np.zeros((n_sentences, n_tokens), dtype=np.int32)
-                sentence_i = 0
-            if sentence_i < len(paragraph_sentence_tensor):
-                paragraph_sentence_tensor[sentence_i] = sentence_tensor
-            sentence_i += 1
-            last_section_paragraph_id = section_paragraph_id
-        paragraph_sentence_tensors.append(paragraph_sentence_tensor)
-        X.append(np.array(paragraph_sentence_tensors))
-    print('Done.')
-
-    # Load embedding.
-    print('Loading embedding matrix...')
-    embedding_path = folders.EMBEDDING_GLOVE_100_PATH
-    embedding_matrix = load_embeddings.get_embedding_matrix(tokenizer, embedding_path, max_words, header=False)
+    categories_mode = 'soft'
+    X = generate_data.load_X_paragraph_sentences(max_words,
+                                                 n_sentences,
+                                                 n_tokens,
+                                                 padding=padding,
+                                                 truncating=truncating)
+    Y = generate_data.load_Y(categories_mode)
+    embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_path)
+    categories = bookcave.CATEGORIES
+    category_levels = bookcave.CATEGORY_LEVELS[categories_mode]
     print('Done.')
 
     # Create model.
@@ -344,13 +293,12 @@ def main(argv):
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
         fd.write('\nText\n')
-        fd.write('subset_ratio={:.3f}\n'.format(subset_ratio))
-        fd.write('subset_seed={:d}\n'.format(subset_seed))
-        fd.write('min_len={:d}\n'.format(min_len))
-        fd.write('max_len={:d}\n'.format(max_len))
-        fd.write('min_tokens={:d}\n'.format(min_tokens))
+        fd.write('ids_fname={}\n'.format(bookcave_ids.get_ids_fname()))
+        fd.write('\nLabels\n')
+        fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
+        fd.write('n_sentences={:d}\n'.format(n_sentences))
         fd.write('n_tokens={:d}\n'.format(n_tokens))
         fd.write('padding=\'{}\'\n'.format(padding))
         fd.write('truncating=\'{}\'\n'.format(truncating))
@@ -388,7 +336,7 @@ def main(argv):
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
         fd.write('\nRESULTS\n\n')
-        fd.write('Data size: {:d}\n'.format(len(text_sentence_tokens)))
+        fd.write('Data size: {:d}\n'.format(len(X)))
         fd.write('Train size: {:d}\n'.format(len(X_train)))
         fd.write('Validation size: {:d}\n'.format(len(X_val)))
         fd.write('Test size: {:d}\n'.format(len(X_test)))

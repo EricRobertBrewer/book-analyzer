@@ -10,7 +10,7 @@ def get_coefs(word, *arr):
     return word, np.asarray(arr, dtype='float32')
 
 
-def get_embedding_matrix(tokenizer, fname, max_words=10000, header=False):
+def load_embedding(tokenizer, fname, max_words=10000, header=False):
     word_index = tokenizer.word_index
     word_count = min(max_words, len(word_index))
     with open(fname, 'r', encoding='utf-8') as fd:

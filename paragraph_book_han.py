@@ -145,7 +145,7 @@ def main(argv):
     # Load embedding.
     print('\nLoading embedding matrix...')
     embedding_path = folders.EMBEDDING_GLOVE_100_PATH
-    embedding_matrix = load_embeddings.get_embedding_matrix(tokenizer, embedding_path, max_words)
+    embedding_matrix = load_embeddings.load_embedding(tokenizer, embedding_path, max_words)
     print('Done.')
 
     # Create model.

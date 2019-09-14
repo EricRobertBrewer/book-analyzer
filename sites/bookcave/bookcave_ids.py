@@ -5,18 +5,20 @@ import folders
 from sites.bookcave import bookcave
 
 
-def get_fname(
+def get_ids_fname(
+        n_texts=6385,
         paragraph_min_len=shared_parameters.DATA_PARAGRAPH_MIN_LEN,
         paragraph_max_len=shared_parameters.DATA_PARAGRAPH_MAX_LEN,
         sentence_min_len=shared_parameters.DATA_SENTENCE_MIN_LEN,
         sentence_max_len=shared_parameters.DATA_SENTENCE_MAX_LEN,
         min_tokens=shared_parameters.DATA_MIN_TOKENS
 ):
-    return 'ids_{:d}-{:d}p_{:d}-{:d}s_{:d}t.txt'.format(paragraph_min_len,
-                                                        paragraph_max_len,
-                                                        sentence_min_len,
-                                                        sentence_max_len,
-                                                        min_tokens)
+    return 'ids_{:d}_{:d}-{:d}p_{:d}-{:d}s_{:d}t.txt'.format(n_texts,
+                                                             paragraph_min_len,
+                                                             paragraph_max_len,
+                                                             sentence_min_len,
+                                                             sentence_max_len,
+                                                             min_tokens)
 
 
 def main():
@@ -54,7 +56,7 @@ def main():
     logs_path = os.path.join(folders.LOGS_PATH, base_name)
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
-    fname = get_fname(paragraph_min_len, paragraph_max_len, sentence_min_len, sentence_max_len, min_tokens)
+    fname = get_ids_fname(len(book_ids), paragraph_min_len, paragraph_max_len, sentence_min_len, sentence_max_len, min_tokens)
     path = os.path.join(logs_path, fname)
     with open(path, 'w', encoding='utf-8') as fd:
         fd.write('{:d}\n'.format(len(book_ids)))

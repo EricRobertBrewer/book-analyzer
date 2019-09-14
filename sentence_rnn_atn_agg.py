@@ -17,7 +17,7 @@ from classification.net.attention_with_context import AttentionWithContext
 from classification.net.batch_generators import VariableLengthBatchGenerator
 import folders
 from sites.bookcave import bookcave, bookcave_ids
-from text import sentence_data
+from text import generate_data
 
 
 def create_model(n_tokens, embedding_matrix, embedding_trainable,
@@ -101,12 +101,12 @@ def main(argv):
     padding = 'pre'
     truncating = 'pre'
     categories_mode = 'soft'
-    X, Y, embedding_matrix = sentence_data.load_sentence_data(max_words,
-                                                              n_tokens,
-                                                              padding=padding,
-                                                              truncating=truncating,
-                                                              categories_mode=categories_mode,
-                                                              embedding_path=embedding_path)
+    X = generate_data.load_X_sentences(max_words,
+                                       n_tokens,
+                                       padding=padding,
+                                       truncating=truncating)
+    Y = generate_data.load_Y(categories_mode)
+    embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_path)
     categories = bookcave.CATEGORIES
     category_levels = bookcave.CATEGORY_LEVELS[categories_mode]
     print('Done.')
@@ -269,7 +269,7 @@ def main(argv):
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
         fd.write('\nText\n')
-        fd.write('ids_fname={}\n'.format(bookcave_ids.get_fname()))
+        fd.write('ids_fname={}\n'.format(bookcave_ids.get_ids_fname()))
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('\nTokenization\n')

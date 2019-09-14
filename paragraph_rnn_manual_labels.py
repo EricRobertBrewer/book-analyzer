@@ -109,7 +109,7 @@ def main():
     # Load embedding matrix.
     if verbose:
         print('\nLoading embedding...')
-    embedding_matrix = load_embeddings.get_embedding_matrix(tokenizer, folders.EMBEDDING_GLOVE_100_PATH, max_words)
+    embedding_matrix = load_embeddings.load_embedding(tokenizer, folders.EMBEDDING_GLOVE_100_PATH, max_words)
     if verbose:
         print('Done.')
 
