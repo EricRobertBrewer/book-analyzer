@@ -13,9 +13,9 @@ For example:
 java -mx4g -cp "*" edu.stanford.nlp.pipeline.StanfordCoreNLPServer -port 9000 -timeout 15000
 ```
 
-3. Run `text/tokenize_texts.py`. After it finishes, you can shut down the Stanford CoreNLP server.
+3. Run `sites/db_to_csv.py`.
 
-4. Run `sites/db_to_csv.py`.
+4. Run `text/tokenize_texts.py`. After it finishes, you can shut down the Stanford CoreNLP server.
 
 5. Run `sites/bookcave/bookcave_ids.py`. This will generate a list of book IDs from the BookCave database whose text will be used for classification.
 
