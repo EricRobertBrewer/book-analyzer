@@ -6,7 +6,7 @@ from sites.bookcave import bookcave
 
 
 def get_ids_fname(
-        n_texts=6385,
+        n_texts=6387,
         paragraph_min_len=shared_parameters.DATA_PARAGRAPH_MIN_LEN,
         paragraph_max_len=shared_parameters.DATA_PARAGRAPH_MAX_LEN,
         sentence_min_len=shared_parameters.DATA_SENTENCE_MIN_LEN,
