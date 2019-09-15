@@ -101,7 +101,10 @@ def main(argv):
 
     # Load data.
     print('Loading data...')
-    embedding_path = folders.EMBEDDING_GLOVE_100_PATH
+    embedding_paths = [
+        folders.EMBEDDING_FASTTEXT_CRAWL_300_PATH,
+        folders.EMBEDDING_GLOVE_300_PATH
+    ]
     padding = 'pre'
     truncating = 'pre'
     categories_mode = 'soft'
@@ -110,7 +113,10 @@ def main(argv):
                                        padding=padding,
                                        truncating=truncating)
     Y = generate_data.load_Y(categories_mode)
-    embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_path)
+    embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_paths[0])
+    for i in range(1, len(embedding_paths)):
+        other_embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_paths[i])
+        embedding_matrix = np.concatenate((embedding_matrix, other_embedding_matrix), axis=1)
     categories = bookcave.CATEGORIES
     category_levels = bookcave.CATEGORY_LEVELS[categories_mode]
     print('Done.')
@@ -118,7 +124,7 @@ def main(argv):
     # Create model.
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
-    embedding_trainable = False
+    embedding_trainable = True
     sent_cnn_filters = 16
     sent_cnn_filter_sizes = [1, 2, 3, 4]
     sent_cnn_activation = 'elu'
@@ -285,7 +291,8 @@ def main(argv):
         fd.write('padding=\'{}\'\n'.format(padding))
         fd.write('truncating=\'{}\'\n'.format(truncating))
         fd.write('\nWord Embedding\n')
-        fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
+        for embedding_path in embedding_paths:
+            fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
         fd.write('sent_cnn_filters={:d}\n'.format(sent_cnn_filters))
