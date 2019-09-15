@@ -125,7 +125,7 @@ def main(argv):
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = True
-    sent_cnn_filters = 16
+    sent_cnn_filters = 8
     sent_cnn_filter_sizes = [1, 2, 3, 4]
     sent_cnn_activation = 'elu'
     sent_cnn_l2 = .01
@@ -138,7 +138,7 @@ def main(argv):
                          sent_cnn_filters, sent_cnn_filter_sizes, sent_cnn_activation, sent_cnn_l2,
                          book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, category_k, categories, label_mode)
-    lr = 1/(2**27)
+    lr = 1/(2**37)
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'

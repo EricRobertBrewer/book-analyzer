@@ -112,7 +112,10 @@ def main(argv):
 
     # Load data.
     print('Loading data...')
-    embedding_path = folders.EMBEDDING_GLOVE_100_PATH
+    embedding_paths = [
+        folders.EMBEDDING_FASTTEXT_CRAWL_300_PATH,
+        folders.EMBEDDING_GLOVE_300_PATH
+    ]
     padding = 'pre'
     truncating = 'pre'
     categories_mode = 'soft'
@@ -122,7 +125,10 @@ def main(argv):
                                                  padding=padding,
                                                  truncating=truncating)
     Y = generate_data.load_Y(categories_mode)
-    embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_path)
+    embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_paths[0])
+    for i in range(1, len(embedding_paths)):
+        other_embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_paths[i])
+        embedding_matrix = np.concatenate((embedding_matrix, other_embedding_matrix), axis=1)
     categories = bookcave.CATEGORIES
     category_levels = bookcave.CATEGORY_LEVELS[categories_mode]
     print('Done.')
@@ -130,7 +136,7 @@ def main(argv):
     # Create model.
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
-    embedding_trainable = False
+    embedding_trainable = True
     sent_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
     sent_rnn_units = 64
     sent_rnn_l2 = .01
@@ -153,7 +159,7 @@ def main(argv):
                          para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                          book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, category_k, categories, label_mode)
-    lr = .000015625
+    lr = 1/(2**37)
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
@@ -308,7 +314,8 @@ def main(argv):
         fd.write('padding=\'{}\'\n'.format(padding))
         fd.write('truncating=\'{}\'\n'.format(truncating))
         fd.write('\nWord Embedding\n')
-        fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
+        for embedding_path in embedding_paths:
+            fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
         fd.write('sent_rnn={}\n'.format(sent_rnn.__name__))
