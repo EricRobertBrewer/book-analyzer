@@ -98,7 +98,6 @@ def main(argv):
     # Load data.
     print('Loading data...')
     embedding_paths = [
-        folders.EMBEDDING_FASTTEXT_CRAWL_300_PATH,
         folders.EMBEDDING_GLOVE_300_PATH
     ]
     padding = 'pre'
