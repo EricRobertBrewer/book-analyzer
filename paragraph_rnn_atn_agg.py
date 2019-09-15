@@ -16,7 +16,7 @@ from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal, shared_parameters
 from classification.net.attention_with_context import AttentionWithContext
-from classification.net.batch_generators import SingleInstanceBatchGenerator
+from classification.net.batch_generators import SingleInstanceBatchGenerator, VariableLengthBatchGenerator
 import folders
 from sites.bookcave import bookcave
 from text import load_embeddings
@@ -71,13 +71,16 @@ def create_model(n_tokens, embedding_matrix, embedding_trainable,
 
 
 def main(argv):
-    if len(argv) < 2 or len(argv) > 3:
-        raise ValueError('Usage: <steps_per_epoch> <epochs> [note]')
-    steps_per_epoch = int(argv[0])
-    epochs = int(argv[1])
+    if len(argv) < 5 or len(argv) > 6:
+        raise ValueError('Usage: <max_words> <n_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
+    max_words = int(argv[0])  # The maximum size of the vocabulary.
+    n_tokens = int(argv[1])  # The maximum number of tokens to process in each paragraph.
+    batch_size = int(argv[2])
+    steps_per_epoch = int(argv[3])
+    epochs = int(argv[4])
     note = None
-    if len(argv) > 2:
-        note = argv[2]
+    if len(argv) > 5:
+        note = argv[5]
 
     script_name = os.path.basename(__file__)
     classifier_name = script_name[:script_name.index('.')]
@@ -90,6 +93,9 @@ def main(argv):
     print('Time stamp: {:d}'.format(stamp))
     if note is not None:
         print('Note: {}'.format(note))
+        base_fname = '{:d}_{}'.format(stamp, note)
+    else:
+        base_fname = format(stamp, 'd')
 
     # Load data.
     print('Retrieving texts...')
@@ -110,7 +116,6 @@ def main(argv):
 
     # Tokenize.
     print('Tokenizing...')
-    max_words = 8192  # The maximum size of the vocabulary.
     split = '\t'
     tokenizer = Tokenizer(num_words=max_words, split=split)
     all_paragraphs = []
@@ -122,7 +127,6 @@ def main(argv):
 
     # Convert to sequences.
     print('Converting texts to sequences...')
-    n_tokens = 128  # The maximum number of tokens to process in each paragraph.
     padding = 'pre'
     truncating = 'pre'
     X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in paragraph_tokens]),
@@ -134,14 +138,14 @@ def main(argv):
 
     # Load embedding.
     print('Loading embedding matrix...')
-    embedding_path = folders.EMBEDDING_GLOVE_100_PATH
+    embedding_path = folders.EMBEDDING_GLOVE_300_PATH
     embedding_matrix = load_embeddings.load_embedding(tokenizer, embedding_path, max_words, header=False)
     print('Done.')
 
     # Create model.
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
-    embedding_trainable = False
+    embedding_trainable = True
     para_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
     para_rnn_units = 128
     para_rnn_l2 = .01
@@ -157,7 +161,7 @@ def main(argv):
                          para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                          book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, category_k, categories, label_mode)
-    lr = .000015625
+    lr = 2**-19
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
@@ -220,8 +224,16 @@ def main(argv):
         Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
-    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=True)
-    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
+    if batch_size == 1:
+        train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=True)
+        val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=True)
+        test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=True)
+    else:
+        X_shape = (n_tokens,)
+        Y_shape = [(len(y[0]),) for y in Y_train]
+        train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=True)
+        val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, batch_size, shuffle=False)
+        test_generator = VariableLengthBatchGenerator(X_test, X_shape, Y_test, Y_shape, batch_size, shuffle=False)
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
@@ -235,7 +247,7 @@ def main(argv):
     history_path = os.path.join(folders.HISTORY_PATH, classifier_name)
     if not os.path.exists(history_path):
         os.mkdir(history_path)
-    with open(os.path.join(history_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+    with open(os.path.join(history_path, '{}.txt'.format(base_fname)), 'w') as fd:
         for key in history.history.keys():
             values = history.history.get(key)
             fd.write('{} {}\n'.format(key, ' '.join(str(value) for value in values)))
@@ -243,7 +255,6 @@ def main(argv):
 
     # Predict test instances.
     print('Predicting test instances...')
-    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
     Y_preds = model.predict_generator(test_generator)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
@@ -260,7 +271,7 @@ def main(argv):
     if save_model:
         models_path = os.path.join(folders.MODELS_PATH, classifier_name)
         label_mode_path = os.path.join(models_path, label_mode)
-        model_path = os.path.join(label_mode_path, '{:d}.h5'.format(stamp))
+        model_path = os.path.join(label_mode_path, '{}.h5'.format(base_fname))
         print('Saving model to `{}`...'.format(model_path))
         if not os.path.exists(folders.MODELS_PATH):
             os.mkdir(folders.MODELS_PATH)
@@ -286,9 +297,9 @@ def main(argv):
     logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
-    with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+    with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
         if note is not None:
-            fd.write('Note: {}\n\n'.format(note))
+            fd.write('{}\n\n'.format(note))
         fd.write('PARAMETERS\n\n')
         fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
         fd.write('epochs={:d}\n'.format(epochs))
