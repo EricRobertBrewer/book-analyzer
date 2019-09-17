@@ -109,6 +109,9 @@ def main(argv):
     print('Time stamp: {:d}'.format(stamp))
     if note is not None:
         print('Note: {}'.format(note))
+        base_fname = '{:d}_{}'.format(stamp, note)
+    else:
+        base_fname = format(stamp, 'd')
 
     # Load data.
     print('Loading data...')
@@ -244,7 +247,7 @@ def main(argv):
     history_path = os.path.join(folders.HISTORY_PATH, classifier_name)
     if not os.path.exists(history_path):
         os.mkdir(history_path)
-    with open(os.path.join(history_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+    with open(os.path.join(history_path, '{}.txt'.format(base_fname)), 'w') as fd:
         for key in history.history.keys():
             values = history.history.get(key)
             fd.write('{} {}\n'.format(key, ' '.join(str(value) for value in values)))
@@ -268,7 +271,7 @@ def main(argv):
     if save_model:
         models_path = os.path.join(folders.MODELS_PATH, classifier_name)
         label_mode_path = os.path.join(models_path, label_mode)
-        model_path = os.path.join(label_mode_path, '{:d}.h5'.format(stamp))
+        model_path = os.path.join(label_mode_path, '{}.h5'.format(base_fname))
         print('Saving model to `{}`...'.format(model_path))
         if not os.path.exists(folders.MODELS_PATH):
             os.mkdir(folders.MODELS_PATH)
@@ -289,12 +292,13 @@ def main(argv):
 
     # Write results.
     print('Writing results...')
+
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
     logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
-    with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+    with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
         if note is not None:
             fd.write('Note: {}\n\n'.format(note))
         fd.write('PARAMETERS\n\n')
@@ -357,6 +361,15 @@ def main(argv):
             fd.write('Model not saved.\n')
         fd.write('Time elapsed: {:d}h {:d}m {:d}s\n\n'.format(elapsed_h, elapsed_m, elapsed_s))
         evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
+
+    if not os.path.exists(folders.PREDICTIONS_PATH):
+        os.mkdir(folders.PREDICTIONS_PATH)
+    predictions_path = os.path.join(folders.PREDICTIONS_PATH, classifier_name)
+    if not os.path.exists(predictions_path):
+        os.mkdir(predictions_path)
+    with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
+        evaluation.write_predictions(Y_test, Y_pred, fd, categories)
+
     print('Done.')
 
 

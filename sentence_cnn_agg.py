@@ -268,6 +268,7 @@ def main(argv):
 
     # Write results.
     print('Writing results...')
+
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
     logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
@@ -326,6 +327,15 @@ def main(argv):
             fd.write('Model not saved.\n')
         fd.write('Time elapsed: {:d}h {:d}m {:d}s\n\n'.format(elapsed_h, elapsed_m, elapsed_s))
         evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
+
+    if not os.path.exists(folders.PREDICTIONS_PATH):
+        os.mkdir(folders.PREDICTIONS_PATH)
+    predictions_path = os.path.join(folders.PREDICTIONS_PATH, classifier_name)
+    if not os.path.exists(predictions_path):
+        os.mkdir(predictions_path)
+    with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
+        evaluation.write_predictions(Y_test, Y_pred, fd, categories)
+
     print('Done.')
 
 
