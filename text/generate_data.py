@@ -10,43 +10,63 @@ from sites.bookcave import bookcave, bookcave_ids
 from text import load_embeddings
 
 
-def load_X_sentences(max_words, n_tokens, padding='pre', truncating='pre', ids_fname=bookcave_ids.get_ids_fname()):
-    ids_base_name = ids_fname[:ids_fname.rindex('.')]
-    sentences_path = os.path.join(folders.GENERATED_PATH, ids_base_name, 'X', 'sentences')
-    sentence_parameters = '{:d}v_{:d}t_{}-pad_{}-tru'.format(max_words, n_tokens, padding, truncating)
-    sentence_parameters_path = os.path.join(sentences_path, sentence_parameters)
+def get_ids_base_name(ids_fname):
+    return ids_fname[:ids_fname.rindex('.')]
+
+
+def get_sentence_parameters_path(max_words, n_sentence_tokens, padding, truncating, ids_fname):
+    ids_base_name = get_ids_base_name(ids_fname)
+    parameters = '{:d}v_{:d}t_{}-pad_{}-tru'.format(max_words, n_sentence_tokens, padding, truncating)
+    return os.path.join(folders.GENERATED_PATH, ids_base_name, 'X', 'sentences', parameters)
+
+
+def get_paragraph_parameters_path(max_words, n_paragraph_tokens, padding, truncating, ids_fname):
+    ids_base_name = get_ids_base_name(ids_fname)
+    parameters = '{:d}v_{:d}t_{}-pad_{}-tru'.format(max_words, n_paragraph_tokens, padding, truncating)
+    return os.path.join(folders.GENERATED_PATH, ids_base_name, 'X', 'paragraphs', parameters)
+
+
+def get_sentence_paragraph_parameters_path(max_words, n_sentences, n_sentence_tokens, padding, truncating, ids_fname):
+    ids_base_name = get_ids_base_name(ids_fname)
+    parameters = \
+        '{:d}v_{:d}s_{:d}t_{}-pad_{}-tru'.format(max_words, n_sentences, n_sentence_tokens, padding, truncating)
+    return os.path.join(folders.GENERATED_PATH, ids_base_name, 'X', 'paragraph_sentences', parameters)
+
+
+def load_X_sentences(max_words, n_sentence_tokens, padding='pre', truncating='pre', ids_fname=bookcave_ids.get_ids_fname()):
+    sentence_parameters_path = \
+        get_sentence_parameters_path(max_words, n_sentence_tokens, padding, truncating, ids_fname)
     fnames = os.listdir(sentence_parameters_path)
-    X = [np.load(os.path.join(sentence_parameters_path, fname)) for fname in fnames]
-    return X
+    return [np.load(os.path.join(sentence_parameters_path, fname)) for fname in fnames]
 
 
-def load_X_paragraph_sentences(max_words, n_sentences, n_tokens, padding='pre', truncating='pre', ids_fname=bookcave_ids.get_ids_fname()):
-    ids_base_name = ids_fname[:ids_fname.rindex('.')]
-    paragraph_sentences_path = os.path.join(folders.GENERATED_PATH, ids_base_name, 'X', 'paragraph_sentences')
-    paragraph_sentence_parameters = \
-        '{:d}v_{:d}s_{:d}t_{}-pad_{}-tru'.format(max_words, n_sentences, n_tokens, padding, truncating)
-    paragraph_sentence_parameters_path = os.path.join(paragraph_sentences_path, paragraph_sentence_parameters)
+def load_X_paragraphs(max_words, n_paragraph_tokens, padding='pre', truncating='pre', ids_fname=bookcave_ids.get_ids_fname()):
+    paragraph_parameters_path = get_paragraph_parameters_path(max_words, n_paragraph_tokens, padding, truncating, ids_fname)
+    fnames = os.listdir(paragraph_parameters_path)
+    return [np.load(os.path.join(paragraph_parameters_path, fname)) for fname in fnames]
+
+
+def load_X_paragraph_sentences(max_words, n_sentences, n_sentence_tokens, padding='pre', truncating='pre', ids_fname=bookcave_ids.get_ids_fname()):
+    paragraph_sentence_parameters_path = \
+        get_sentence_paragraph_parameters_path(max_words, n_sentences, n_sentence_tokens, padding, truncating, ids_fname)
     fnames = os.listdir(paragraph_sentence_parameters_path)
-    X = [np.load(os.path.join(paragraph_sentence_parameters_path, fname)) for fname in fnames]
-    return X
+    return [np.load(os.path.join(paragraph_sentence_parameters_path, fname)) for fname in fnames]
 
 
 def load_Y(categories_mode='soft', ids_fname=bookcave_ids.get_ids_fname()):
-    ids_base_name = ids_fname[:ids_fname.rindex('.')]
+    ids_base_name = get_ids_base_name(ids_fname)
     Y_categories_mode_path = os.path.join(folders.GENERATED_PATH, ids_base_name, 'Y', '{}.npy'.format(categories_mode))
-    Y = np.load(Y_categories_mode_path)
-    return Y
+    return np.load(Y_categories_mode_path)
 
 
 def load_embedding_matrix(max_words, embedding_path, ids_fname=bookcave_ids.get_ids_fname()):
-    ids_base_name = ids_fname[:ids_fname.rindex('.')]
+    ids_base_name = get_ids_base_name(ids_fname)
     matrices_path = os.path.join(folders.GENERATED_PATH, ids_base_name, 'embedding_matrices')
     matrices_vocabulary_path = os.path.join(matrices_path, '{:d}v'.format(max_words))
     embedding_fname = os.path.basename(embedding_path)
     embedding_base_name = embedding_fname[:embedding_fname.rindex('.')]
     matrix_path = os.path.join(matrices_vocabulary_path, '{}.npy'.format(embedding_base_name))
-    matrix = np.load(matrix_path)
-    return matrix
+    return np.load(matrix_path)
 
 
 def main(argv):
@@ -85,7 +105,7 @@ def main(argv):
     # Create directories for all data types.
     if not os.path.exists(folders.GENERATED_PATH):
         os.mkdir(folders.GENERATED_PATH)
-    ids_base_name = ids_fname[:ids_fname.rindex('.')]
+    ids_base_name = get_ids_base_name(ids_fname)
     ids_path = os.path.join(folders.GENERATED_PATH, ids_base_name)
     if not os.path.exists(ids_path):
         os.mkdir(ids_path)
@@ -119,8 +139,8 @@ def main(argv):
     sentences_path = os.path.join(X_path, 'sentences')
     if not os.path.exists(sentences_path):
         os.mkdir(sentences_path)
-    sentence_parameters = '{:d}v_{:d}t_{}-pad_{}-tru'.format(max_words, n_sentence_tokens, padding, truncating)
-    sentence_parameters_path = os.path.join(sentences_path, sentence_parameters)
+    sentence_parameters_path = \
+        get_sentence_parameters_path(max_words, n_sentence_tokens, padding, truncating, ids_fname)
     if not os.path.exists(sentence_parameters_path):
         os.mkdir(sentence_parameters_path)
 
@@ -128,8 +148,8 @@ def main(argv):
     paragraphs_path = os.path.join(X_path, 'paragraphs')
     if not os.path.exists(paragraphs_path):
         os.mkdir(paragraphs_path)
-    paragraph_parameters = '{:d}v_{:d}t_{}-pad_{}-tru'.format(max_words, n_paragraph_tokens, padding, truncating)
-    paragraph_parameters_path = os.path.join(paragraphs_path, paragraph_parameters)
+    paragraph_parameters_path = \
+        get_paragraph_parameters_path(max_words, n_paragraph_tokens, padding, truncating, ids_fname)
     if not os.path.exists(paragraph_parameters_path):
         os.mkdir(paragraph_parameters_path)
 
@@ -137,9 +157,8 @@ def main(argv):
     paragraph_sentences_path = os.path.join(X_path, 'paragraph_sentences')
     if not os.path.exists(paragraph_sentences_path):
         os.mkdir(paragraph_sentences_path)
-    paragraph_sentence_parameters = \
-        '{:d}v_{:d}s_{:d}t_{}-pad_{}-tru'.format(max_words, n_sentences, n_sentence_tokens, padding, truncating)
-    paragraph_sentence_parameters_path = os.path.join(paragraph_sentences_path, paragraph_sentence_parameters)
+    paragraph_sentence_parameters_path = \
+        get_sentence_paragraph_parameters_path(max_words, n_sentences, n_sentence_tokens, padding, truncating, ids_fname)
     if not os.path.exists(paragraph_sentence_parameters_path):
         os.mkdir(paragraph_sentence_parameters_path)
 
