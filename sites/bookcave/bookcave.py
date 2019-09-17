@@ -387,7 +387,7 @@ def get_data(
     inputs = dict()
     for source in sources:
         inputs[source] = []
-    book_ids = []
+    book_id_set = set()
     for _, rated_book_row in rated_books_df.iterrows():
         # Skip books without a known ASIN.
         asin = rated_book_row['asin']
@@ -407,12 +407,14 @@ def get_data(
         if has_all_sources:
             for source, book_input in book_inputs.items():
                 inputs[source].append(book_input)
-            book_ids.append(rated_book_row['id'])
+            book_id_set.add(rated_book_row['id'])
 
     # Consider only books for which text has been collected.
-    books_df = rated_books_df[rated_books_df['id'].isin(set(book_ids))]
+    books_df = rated_books_df[rated_books_df['id'].isin(book_id_set)]
+    books_df = books_df.sort_values(by='id')
 
     # Map book IDs to indices.
+    book_ids = list(books_df['id'])
     book_id_to_index = {book_id: i for i, book_id in enumerate(book_ids)}
 
     # Extract category data.

@@ -132,7 +132,7 @@ def main(argv):
                          sent_cnn_filters, sent_cnn_filter_sizes, sent_cnn_activation, sent_cnn_l2,
                          book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, category_k, categories, label_mode)
-    lr = 1/(2**27)
+    lr = .0001
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
@@ -317,32 +317,33 @@ def main(argv):
         # Calculate statistics for predictions.
         category_confusion, category_metrics = zip(*[evaluation.get_confusion_and_metrics(Y_test[j], Y_preds[j])
                                                      for j in range(len(categories))])
+        category_width = max(7, max([len(category) for category in categories]))
         averages = [sum([metrics[metric_i] for metrics in category_metrics])/len(category_metrics)
                     for metric_i in range(len(evaluation.METRIC_NAMES))]
         # Metric abbreviations.
         fd.write('\n')
-        fd.write('{:>24}'.format('Metric'))
+        fd.write('{:>{w}}'.format('Metric', w=category_width))
         for abbreviation in evaluation.METRIC_ABBREVIATIONS:
             fd.write(' | {:^7}'.format(abbreviation))
         fd.write(' |\n')
         # Horizontal line.
-        fd.write('{:>24}'.format(''))
+        fd.write('{:>{w}}'.format('', w=category_width))
         for _ in range(len(category_metrics)):
             fd.write('-+-{}'.format('-'*7))
         fd.write('-+\n')
         # Metrics per category.
         for j, metrics in enumerate(category_metrics):
-            fd.write('{:>24}'.format(categories[j]))
+            fd.write('{:>{w}}'.format(categories[j], w=category_width))
             for value in metrics:
                 fd.write(' | {:.5f}'.format(value))
             fd.write(' |\n')
         # Horizontal line.
-        fd.write('{:>24}'.format(''))
+        fd.write('{:>{w}}'.format('', w=category_width))
         for _ in range(len(category_metrics)):
             fd.write('-+-{}'.format('-'*7))
         fd.write('-+\n')
         # Average metrics.
-        fd.write('{:>24}'.format('Average'))
+        fd.write('{:>{w}}'.format('Average', w=category_width))
         for value in averages:
             fd.write(' | {:.5f}'.format(value))
         fd.write(' |\n')

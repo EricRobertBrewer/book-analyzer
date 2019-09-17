@@ -130,7 +130,7 @@ def main(argv):
                          sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
                          book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, category_k, categories, label_mode)
-    lr = 1/(2**27)
+    lr = .0001
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'

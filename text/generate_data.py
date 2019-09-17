@@ -50,20 +50,21 @@ def load_embedding_matrix(max_words, embedding_path, ids_fname=bookcave_ids.get_
 
 
 def main(argv):
-    if len(argv) < 3 or len(argv) > 6:
-        print('Usage: <max_words> <n_sentences> <n_tokens> [padding] [truncating] [categories_mode]')
+    if len(argv) < 4 or len(argv) > 7:
+        print('Usage: <max_words> <n_sentences> <n_sentence_tokens> <n_paragraph_tokens> [padding] [truncating] [categories_mode]')
     max_words = int(argv[0])  # The maximum size of the vocabulary.
     n_sentences = int(argv[1])  # The maximum number of sentences to process in each paragraph.
-    n_tokens = int(argv[2])  # The maximum number of tokens to process in each sentence.
+    n_sentence_tokens = int(argv[2])  # The maximum number of tokens to process in each sentence.
+    n_paragraph_tokens = int(argv[3])    # The maximum number of tokens to process in each paragraph.
     padding = 'pre'
-    if len(argv) > 3:
-        padding = argv[3]
-    truncating = 'pre'
     if len(argv) > 4:
-        truncating = argv[4]
-    categories_mode = 'soft'
+        padding = argv[4]
+    truncating = 'pre'
     if len(argv) > 5:
-        categories_mode = argv[5]
+        truncating = argv[5]
+    categories_mode = 'soft'
+    if len(argv) > 6:
+        categories_mode = argv[6]
 
     # Load data.
     print('Retrieving texts...')
@@ -73,9 +74,11 @@ def main(argv):
         book_ids = []
         for _ in range(n_books):
             book_ids.append(fd.readline()[:-1])
-    inputs, Y, categories, category_levels = bookcave.get_data({'sentence_tokens'},
-                                                               only_ids=book_ids,
-                                                               categories_mode=categories_mode)
+    inputs, Y, categories, category_levels, book_ids, _, _, _, _ = \
+        bookcave.get_data({'sentence_tokens'},
+                          only_ids=book_ids,
+                          categories_mode=categories_mode,
+                          return_meta=True)
     text_sentence_tokens, text_section_ids, text_paragraph_ids = zip(*inputs['sentence_tokens'])
     print('Retrieved {:d} texts.'.format(len(text_sentence_tokens)))
 
@@ -86,6 +89,15 @@ def main(argv):
     ids_path = os.path.join(folders.GENERATED_PATH, ids_base_name)
     if not os.path.exists(ids_path):
         os.mkdir(ids_path)
+
+    # Save Y to file.
+    Y_path = os.path.join(ids_path, 'Y')
+    if not os.path.exists(Y_path):
+        os.mkdir(Y_path)
+    Y_categories_mode_path = os.path.join(Y_path, '{}.npy'.format(categories_mode))
+    if not os.path.exists(Y_categories_mode_path):
+        print('Saved Y to `{}`.'.format(Y_categories_mode_path))
+        np.save(Y_categories_mode_path, Y)
 
     # Tokenize.
     print('Tokenizing...')
@@ -107,82 +119,95 @@ def main(argv):
     sentences_path = os.path.join(X_path, 'sentences')
     if not os.path.exists(sentences_path):
         os.mkdir(sentences_path)
-    sentence_parameters = '{:d}v_{:d}t_{}-pad_{}-tru'.format(max_words, n_tokens, padding, truncating)
+    sentence_parameters = '{:d}v_{:d}t_{}-pad_{}-tru'.format(max_words, n_sentence_tokens, padding, truncating)
     sentence_parameters_path = os.path.join(sentences_path, sentence_parameters)
     if not os.path.exists(sentence_parameters_path):
         os.mkdir(sentence_parameters_path)
-        # Convert to sequences.
-        print('Converting texts to sequences...')
-        X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in sentence_tokens]),
-                                    maxlen=n_tokens,
-                                    padding=padding,
-                                    truncating=truncating), dtype=np.int32)
-             for sentence_tokens in text_sentence_tokens]  # [text_i][sentence_i][token_i]
-        print('Saving tokenized sentence arrays to {}...'.format(sentence_parameters_path))
-        digits = len(str(len(X)))
-        for text_i, x in enumerate(X):
-            x_path = os.path.join(sentence_parameters_path, '{:0>{digits}}.npy'.format(str(text_i), digits=digits))
-            np.save(x_path, x)
-        print('Done')
-    else:
-        print('Tensors for sentences for X already exist. Skipping.')
+
+    # Save X for paragraphs to files.
+    paragraphs_path = os.path.join(X_path, 'paragraphs')
+    if not os.path.exists(paragraphs_path):
+        os.mkdir(paragraphs_path)
+    paragraph_parameters = '{:d}v_{:d}t_{}-pad_{}-tru'.format(max_words, n_paragraph_tokens, padding, truncating)
+    paragraph_parameters_path = os.path.join(paragraphs_path, paragraph_parameters)
+    if not os.path.exists(paragraph_parameters_path):
+        os.mkdir(paragraph_parameters_path)
 
     # Save X for paragraph sentences to files.
     paragraph_sentences_path = os.path.join(X_path, 'paragraph_sentences')
     if not os.path.exists(paragraph_sentences_path):
         os.mkdir(paragraph_sentences_path)
     paragraph_sentence_parameters = \
-        '{:d}v_{:d}s_{:d}t_{}-pad_{}-tru'.format(max_words, n_sentences, n_tokens, padding, truncating)
+        '{:d}v_{:d}s_{:d}t_{}-pad_{}-tru'.format(max_words, n_sentences, n_sentence_tokens, padding, truncating)
     paragraph_sentence_parameters_path = os.path.join(paragraph_sentences_path, paragraph_sentence_parameters)
     if not os.path.exists(paragraph_sentence_parameters_path):
         os.mkdir(paragraph_sentence_parameters_path)
-        # Convert to sequences.
-        print('Converting texts to sequences...')
-        text_sentence_tensors = [pad_sequences(tokenizer.texts_to_sequences([split.join(tokens)
-                                                                             for tokens in sentence_tokens]),
-                                               maxlen=n_tokens,
-                                               padding=padding,
-                                               truncating=truncating)
-                                 for sentence_tokens in text_sentence_tokens]
-        X = []  # [text_i][paragraph_i][sentence_i][token_i]
-        for text_i, sentence_tensors in enumerate(text_sentence_tensors):
-            section_ids = text_section_ids[text_i]
-            paragraph_ids = text_paragraph_ids[text_i]
-            paragraph_sentence_tensors = []  # [paragraph_i][sentence_i][token_i]
-            paragraph_sentence_tensor = np.zeros((n_sentences, n_tokens), dtype=np.int32)
-            sentence_i = 0
+
+    # Save X to files.
+    digits = len(str(len(text_sentence_tokens)))
+    for text_i, sentence_tokens in enumerate(text_sentence_tokens):
+        fname = '{:0>{digits}}.npy'.format(str(text_i), digits=digits)
+        x_sentences_path = os.path.join(sentence_parameters_path, fname)
+        x_paragraphs_path = os.path.join(paragraph_parameters_path, fname)
+        x_paragraph_sentences_path = os.path.join(paragraph_sentence_parameters_path, fname)
+        if os.path.exists(x_sentences_path) and os.path.exists(x_paragraphs_path) and os.path.exists(x_paragraph_sentences_path):
+            continue
+
+        book_id = book_ids[text_i]
+        sentence_sequences = pad_sequences(tokenizer.texts_to_sequences([split.join(tokens)
+                                                                         for tokens in sentence_tokens]),
+                                           maxlen=n_sentence_tokens,
+                                           padding=padding,
+                                           truncating=truncating)
+
+        if not os.path.exists(x_sentences_path):
+            print('Saving tokenized sentence arrays for {}...'.format(book_id))
+            x_sentences = np.array(sentence_sequences, dtype=np.int32)  # [sentence_i][token_i]
+            np.save(x_sentences_path, x_sentences)
+
+        section_ids = text_section_ids[text_i]
+        paragraph_ids = text_paragraph_ids[text_i]
+        n_paragraphs = len(np.unique(list(zip(section_ids, paragraph_ids)), axis=0))
+
+        if not os.path.exists(x_paragraphs_path):
+            print('Saving tokenized paragraph arrays for {}...'.format(book_id))
+            x_paragraphs = np.zeros((n_paragraphs, n_paragraph_tokens), dtype=np.int32)  # [paragraph_i][token_i]
+            paragraph_i = 0
+            paragraph_tokens = []
             last_section_paragraph_id = None
-            for i, sentence_tensor in enumerate(sentence_tensors):
+            for i, tokens in enumerate(sentence_tokens):
                 section_paragraph_id = (section_ids[i], paragraph_ids[i])
                 if last_section_paragraph_id is not None and section_paragraph_id != last_section_paragraph_id:
-                    paragraph_sentence_tensors.append(paragraph_sentence_tensor)
-                    paragraph_sentence_tensor = np.zeros((n_sentences, n_tokens), dtype=np.int32)
+                    x_paragraphs[paragraph_i] = pad_sequences(tokenizer.texts_to_sequences([split.join(paragraph_tokens)]),
+                                                              maxlen=n_paragraph_tokens,
+                                                              padding=padding,
+                                                              truncating=truncating)[0]
+                    paragraph_i += 1
+                    paragraph_tokens = []
+                paragraph_tokens.extend(tokens)
+                last_section_paragraph_id = section_paragraph_id
+            x_paragraphs[paragraph_i] = pad_sequences(tokenizer.texts_to_sequences([split.join(paragraph_tokens)]),
+                                                      maxlen=n_paragraph_tokens,
+                                                      padding=padding,
+                                                      truncating=truncating)[0]
+            np.save(x_paragraphs_path, x_paragraphs)
+
+        if not os.path.exists(x_paragraph_sentences_path):
+            print('Saving tokenized paragraph sentence arrays for {}...'.format(book_id))
+            x_paragraph_sentences = np.zeros((n_paragraphs, n_sentences, n_sentence_tokens), dtype=np.int32)  # [paragraph_i][sentence_i][token_i]
+            paragraph_i = 0
+            sentence_i = 0
+            last_section_paragraph_id = None
+            for i, sentence_sequence in enumerate(sentence_sequences):
+                section_paragraph_id = (section_ids[i], paragraph_ids[i])
+                if last_section_paragraph_id is not None and section_paragraph_id != last_section_paragraph_id:
+                    paragraph_i += 1
                     sentence_i = 0
-                if sentence_i < len(paragraph_sentence_tensor):
-                    paragraph_sentence_tensor[sentence_i] = sentence_tensor
+                if sentence_i < n_sentences:
+                    x_paragraph_sentences[paragraph_i, sentence_i] = sentence_sequence
                 sentence_i += 1
                 last_section_paragraph_id = section_paragraph_id
-            paragraph_sentence_tensors.append(paragraph_sentence_tensor)
-            X.append(np.array(paragraph_sentence_tensors))
-        print('Saving tokenized paragraph sentence arrays to {}...'.format(paragraph_sentence_parameters_path))
-        digits = len(str(len(X)))
-        for text_i, x in enumerate(X):
-            x_path = os.path.join(paragraph_sentence_parameters_path, '{:0>{digits}}.npy'.format(str(text_i), digits=digits))
-            np.save(x_path, x)
-        print('Done.')
-    else:
-        print('Tensors for paragraph sentences for X already exist. Skipping.')
-
-    # Save Y to file.
-    Y_path = os.path.join(ids_path, 'Y')
-    if not os.path.exists(Y_path):
-        os.mkdir(Y_path)
-    Y_categories_mode_path = os.path.join(Y_path, '{}.npy'.format(categories_mode))
-    if not os.path.exists(Y_categories_mode_path):
-        np.save(Y_categories_mode_path, Y)
-        print('Saved Y to `{}`.'.format(Y_categories_mode_path))
-    else:
-        print('File for Y already exists. Skipping.')
+            np.save(x_paragraph_sentences_path, x_paragraph_sentences)
 
     # Load and save embeddings.
     matrices_path = os.path.join(ids_path, 'embedding_matrices')
