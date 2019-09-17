@@ -252,13 +252,13 @@ def main(argv):
 
     # Predict test instances.
     print('Predicting test instances...')
-    Y_preds = model.predict_generator(test_generator)
+    Y_pred = model.predict_generator(test_generator)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
-        Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
+        Y_pred = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_pred]
     elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
-        Y_preds = [np.argmax(y, axis=1) for y in Y_preds]
+        Y_pred = [np.argmax(y, axis=1) for y in Y_pred]
     elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
-        Y_preds = [np.maximum(0, np.minimum(k - 1, np.round(Y_preds[i] * k))) for i, k in enumerate(category_k)]
+        Y_pred = [np.maximum(0, np.minimum(k - 1, np.round(Y_pred[i] * k))) for i, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     print('Done.')
@@ -355,46 +355,8 @@ def main(argv):
             fd.write('Model path: \'{}\'\n'.format(model_path))
         else:
             fd.write('Model not saved.\n')
-        fd.write('Time elapsed: {:d}h {:d}m {:d}s\n'.format(elapsed_h, elapsed_m, elapsed_s))
-        # Calculate statistics for predictions.
-        category_confusion, category_metrics = zip(*[evaluation.get_confusion_and_metrics(Y_test[j], Y_preds[j])
-                                                     for j in range(len(categories))])
-        category_width = max(7, max([len(category) for category in categories]))
-        averages = [sum([metrics[metric_i] for metrics in category_metrics])/len(category_metrics)
-                    for metric_i in range(len(evaluation.METRIC_NAMES))]
-        # Metric abbreviations.
-        fd.write('\n')
-        fd.write('{:>{w}}'.format('Metric', w=category_width))
-        for abbreviation in evaluation.METRIC_ABBREVIATIONS:
-            fd.write(' | {:^7}'.format(abbreviation))
-        fd.write(' |\n')
-        # Horizontal line.
-        fd.write('{:>{w}}'.format('', w=category_width))
-        for _ in range(len(category_metrics)):
-            fd.write('-+-{}'.format('-'*7))
-        fd.write('-+\n')
-        # Metrics per category.
-        for j, metrics in enumerate(category_metrics):
-            fd.write('{:>{w}}'.format(categories[j], w=category_width))
-            for value in metrics:
-                fd.write(' | {:.5f}'.format(value))
-            fd.write(' |\n')
-        # Horizontal line.
-        fd.write('{:>{w}}'.format('', w=category_width))
-        for _ in range(len(category_metrics)):
-            fd.write('-+-{}'.format('-'*7))
-        fd.write('-+\n')
-        # Average metrics.
-        fd.write('{:>{w}}'.format('Average', w=category_width))
-        for value in averages:
-            fd.write(' | {:.5f}'.format(value))
-        fd.write(' |\n')
-        # Confusion matrices.
-        for j, category in enumerate(categories):
-            fd.write('\n`{}`\n'.format(category))
-            confusion = category_confusion[j]
-            fd.write(np.array2string(confusion))
-            fd.write('\n')
+        fd.write('Time elapsed: {:d}h {:d}m {:d}s\n\n'.format(elapsed_h, elapsed_m, elapsed_s))
+        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
     print('Done.')
 
 

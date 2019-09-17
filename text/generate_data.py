@@ -89,11 +89,7 @@ def main(argv):
     # Load data.
     print('Retrieving texts...')
     ids_fname = bookcave_ids.get_ids_fname()
-    with open(os.path.join(folders.BOOKCAVE_IDS_PATH, ids_fname), 'r', encoding='utf-8') as fd:
-        n_books = int(fd.readline()[:-1])
-        book_ids = []
-        for _ in range(n_books):
-            book_ids.append(fd.readline()[:-1])
+    book_ids = bookcave_ids.get_book_ids(ids_fname)
     inputs, Y, categories, category_levels, book_ids, _, _, _, _ = \
         bookcave.get_data({'sentence_tokens'},
                           only_ids=book_ids,

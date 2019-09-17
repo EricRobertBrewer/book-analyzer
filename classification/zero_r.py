@@ -1,62 +1,71 @@
-import numpy as np
-from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, log_loss, precision_score, recall_score
+import os
+import time
 
-from sites.bookcave import bookcave
+import numpy as np
+from sklearn.model_selection import train_test_split
+
+from classification import evaluation, shared_parameters
+import folders
+from sites.bookcave import bookcave, bookcave_ids
+from text import generate_data
 
 
 def main():
-    min_len, max_len = 250, 7500
-    _, Y, categories, category_levels =\
-        bookcave.get_data({'paragraphs'},
-                          min_len=min_len,
-                          max_len=max_len)
-    print(Y.shape)
+    script_name = os.path.basename(__file__)
+    classifier_name = script_name[:script_name.rindex('.')]
 
-    seed = 1
-    np.random.seed(seed)
-    permutation = np.random.permutation(Y.shape[1])
-    test_size = .25
-    pivot = int(test_size * Y.shape[1])
-    test_indices, train_indices = permutation[:pivot], permutation[pivot:]
+    start_time = int(time.time())
+    if 'SLURM_JOB_ID' in os.environ:
+        stamp = int(os.environ['SLURM_JOB_ID'])
+    else:
+        stamp = start_time
+    print('Time stamp: {:d}'.format(stamp))
+    base_fname = format(stamp, 'd')
 
-    for category_index, category in enumerate(categories):
-        levels = category_levels[category_index]
-        labels = [i for i in range(len(levels))]
+    # Load data.
+    print('Retrieving texts...')
+    ids_fname = bookcave_ids.get_ids_fname()
+    categories_mode = 'soft'
+    Y = generate_data.load_Y(categories_mode, ids_fname)
+    categories = bookcave.CATEGORIES
+    category_levels = bookcave.CATEGORY_LEVELS[categories_mode]
+    print('Retrieved {:d} labels.'.format(Y.shape[1]))
 
-        y = Y[category_index]
-        y_test, y_train = y[test_indices], y[train_indices]
-        bincount = np.bincount(y_train, minlength=len(levels))
-        argmax = np.argmax(bincount)
-        y_pred = [argmax]*len(y_test)
+    # Split data set.
+    test_size = shared_parameters.EVAL_TEST_SIZE  # b
+    test_random_state = shared_parameters.EVAL_TEST_RANDOM_STATE
+    Y_T = Y.transpose()  # (n, c)
+    Y_train_T, Y_test_T = train_test_split(Y_T, test_size=test_size, random_state=test_random_state)
+    Y_train = Y_train_T.transpose()  # (c, n * (1 - b))
+    Y_test = Y_test_T.transpose()  # (c, n * b)
 
-        print()
-        print(category)
-        print('majority=`{}` ({:d}/{:d})'.format(levels[argmax], bincount[argmax], len(y_train)))
-        accuracy = accuracy_score(y_test, y_pred)
-        print('accuracy={:.4f}'.format(accuracy))
+    # Predict the most common class seen in the training data for each category.
+    Y_pred = [[np.argmax(np.bincount(Y_train[j], minlength=len(category_levels[j])))]*Y_test.shape[1]
+              for j in range(len(categories))]
 
-        print(confusion_matrix(y_test, y_pred, labels=labels))
+    print('Writing results...')
+    if not os.path.exists(folders.LOGS_PATH):
+        os.mkdir(folders.LOGS_PATH)
+    logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
+    if not os.path.exists(logs_path):
+        os.mkdir(logs_path)
 
-        precision_micro = precision_score(y_test, y_pred, average='micro')
-        print('precision_micro={:.4f}'.format(precision_micro))
-        recall_micro = recall_score(y_test, y_pred, average='micro')
-        print('recall_micro={:.4f}'.format(recall_micro))
-        f1_micro = f1_score(y_test, y_pred, average='micro')
-        print('f1_micro={:.4f}'.format(f1_micro))
-
-        precision_macro = precision_score(y_test, y_pred, average='macro')
-        print('precision_macro={:.4f}'.format(precision_macro))
-        recall_macro = recall_score(y_test, y_pred, average='macro')
-        print('recall_macro={:.4f}'.format(recall_macro))
-        f1_macro = f1_score(y_test, y_pred, average='macro')
-        print('f1_macro={:.4f}'.format(f1_macro))
-
-        precision_weighted = precision_score(y_test, y_pred, average='weighted')
-        print('precision_weighted={:.4f}'.format(precision_weighted))
-        recall_weighted = recall_score(y_test, y_pred, average='weighted')
-        print('recall_weighted={:.4f}'.format(recall_weighted))
-        f1_weighted = f1_score(y_test, y_pred, average='weighted')
-        print('f1_weighted={:.4f}'.format(f1_weighted))
+    with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
+        fd.write('HYPERPARAMETERS\n')
+        fd.write('\nText\n')
+        fd.write('ids_fname={}\n'.format(bookcave_ids.get_ids_fname()))
+        fd.write('\nLabels\n')
+        fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
+        fd.write('\nTraining\n')
+        fd.write('test_size={:.2f}\n'.format(test_size))
+        fd.write('test_random_state={:d}\n'.format(test_random_state))
+        fd.write('\nRESULTS\n\n')
+        fd.write('Data size: {:d}\n'.format(Y.shape[1]))
+        fd.write('Train size: {:d}\n'.format(Y_train.shape[1]))
+        fd.write('Test size: {:d}\n'.format(Y_test.shape[1]))
+        fd.write('\n')
+        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
+    print('Done.')
 
 
 if __name__ == '__main__':

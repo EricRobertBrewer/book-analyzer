@@ -13,14 +13,22 @@ def get_ids_fname(
         paragraph_max_len=shared_parameters.DATA_PARAGRAPH_MAX_LEN,
         sentence_min_len=shared_parameters.DATA_SENTENCE_MIN_LEN,
         sentence_max_len=shared_parameters.DATA_SENTENCE_MAX_LEN,
-        min_tokens=shared_parameters.DATA_MIN_TOKENS
-):
+        min_tokens=shared_parameters.DATA_MIN_TOKENS):
     return 'ids_{:d}_{:d}-{:d}p_{:d}-{:d}s_{:d}t.txt'.format(n_texts,
                                                              paragraph_min_len,
                                                              paragraph_max_len,
                                                              sentence_min_len,
                                                              sentence_max_len,
                                                              min_tokens)
+
+
+def get_book_ids(ids_fname):
+    with open(os.path.join(folders.BOOKCAVE_IDS_PATH, ids_fname), 'r', encoding='utf-8') as fd:
+        n_books = int(fd.readline()[:-1])
+        book_ids = []
+        for _ in range(n_books):
+            book_ids.append(fd.readline()[:-1])
+    return book_ids
 
 
 def main():
