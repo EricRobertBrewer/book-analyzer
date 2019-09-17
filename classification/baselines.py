@@ -41,11 +41,18 @@ def main(argv):
     max_words = int(argv[0])
 
     stamp = int(time.time())
+    base_fname = format(stamp, 'd')
+
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
-    baselines_path = os.path.join(folders.LOGS_PATH, 'baselines')
-    if not os.path.exists(baselines_path):
-        os.mkdir(baselines_path)
+    logs_baselines_path = os.path.join(folders.LOGS_PATH, 'baselines')
+    if not os.path.exists(logs_baselines_path):
+        os.mkdir(logs_baselines_path)
+    if not os.path.exists(folders.PREDICTIONS_PATH):
+        os.mkdir(folders.PREDICTIONS_PATH)
+    predictions_baselines_path = os.path.join(folders.PREDICTIONS_PATH, 'baselines')
+    if not os.path.exists(predictions_baselines_path):
+        os.mkdir(predictions_baselines_path)
 
     # Load data.
     print('Retrieving texts...')
@@ -89,11 +96,8 @@ def main(argv):
     create_models = [create_mnb, create_lr, create_rf, create_svm]
     model_names = ['multinomial_naive_bayes', 'logistic_regression', 'random_forest', 'svm']
     for m, create_model in enumerate(create_models):
-        logs_path = os.path.join(baselines_path, model_names[m])
-        if not os.path.exists(logs_path):
-            os.mkdir(logs_path)
-
-        print('Training model `{}`...'.format(model_names[m]))
+        model_name = model_names[m]
+        print('Training model `{}`...'.format(model_name))
         Y_pred = []
         for j, category in enumerate(categories):
             print('Classifying category `{}`...'.format(category))
@@ -124,23 +128,32 @@ def main(argv):
             y_pred = np.argmax(p, axis=1)  # (n * b)
             Y_pred.append(y_pred)
 
-        fd.write('HYPERPARAMETERS\n')
-        fd.write('\nText\n')
-        fd.write('ids_fname={}\n'.format(bookcave_ids.get_ids_fname()))
-        fd.write('\nLabels\n')
-        fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
-        fd.write('\nVectorization\n')
-        fd.write('max_words={:d}\n'.format(max_words))
-        fd.write('vectorizer={}'.format(vectorizer.__class__.__name__))
-        fd.write('\nTraining\n')
-        fd.write('test_size={:.2f}\n'.format(test_size))
-        fd.write('test_random_state={:d}\n'.format(test_random_state))
-        fd.write('\nRESULTS\n\n')
-        fd.write('Data size: {:d}\n'.format(len(X)))
-        fd.write('Train size: {:d}\n'.format(len(X_train)))
-        fd.write('Test size: {:d}\n'.format(len(X_test)))
-        with open(os.path.join(logs_path, '{}.txt'.format(format(stamp, 'd'))), 'w') as fd:
+        logs_path = os.path.join(logs_baselines_path, model_name)
+        if not os.path.exists(logs_path):
+            os.mkdir(logs_path)
+        with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
+            fd.write('HYPERPARAMETERS\n')
+            fd.write('\nText\n')
+            fd.write('ids_fname={}\n'.format(bookcave_ids.get_ids_fname()))
+            fd.write('\nLabels\n')
+            fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
+            fd.write('\nVectorization\n')
+            fd.write('max_words={:d}\n'.format(max_words))
+            fd.write('vectorizer={}'.format(vectorizer.__class__.__name__))
+            fd.write('\nTraining\n')
+            fd.write('test_size={:.2f}\n'.format(test_size))
+            fd.write('test_random_state={:d}\n'.format(test_random_state))
+            fd.write('\nRESULTS\n\n')
+            fd.write('Data size: {:d}\n'.format(len(X)))
+            fd.write('Train size: {:d}\n'.format(len(X_train)))
+            fd.write('Test size: {:d}\n\n'.format(len(X_test)))
             evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
+
+        predictions_path = os.path.join(predictions_baselines_path, model_name)
+        if not os.path.exists(predictions_path):
+            os.mkdir(predictions_path)
+        with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
+            evaluation.write_predictions(Y_test, Y_pred, fd, categories)
 
 
 if __name__ == '__main__':

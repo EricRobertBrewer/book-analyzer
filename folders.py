@@ -34,6 +34,8 @@ CORRELATED_WORDS_FNAME_FORMAT = 'words-{}-{:d}-{:d}g{:d}-{:d}f.txt'
 
 MODELS_PATH = 'models'
 
+PREDICTIONS_PATH = 'predictions'
+
 SITES_PATH = 'sites'
 BOOKCAVE_PATH = os.path.join(SITES_PATH, 'bookcave')
 BOOKCAVE_CATEGORIES_PATH = os.path.join(BOOKCAVE_PATH, 'categories')

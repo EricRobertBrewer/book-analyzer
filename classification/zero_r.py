@@ -14,16 +14,11 @@ def main():
     script_name = os.path.basename(__file__)
     classifier_name = script_name[:script_name.rindex('.')]
 
-    start_time = int(time.time())
-    if 'SLURM_JOB_ID' in os.environ:
-        stamp = int(os.environ['SLURM_JOB_ID'])
-    else:
-        stamp = start_time
-    print('Time stamp: {:d}'.format(stamp))
+    stamp = int(time.time())
     base_fname = format(stamp, 'd')
 
     # Load data.
-    print('Retrieving texts...')
+    print('Retrieving labels...')
     ids_fname = bookcave_ids.get_ids_fname()
     categories_mode = 'soft'
     Y = generate_data.load_Y(categories_mode, ids_fname)
@@ -44,12 +39,12 @@ def main():
               for j in range(len(categories))]
 
     print('Writing results...')
+
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
     logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
-
     with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
         fd.write('HYPERPARAMETERS\n')
         fd.write('\nText\n')
@@ -65,6 +60,15 @@ def main():
         fd.write('Test size: {:d}\n'.format(Y_test.shape[1]))
         fd.write('\n')
         evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
+
+    if not os.path.exists(folders.PREDICTIONS_PATH):
+        os.mkdir(folders.PREDICTIONS_PATH)
+    predictions_path = os.path.join(folders.PREDICTIONS_PATH, classifier_name)
+    if not os.path.exists(predictions_path):
+        os.mkdir(predictions_path)
+    with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
+        evaluation.write_predictions(Y_test, Y_pred, fd, categories)
+
     print('Done.')
 
 

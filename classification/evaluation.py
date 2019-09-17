@@ -92,3 +92,17 @@ def write_confusion_and_metrics(Y_true, Y_pred, fd, categories):
         confusion = category_confusion[j]
         fd.write(np.array2string(confusion))
         fd.write('\n')
+
+
+def write_predictions(Y_true, Y_pred, fd, categories):
+    for j, category in enumerate(categories):
+        if j > 0:
+            fd.write('\t')
+        fd.write('{}_true\t{}_pred'.format(category, category))
+    fd.write('\n')
+    for i in range(len(Y_true[0])):
+        for j in range(len(Y_true)):
+            if j > 0:
+                fd.write('\t')
+            fd.write('{:d}\t{:d}'.format(Y_true[j][i], Y_pred[j][i]))
+        fd.write('\n')

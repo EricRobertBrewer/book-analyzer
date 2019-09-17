@@ -1,6 +1,7 @@
 history/
 logs/
 models/
+predictions/
 vectors/
 
 ### START Python.gitignore
