@@ -8,8 +8,6 @@ from tensorflow.keras.layers import Bidirectional, Concatenate, CuDNNGRU, Dense,
     GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras import regularizers
 from tensorflow.keras import utils
 from sklearn.model_selection import train_test_split
@@ -18,16 +16,16 @@ from classification import evaluation, ordinal, shared_parameters
 from classification.net.attention_with_context import AttentionWithContext
 from classification.net.batch_generators import SingleInstanceBatchGenerator, VariableLengthBatchGenerator
 import folders
-from sites.bookcave import bookcave
-from text import load_embeddings
+from sites.bookcave import bookcave, bookcave_ids
+from text import generate_data
 
 
-def create_model(n_tokens, embedding_matrix, embedding_trainable,
+def create_model(n_paragraph_tokens, embedding_matrix, embedding_trainable,
                  para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                  book_dense_units, book_dense_activation, book_dense_l2,
                  book_dropout, output_k, output_names, label_mode):
     # Paragraph encoder.
-    input_p = Input(shape=(n_tokens,), dtype='float32')  # (t)
+    input_p = Input(shape=(n_paragraph_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
     x_p = Embedding(max_words,
                     d,
@@ -47,7 +45,7 @@ def create_model(n_tokens, embedding_matrix, embedding_trainable,
     paragraph_encoder = Model(input_p, x_p)
 
     # Consider maximum and average signals among all paragraphs of books.
-    input_b = Input(shape=(None, n_tokens), dtype='float32')  # (p, t); p is not constant!
+    input_b = Input(shape=(None, n_paragraph_tokens), dtype='float32')  # (p, t); p is not constant!
     x_b = TimeDistributed(paragraph_encoder)(input_b)  # (p, c_p)
     g_max_b = GlobalMaxPooling1D()(x_b)  # (c_p)
     g_avg_b = GlobalAveragePooling1D()(x_b)  # (c_p)
@@ -72,9 +70,9 @@ def create_model(n_tokens, embedding_matrix, embedding_trainable,
 
 def main(argv):
     if len(argv) < 5 or len(argv) > 6:
-        raise ValueError('Usage: <max_words> <n_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
+        raise ValueError('Usage: <max_words> <n_paragraph_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
     max_words = int(argv[0])  # The maximum size of the vocabulary.
-    n_tokens = int(argv[1])  # The maximum number of tokens to process in each paragraph.
+    n_paragraph_tokens = int(argv[1])  # The maximum number of tokens to process in each paragraph.
     batch_size = int(argv[2])
     steps_per_epoch = int(argv[3])
     epochs = int(argv[4])
@@ -98,48 +96,24 @@ def main(argv):
         base_fname = format(stamp, 'd')
 
     # Load data.
-    print('Retrieving texts...')
-    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
-    subset_seed = shared_parameters.DATA_SUBSET_SEED
-    min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
-    max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
-    min_tokens = shared_parameters.DATA_MIN_TOKENS
-    inputs, Y, categories, category_levels = \
-        bookcave.get_data({'paragraph_tokens'},
-                          subset_ratio=subset_ratio,
-                          subset_seed=subset_seed,
-                          min_len=min_len,
-                          max_len=max_len,
-                          min_tokens=min_tokens)
-    text_paragraph_tokens, _ = zip(*inputs['paragraph_tokens'])
-    print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
-
-    # Tokenize.
-    print('Tokenizing...')
-    split = '\t'
-    tokenizer = Tokenizer(num_words=max_words, split=split)
-    all_paragraphs = []
-    for paragraph_tokens in text_paragraph_tokens:
-        for tokens in paragraph_tokens:
-            all_paragraphs.append(split.join(tokens))
-    tokenizer.fit_on_texts(all_paragraphs)
-    print('Done.')
-
-    # Convert to sequences.
-    print('Converting texts to sequences...')
+    print('Loading data...')
+    embedding_paths = [
+        folders.EMBEDDING_GLOVE_300_PATH
+    ]
     padding = 'pre'
     truncating = 'pre'
-    X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in paragraph_tokens]),
-                                maxlen=n_tokens,
-                                padding=padding,
-                                truncating=truncating))
-         for paragraph_tokens in text_paragraph_tokens]  # [text_i][paragraph_i][token_i]
-    print('Done.')
-
-    # Load embedding.
-    print('Loading embedding matrix...')
-    embedding_path = folders.EMBEDDING_GLOVE_300_PATH
-    embedding_matrix = load_embeddings.load_embedding(tokenizer, embedding_path, max_words, header=False)
+    categories_mode = 'soft'
+    X = generate_data.load_X_paragraphs(max_words,
+                                        n_paragraph_tokens,
+                                        padding=padding,
+                                        truncating=truncating)
+    Y = generate_data.load_Y(categories_mode)
+    embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_paths[0])
+    for i in range(1, len(embedding_paths)):
+        other_embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_paths[i])
+        embedding_matrix = np.concatenate((embedding_matrix, other_embedding_matrix), axis=1)
+    categories = bookcave.CATEGORIES
+    category_levels = bookcave.CATEGORY_LEVELS[categories_mode]
     print('Done.')
 
     # Create model.
@@ -157,11 +131,11 @@ def main(argv):
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = shared_parameters.LABEL_MODE_ORDINAL
-    model = create_model(n_tokens, embedding_matrix, embedding_trainable,
+    model = create_model(n_paragraph_tokens, embedding_matrix, embedding_trainable,
                          para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                          book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, category_k, categories, label_mode)
-    lr = 2**-19
+    lr = .0001
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
@@ -229,7 +203,7 @@ def main(argv):
         val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=True)
         test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=True)
     else:
-        X_shape = (n_tokens,)
+        X_shape = (n_paragraph_tokens,)
         Y_shape = [(len(y[0]),) for y in Y_train]
         train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=True)
         val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, batch_size, shuffle=False)
@@ -305,18 +279,15 @@ def main(argv):
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
         fd.write('\nText\n')
-        fd.write('subset_ratio={:.3f}\n'.format(subset_ratio))
-        fd.write('subset_seed={:d}\n'.format(subset_seed))
-        fd.write('min_len={:d}\n'.format(min_len))
-        fd.write('max_len={:d}\n'.format(max_len))
-        fd.write('min_tokens={:d}\n'.format(min_tokens))
+        fd.write('ids_fname={}\n'.format(bookcave_ids.get_ids_fname()))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
-        fd.write('n_tokens={:d}\n'.format(n_tokens))
+        fd.write('n_paragraph_tokens={:d}\n'.format(n_paragraph_tokens))
         fd.write('padding=\'{}\'\n'.format(padding))
         fd.write('truncating=\'{}\'\n'.format(truncating))
         fd.write('\nWord Embedding\n')
-        fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
+        for embedding_path in embedding_paths:
+            fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
         fd.write('para_rnn={}\n'.format(para_rnn.__name__))
@@ -343,7 +314,7 @@ def main(argv):
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
         fd.write('\nRESULTS\n\n')
-        fd.write('Data size: {:d}\n'.format(len(text_paragraph_tokens)))
+        fd.write('Data size: {:d}\n'.format(len(X)))
         fd.write('Train size: {:d}\n'.format(len(X_train)))
         fd.write('Validation size: {:d}\n'.format(len(X_val)))
         fd.write('Test size: {:d}\n'.format(len(X_test)))
@@ -355,32 +326,33 @@ def main(argv):
         # Calculate statistics for predictions.
         category_confusion, category_metrics = zip(*[evaluation.get_confusion_and_metrics(Y_test[j], Y_preds[j])
                                                      for j in range(len(categories))])
+        category_width = max(7, max([len(category) for category in categories]))
         averages = [sum([metrics[metric_i] for metrics in category_metrics])/len(category_metrics)
                     for metric_i in range(len(evaluation.METRIC_NAMES))]
         # Metric abbreviations.
         fd.write('\n')
-        fd.write('{:>24}'.format('Metric'))
+        fd.write('{:>{w}}'.format('Metric', w=category_width))
         for abbreviation in evaluation.METRIC_ABBREVIATIONS:
             fd.write(' | {:^7}'.format(abbreviation))
         fd.write(' |\n')
         # Horizontal line.
-        fd.write('{:>24}'.format(''))
+        fd.write('{:>{w}}'.format('', w=category_width))
         for _ in range(len(category_metrics)):
             fd.write('-+-{}'.format('-'*7))
         fd.write('-+\n')
         # Metrics per category.
         for j, metrics in enumerate(category_metrics):
-            fd.write('{:>24}'.format(categories[j]))
+            fd.write('{:>{w}}'.format(categories[j], w=category_width))
             for value in metrics:
                 fd.write(' | {:.5f}'.format(value))
             fd.write(' |\n')
         # Horizontal line.
-        fd.write('{:>24}'.format(''))
+        fd.write('{:>{w}}'.format('', w=category_width))
         for _ in range(len(category_metrics)):
             fd.write('-+-{}'.format('-'*7))
         fd.write('-+\n')
         # Average metrics.
-        fd.write('{:>24}'.format('Average'))
+        fd.write('{:>{w}}'.format('Average', w=category_width))
         for value in averages:
             fd.write(' | {:.5f}'.format(value))
         fd.write(' |\n')

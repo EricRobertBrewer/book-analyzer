@@ -70,9 +70,9 @@ def create_model(n_tokens, embedding_matrix, embedding_trainable,
 
 def main(argv):
     if len(argv) < 5 or len(argv) > 6:
-        raise ValueError('Usage: <max_words> <n_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
+        raise ValueError('Usage: <max_words> <n_sentence_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
     max_words = int(argv[0])  # The maximum size of the vocabulary.
-    n_tokens = int(argv[1])  # The maximum number of tokens to process in each sentence.
+    n_sentence_tokens = int(argv[1])  # The maximum number of tokens to process in each sentence.
     batch_size = int(argv[2])
     steps_per_epoch = int(argv[3])
     epochs = int(argv[4])
@@ -104,7 +104,7 @@ def main(argv):
     truncating = 'pre'
     categories_mode = 'soft'
     X = generate_data.load_X_sentences(max_words,
-                                       n_tokens,
+                                       n_sentence_tokens,
                                        padding=padding,
                                        truncating=truncating)
     Y = generate_data.load_Y(categories_mode)
@@ -131,7 +131,7 @@ def main(argv):
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = shared_parameters.LABEL_MODE_ORDINAL
-    model = create_model(n_tokens, embedding_matrix, embedding_trainable,
+    model = create_model(n_sentence_tokens, embedding_matrix, embedding_trainable,
                          sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
                          book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, category_k, categories, label_mode)
@@ -203,7 +203,7 @@ def main(argv):
         val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=True)
         test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=True)
     else:
-        X_shape = (n_tokens,)
+        X_shape = (n_sentence_tokens,)
         Y_shape = [(len(y[0]),) for y in Y_train]
         train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=True)
         val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, batch_size, shuffle=False)
@@ -284,7 +284,7 @@ def main(argv):
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
-        fd.write('n_tokens={:d}\n'.format(n_tokens))
+        fd.write('n_sentence_tokens={:d}\n'.format(n_sentence_tokens))
         fd.write('padding=\'{}\'\n'.format(padding))
         fd.write('truncating=\'{}\'\n'.format(truncating))
         fd.write('\nWord Embedding\n')

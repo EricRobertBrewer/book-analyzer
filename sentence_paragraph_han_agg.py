@@ -20,13 +20,13 @@ from sites.bookcave import bookcave, bookcave_ids
 from text import generate_data
 
 
-def create_model(n_sentences, n_tokens, embedding_matrix, embedding_trainable,
+def create_model(n_sentences, n_sentence_tokens, embedding_matrix, embedding_trainable,
                  sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
                  para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                  book_dense_units, book_dense_activation, book_dense_l2,
                  book_dropout, output_k, output_names, label_mode):
     # Sentence encoder.
-    input_s = Input(shape=(n_tokens,), dtype='int32')  # (t)
+    input_s = Input(shape=(n_sentence_tokens,), dtype='int32')  # (t)
     max_words, d = embedding_matrix.shape
     x_s = Embedding(max_words,
                     d,
@@ -46,7 +46,7 @@ def create_model(n_sentences, n_tokens, embedding_matrix, embedding_trainable,
     sentence_encoder = Model(input_s, x_s)
 
     # Paragraph encoder.
-    input_p = Input(shape=(n_sentences, n_tokens), dtype='float32')  # (s, t)
+    input_p = Input(shape=(n_sentences, n_sentence_tokens), dtype='float32')  # (s, t)
     x_p = TimeDistributed(sentence_encoder)(input_p)  # (s, c_s)
     if para_rnn_l2 is not None:
         para_rnn_l2 = regularizers.l2(para_rnn_l2)
@@ -62,7 +62,7 @@ def create_model(n_sentences, n_tokens, embedding_matrix, embedding_trainable,
     paragraph_encoder = Model(input_p, x_p)
 
     # Consider maximum and average signals among all paragraphs of books.
-    input_b = Input(shape=(None, n_sentences, n_tokens), dtype='float32')  # (p, s, t); p is not constant!
+    input_b = Input(shape=(None, n_sentences, n_sentence_tokens), dtype='float32')  # (p, s, t); p is not constant!
     x_b = TimeDistributed(paragraph_encoder)(input_b)  # (p, c_p)
     g_max_b = GlobalMaxPooling1D()(x_b)  # (c_p)
     g_avg_b = GlobalAveragePooling1D()(x_b)  # (c_p)
@@ -87,10 +87,10 @@ def create_model(n_sentences, n_tokens, embedding_matrix, embedding_trainable,
 
 def main(argv):
     if len(argv) < 6 or len(argv) > 7:
-        raise ValueError('Usage: <max_words> <n_sentences> <n_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
+        raise ValueError('Usage: <max_words> <n_sentences> <n_sentence_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
     max_words = int(argv[0])  # The maximum size of the vocabulary.
     n_sentences = int(argv[1])  # The maximum number of sentences to process in each paragraph.
-    n_tokens = int(argv[2])  # The maximum number of tokens to process in each sentence.
+    n_sentence_tokens = int(argv[2])  # The maximum number of tokens to process in each sentence.
     batch_size = int(argv[3])
     steps_per_epoch = int(argv[4])
     epochs = int(argv[5])
@@ -120,7 +120,7 @@ def main(argv):
     categories_mode = 'soft'
     X = generate_data.load_X_paragraph_sentences(max_words,
                                                  n_sentences,
-                                                 n_tokens,
+                                                 n_sentence_tokens,
                                                  padding=padding,
                                                  truncating=truncating)
     Y = generate_data.load_Y(categories_mode)
@@ -153,7 +153,7 @@ def main(argv):
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = shared_parameters.LABEL_MODE_ORDINAL
-    model = create_model(n_sentences, n_tokens, embedding_matrix, embedding_trainable,
+    model = create_model(n_sentences, n_sentence_tokens, embedding_matrix, embedding_trainable,
                          sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
                          para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                          book_dense_units, book_dense_activation, book_dense_l2,
@@ -226,7 +226,7 @@ def main(argv):
         val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=True)
         test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=True)
     else:
-        X_shape = (n_tokens,)
+        X_shape = (n_sentence_tokens,)
         Y_shape = [(len(y[0]),) for y in Y_train]
         train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=True)
         val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, batch_size, shuffle=False)
@@ -309,7 +309,7 @@ def main(argv):
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
         fd.write('n_sentences={:d}\n'.format(n_sentences))
-        fd.write('n_tokens={:d}\n'.format(n_tokens))
+        fd.write('n_sentence_tokens={:d}\n'.format(n_sentence_tokens))
         fd.write('padding=\'{}\'\n'.format(padding))
         fd.write('truncating=\'{}\'\n'.format(truncating))
         fd.write('\nWord Embedding\n')
