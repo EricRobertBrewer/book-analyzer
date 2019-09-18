@@ -144,9 +144,9 @@ def main(argv):
             fd.write('test_size={:.2f}\n'.format(test_size))
             fd.write('test_random_state={:d}\n'.format(test_random_state))
             fd.write('\nRESULTS\n\n')
-            fd.write('Data size: {:d}\n'.format(len(text_sentence_tokens)))
-            fd.write('Train size: {:d}\n'.format(len(X_train)))
-            fd.write('Test size: {:d}\n\n'.format(len(X_test)))
+            fd.write('Data size: {:d}\n'.format(X.shape[0]))
+            fd.write('Train size: {:d}\n'.format(X_train.shape[0]))
+            fd.write('Test size: {:d}\n\n'.format(X_test.shape[0]))
             evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
 
         predictions_path = os.path.join(predictions_baselines_path, model_name)
