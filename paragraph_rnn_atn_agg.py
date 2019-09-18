@@ -119,7 +119,7 @@ def main(argv):
     # Create model.
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
-    embedding_trainable = True
+    embedding_trainable = False
     para_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
     para_rnn_units = 128
     para_rnn_l2 = .01
@@ -135,7 +135,7 @@ def main(argv):
                          para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
                          book_dense_units, book_dense_activation, book_dense_l2,
                          book_dropout, category_k, categories, label_mode)
-    lr = .0001
+    lr = 2**-16
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
