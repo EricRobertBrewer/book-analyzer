@@ -102,7 +102,7 @@ def main(argv):
     # Load data.
     print('Loading data...')
     embedding_paths = [
-        folders.EMBEDDING_GLOVE_300_PATH
+        folders.EMBEDDING_GLOVE_100_PATH
     ]
     padding = 'pre'
     truncating = 'pre'
