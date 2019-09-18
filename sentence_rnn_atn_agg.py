@@ -25,7 +25,7 @@ def create_model(n_tokens, embedding_matrix, embedding_trainable,
                  book_dense_units, book_dense_activation, book_dense_l2,
                  book_dropout, output_k, output_names, label_mode):
     # Sentence encoder.
-    input_s = Input(shape=(n_tokens,), dtype='int32')  # (t)
+    input_s = Input(shape=(n_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
     x_s = Embedding(max_words,
                     d,
