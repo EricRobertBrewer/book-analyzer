@@ -121,12 +121,12 @@ def main(argv):
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
     para_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
-    para_rnn_units = 128
+    para_rnn_units = 64
     para_rnn_l2 = .01
-    para_dense_units = 64
+    para_dense_units = 32
     para_dense_activation = 'linear'
     para_dense_l2 = .01
-    book_dense_units = 512
+    book_dense_units = 128
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
     book_dropout = .5
@@ -211,8 +211,8 @@ def main(argv):
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
-                                  class_weight=category_class_weights,
-                                  validation_data=val_generator)
+                                  validation_data=val_generator,
+                                  class_weight=category_class_weights)
 
     # Save the history to visualize loss over time.
     print('Saving training history...')

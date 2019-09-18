@@ -41,7 +41,8 @@ def load_X_sentences(max_words, n_sentence_tokens, padding='pre', truncating='pr
 
 
 def load_X_paragraphs(max_words, n_paragraph_tokens, padding='pre', truncating='pre', ids_fname=bookcave_ids.get_ids_fname()):
-    paragraph_parameters_path = get_paragraph_parameters_path(max_words, n_paragraph_tokens, padding, truncating, ids_fname)
+    paragraph_parameters_path = \
+        get_paragraph_parameters_path(max_words, n_paragraph_tokens, padding, truncating, ids_fname)
     fnames = os.listdir(paragraph_parameters_path)
     return [np.load(os.path.join(paragraph_parameters_path, fname)) for fname in fnames]
 

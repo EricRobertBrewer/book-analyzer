@@ -213,8 +213,8 @@ def main(argv):
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
-                                  class_weight=category_class_weights,
-                                  validation_data=val_generator)
+                                  validation_data=val_generator,
+                                  class_weight=category_class_weights)
 
     # Save the history to visualize loss over time.
     print('Saving training history...')
