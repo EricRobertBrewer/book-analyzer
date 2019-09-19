@@ -33,31 +33,69 @@ def get_sentence_paragraph_parameters_path(max_words, n_sentences, n_sentence_to
     return os.path.join(folders.GENERATED_PATH, ids_base_name, 'X', 'paragraph_sentences', parameters)
 
 
-def load_X_sentences(max_words, n_sentence_tokens, padding='pre', truncating='pre', ids_fname=bookcave_ids.get_ids_fname()):
+def load_X_sentences(
+        max_words,
+        n_sentence_tokens,
+        padding='pre',
+        truncating='pre',
+        ids_fname=bookcave_ids.get_ids_fname(),
+        subset_ratio=None,
+        subset_seed=None):
     sentence_parameters_path = \
         get_sentence_parameters_path(max_words, n_sentence_tokens, padding, truncating, ids_fname)
     fnames = os.listdir(sentence_parameters_path)
-    return [np.load(os.path.join(sentence_parameters_path, fname)) for fname in fnames]
+    X = [np.load(os.path.join(sentence_parameters_path, fname)) for fname in fnames]
+    if subset_ratio is not None:
+        X = get_subset(X, subset_ratio, subset_seed)
+    return X
 
 
-def load_X_paragraphs(max_words, n_paragraph_tokens, padding='pre', truncating='pre', ids_fname=bookcave_ids.get_ids_fname()):
+def load_X_paragraphs(
+        max_words,
+        n_paragraph_tokens,
+        padding='pre',
+        truncating='pre',
+        ids_fname=bookcave_ids.get_ids_fname(),
+        subset_ratio=None,
+        subset_seed=None):
     paragraph_parameters_path = \
         get_paragraph_parameters_path(max_words, n_paragraph_tokens, padding, truncating, ids_fname)
     fnames = os.listdir(paragraph_parameters_path)
-    return [np.load(os.path.join(paragraph_parameters_path, fname)) for fname in fnames]
+    X = [np.load(os.path.join(paragraph_parameters_path, fname)) for fname in fnames]
+    if subset_ratio is not None:
+        X = get_subset(X, subset_ratio, subset_seed)
+    return X
 
 
-def load_X_paragraph_sentences(max_words, n_sentences, n_sentence_tokens, padding='pre', truncating='pre', ids_fname=bookcave_ids.get_ids_fname()):
+def load_X_paragraph_sentences(
+        max_words,
+        n_sentences,
+        n_sentence_tokens,
+        padding='pre',
+        truncating='pre',
+        ids_fname=bookcave_ids.get_ids_fname(),
+        subset_ratio=None,
+        subset_seed=None):
     paragraph_sentence_parameters_path = \
         get_sentence_paragraph_parameters_path(max_words, n_sentences, n_sentence_tokens, padding, truncating, ids_fname)
     fnames = os.listdir(paragraph_sentence_parameters_path)
-    return [np.load(os.path.join(paragraph_sentence_parameters_path, fname)) for fname in fnames]
+    X = [np.load(os.path.join(paragraph_sentence_parameters_path, fname)) for fname in fnames]
+    if subset_ratio is not None:
+        X = get_subset(X, subset_ratio, subset_seed)
+    return X
 
 
-def load_Y(categories_mode='soft', ids_fname=bookcave_ids.get_ids_fname()):
+def load_Y(
+        categories_mode,
+        ids_fname=bookcave_ids.get_ids_fname(),
+        subset_ratio=None,
+        subset_seed=None):
     ids_base_name = get_ids_base_name(ids_fname)
     Y_categories_mode_path = os.path.join(folders.GENERATED_PATH, ids_base_name, 'Y', '{}.npy'.format(categories_mode))
-    return np.load(Y_categories_mode_path)
+    Y = np.load(Y_categories_mode_path)
+    if subset_ratio is not None:
+        Y = get_subset(Y, subset_ratio, subset_seed)
+    return Y
 
 
 def load_embedding_matrix(max_words, embedding_path, ids_fname=bookcave_ids.get_ids_fname()):
@@ -68,6 +106,14 @@ def load_embedding_matrix(max_words, embedding_path, ids_fname=bookcave_ids.get_
     embedding_base_name = embedding_fname[:embedding_fname.rindex('.')]
     matrix_path = os.path.join(matrices_vocabulary_path, '{}.npy'.format(embedding_base_name))
     return np.load(matrix_path)
+
+
+def get_subset(a, ratio, seed):
+    np.random.seed(seed)
+    indices = np.random.choice(len(a), int(ratio*len(a)), replace=False)
+    if isinstance(a, list):
+        return [element for i, element in enumerate(a) if i in set(indices)]
+    return a[sorted(indices)]
 
 
 def main(argv):

@@ -115,18 +115,22 @@ def main(argv):
 
     # Load data.
     print('Loading data...')
-    embedding_paths = [
-        folders.EMBEDDING_GLOVE_100_PATH
-    ]
+    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    subset_seed = shared_parameters.DATA_SUBSET_SEED
     padding = 'pre'
     truncating = 'pre'
     categories_mode = 'soft'
+    embedding_paths = [
+        folders.EMBEDDING_GLOVE_100_PATH
+    ]
     X = generate_data.load_X_paragraph_sentences(max_words,
                                                  n_sentences,
                                                  n_sentence_tokens,
                                                  padding=padding,
-                                                 truncating=truncating)
-    Y = generate_data.load_Y(categories_mode)
+                                                 truncating=truncating,
+                                                 subset_ratio=subset_ratio,
+                                                 subset_seed=subset_seed)
+    Y = generate_data.load_Y(categories_mode, subset_ratio=subset_ratio, subset_seed=subset_seed)
     embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_paths[0])
     for i in range(1, len(embedding_paths)):
         other_embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_paths[i])
@@ -307,6 +311,8 @@ def main(argv):
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
         fd.write('\nText\n')
+        fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
+        fd.write('subset_seed={}\n'.format(str(subset_seed)))
         fd.write('ids_fname={}\n'.format(bookcave_ids.get_ids_fname()))
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
