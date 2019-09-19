@@ -94,7 +94,9 @@ def load_Y(
     Y_categories_mode_path = os.path.join(folders.GENERATED_PATH, ids_base_name, 'Y', '{}.npy'.format(categories_mode))
     Y = np.load(Y_categories_mode_path)
     if subset_ratio is not None:
-        Y = get_subset(Y, subset_ratio, subset_seed)
+        Y_transpose = Y.transpose()
+        Y_transpose = get_subset(Y_transpose, subset_ratio, subset_seed)
+        Y = Y_transpose.transpose()
     return Y
 
 
