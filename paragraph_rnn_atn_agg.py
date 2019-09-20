@@ -8,6 +8,8 @@ from tensorflow.keras.layers import Bidirectional, Concatenate, CuDNNGRU, Dense,
     GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras import regularizers
 from tensorflow.keras import utils
 from sklearn.model_selection import train_test_split
@@ -16,8 +18,8 @@ from classification import evaluation, ordinal, shared_parameters
 from classification.net.attention_with_context import AttentionWithContext
 from classification.net.batch_generators import SingleInstanceBatchGenerator, VariableLengthBatchGenerator
 import folders
-from sites.bookcave import bookcave, bookcave_ids
-from text import generate_data
+from sites.bookcave import bookcave
+from text import load_embeddings
 
 
 def create_model(
@@ -97,28 +99,50 @@ def main(argv):
         base_fname = format(stamp, 'd')
 
     # Load data.
-    print('Loading data...')
+    print('Retrieving texts...')
     subset_ratio = shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
+    min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
+    max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
+    min_tokens = 6  # shared_parameters.DATA_MIN_TOKENS
+    categories_mode = 'soft'
+    inputs, Y, categories, category_levels = \
+        bookcave.get_data({'paragraph_tokens'},
+                          subset_ratio=subset_ratio,
+                          subset_seed=subset_seed,
+                          min_len=min_len,
+                          max_len=max_len,
+                          min_tokens=min_tokens,
+                          categories_mode=categories_mode)
+    text_paragraph_tokens, _ = zip(*inputs['paragraph_tokens'])
+    print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
+
+    # Tokenize.
+    print('Tokenizing...')
+    split = '\t'
+    tokenizer = Tokenizer(num_words=max_words, split=split)
+    all_paragraphs = []
+    for paragraph_tokens in text_paragraph_tokens:
+        for tokens in paragraph_tokens:
+            all_paragraphs.append(split.join(tokens))
+    tokenizer.fit_on_texts(all_paragraphs)
+    print('Done.')
+
+    # Convert to sequences.
+    print('Converting texts to sequences...')
     padding = 'pre'
     truncating = 'pre'
-    categories_mode = 'soft'
-    embedding_paths = [
-        folders.EMBEDDING_GLOVE_100_PATH
-    ]
-    X = generate_data.load_X_paragraphs(max_words,
-                                        n_paragraph_tokens,
-                                        padding=padding,
-                                        truncating=truncating,
-                                        subset_ratio=subset_ratio,
-                                        subset_seed=subset_seed)
-    Y = generate_data.load_Y(categories_mode, subset_ratio=subset_ratio, subset_seed=subset_seed)
-    embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_paths[0])
-    for i in range(1, len(embedding_paths)):
-        other_embedding_matrix = generate_data.load_embedding_matrix(max_words, embedding_path=embedding_paths[i])
-        embedding_matrix = np.concatenate((embedding_matrix, other_embedding_matrix), axis=1)
-    categories = bookcave.CATEGORIES
-    category_levels = bookcave.CATEGORY_LEVELS[categories_mode]
+    X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in paragraph_tokens]),
+                                maxlen=n_paragraph_tokens,
+                                padding=padding,
+                                truncating=truncating))
+         for paragraph_tokens in text_paragraph_tokens]
+    print('Done.')
+
+    # Load embedding.
+    print('Loading embedding matrix...')
+    embedding_path = folders.EMBEDDING_GLOVE_100_PATH
+    embedding_matrix = load_embeddings.load_embedding(tokenizer, embedding_path, max_words)
     print('Done.')
 
     # Create model.
@@ -126,12 +150,12 @@ def main(argv):
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
     para_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
-    para_rnn_units = 64
+    para_rnn_units = 128
     para_rnn_l2 = .01
-    para_dense_units = 32
+    para_dense_units = 64
     para_dense_activation = 'linear'
     para_dense_l2 = .01
-    book_dense_units = 128
+    book_dense_units = 256
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
     book_dropout = .5
@@ -293,7 +317,9 @@ def main(argv):
         fd.write('\nText\n')
         fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
         fd.write('subset_seed={}\n'.format(str(subset_seed)))
-        fd.write('ids_fname={}\n'.format(bookcave_ids.get_ids_fname()))
+        fd.write('min_len={:d}\n'.format(min_len))
+        fd.write('max_len={:d}\n'.format(max_len))
+        fd.write('min_tokens={:d}\n'.format(min_tokens))
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('\nTokenization\n')
@@ -302,8 +328,7 @@ def main(argv):
         fd.write('padding=\'{}\'\n'.format(padding))
         fd.write('truncating=\'{}\'\n'.format(truncating))
         fd.write('\nWord Embedding\n')
-        for embedding_path in embedding_paths:
-            fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
+        fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
         fd.write('para_rnn={}\n'.format(para_rnn.__name__))
