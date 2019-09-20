@@ -12,7 +12,7 @@ from sklearn.svm import LinearSVC
 
 from classification import evaluation, ordinal, shared_parameters
 import folders
-from sites.bookcave import bookcave, bookcave_ids
+from sites.bookcave import bookcave
 
 
 def identity(v):
@@ -56,12 +56,19 @@ def main(argv):
 
     # Load data.
     print('Retrieving texts...')
-    ids_fname = bookcave_ids.get_ids_fname()
-    book_ids = bookcave_ids.get_book_ids(ids_fname)
+    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    subset_seed = shared_parameters.DATA_SUBSET_SEED
+    min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
+    max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
+    min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = 'soft'
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'sentence_tokens'},
-                          only_ids=book_ids,
+                          subset_ratio=subset_ratio,
+                          subset_seed=subset_seed,
+                          min_len=min_len,
+                          max_len=max_len,
+                          min_tokens=min_tokens,
                           categories_mode=categories_mode)
     text_sentence_tokens, text_section_ids, text_paragraph_ids = zip(*inputs['sentence_tokens'])
     print('Retrieved {:d} texts.'.format(len(text_sentence_tokens)))
@@ -134,7 +141,11 @@ def main(argv):
         with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
             fd.write('HYPERPARAMETERS\n')
             fd.write('\nText\n')
-            fd.write('ids_fname={}\n'.format(bookcave_ids.get_ids_fname()))
+            fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
+            fd.write('subset_seed={}\n'.format(str(subset_seed)))
+            fd.write('min_len={:d}\n'.format(min_len))
+            fd.write('max_len={:d}\n'.format(max_len))
+            fd.write('min_tokens={:d}\n'.format(min_tokens))
             fd.write('\nLabels\n')
             fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
             fd.write('\nVectorization\n')

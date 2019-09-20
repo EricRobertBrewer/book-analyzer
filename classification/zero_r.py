@@ -6,8 +6,7 @@ from sklearn.model_selection import train_test_split
 
 from classification import evaluation, shared_parameters
 import folders
-from sites.bookcave import bookcave, bookcave_ids
-from text import generate_data
+from sites.bookcave import bookcave
 
 
 def main():
@@ -19,11 +18,20 @@ def main():
 
     # Load data.
     print('Retrieving labels...')
-    ids_fname = bookcave_ids.get_ids_fname()
+    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    subset_seed = shared_parameters.DATA_SUBSET_SEED
+    min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
+    max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
+    min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = 'soft'
-    Y = generate_data.load_Y(categories_mode, ids_fname)
-    categories = bookcave.CATEGORIES
-    category_levels = bookcave.CATEGORY_LEVELS[categories_mode]
+    _, Y, categories, category_levels = \
+        bookcave.get_data({'sentence_tokens'},
+                          subset_ratio=subset_ratio,
+                          subset_seed=subset_seed,
+                          min_len=min_len,
+                          max_len=max_len,
+                          min_tokens=min_tokens,
+                          categories_mode=categories_mode)
     print('Retrieved {:d} labels.'.format(Y.shape[1]))
 
     # Split data set.
@@ -48,7 +56,11 @@ def main():
     with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
         fd.write('HYPERPARAMETERS\n')
         fd.write('\nText\n')
-        fd.write('ids_fname={}\n'.format(bookcave_ids.get_ids_fname()))
+        fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
+        fd.write('subset_seed={}\n'.format(str(subset_seed)))
+        fd.write('min_len={:d}\n'.format(min_len))
+        fd.write('max_len={:d}\n'.format(max_len))
+        fd.write('min_tokens={:d}\n'.format(min_tokens))
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('\nTraining\n')
