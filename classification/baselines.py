@@ -57,11 +57,11 @@ def main(argv):
     # Load data.
     print('Retrieving texts...')
     source = 'paragraph_tokens'
-    subset_ratio = .25
+    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
-    min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
-    max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
-    min_tokens = shared_parameters.DATA_MIN_TOKENS
+    min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
+    max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
+    min_tokens = 6  # shared_parameters.DATA_MIN_TOKENS
     categories_mode = 'soft'
     inputs, Y, categories, category_levels = \
         bookcave.get_data({source},
