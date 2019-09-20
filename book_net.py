@@ -7,7 +7,7 @@ import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras import initializers as initializers, regularizers, constraints
 from tensorflow.keras import utils
-from tensorflow.keras.layers import Activation, Bidirectional, Concatenate, CuDNNGRU, Dense, Dropout, Embedding, \
+from tensorflow.keras.layers import Bidirectional, Concatenate, CuDNNGRU, Dense, Dropout, Embedding, \
     GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, Layer, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
@@ -147,10 +147,11 @@ class AttentionWithContext(Layer):
         return input_shape[0], input_shape[-1]
 
 
-def create_model(output_k, output_names, n_tokens, embedding_matrix, embedding_trainable,
-                 word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
-                 book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
-                 label_mode):
+def create_model(
+        output_k, output_names, n_tokens, embedding_matrix, embedding_trainable,
+        word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
+        book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
+        label_mode):
     # Word encoder.
     input_w = Input(shape=(n_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
@@ -256,6 +257,9 @@ def main(argv):
     print('Time stamp: {:d}'.format(stamp))
     if note is not None:
         print('Note: {}'.format(note))
+        base_fname = '{:d}_{}'.format(stamp, note)
+    else:
+        base_fname = format(stamp, 'd')
 
     # Load data.
     print('Retrieving texts...')
@@ -265,13 +269,13 @@ def main(argv):
     max_len = 4096
     min_tokens = 6
     inputs, Y, categories, category_levels = \
-        bookcave.get_data({'tokens'},
+        bookcave.get_data({'paragraph_tokens'},
                           subset_ratio=subset_ratio,
                           subset_seed=subset_seed,
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens)
-    text_paragraph_tokens, _ = zip(*inputs['tokens'])
+    text_paragraph_tokens, _ = zip(*inputs['paragraph_tokens'])
     print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
 
     # Tokenize.
@@ -360,16 +364,8 @@ def main(argv):
     Y_train = Y_train_T.transpose()  # (c, n * (1 - b) * (1 - v))
     Y_val = Y_val_T.transpose()  # (c, n * (1 - b) * v)
     Y_test = Y_test_T.transpose()  # (c, n * b)
-    sample_weights_train = sample_weights_train_T.transpose()  # (c, n * (1 - b) * (1 - v))
-    sample_weights_val = sample_weights_val_T.transpose()  # (c, n * (1 - b) * v)
-    sample_weights_test = sample_weights_test_T.transpose()  # (c, n * b)
-    use_sample_weights = False
-    if not use_sample_weights:
-        sample_weights_train = None
-        sample_weights_val = None
-        sample_weights_test = None
 
-    # Train.
+    # Calculate class weights.
     use_class_weights = True
     if label_mode == LABEL_MODE_ORDINAL:
         Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
@@ -396,8 +392,14 @@ def main(argv):
         Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
-    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, sample_weights=sample_weights_train, shuffle=True)
-    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, sample_weights=sample_weights_val, shuffle=False)
+
+    # Create generators.
+    shuffle = True
+    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=True)
+    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
+    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
+
+    # Train.
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
@@ -411,7 +413,7 @@ def main(argv):
     history_path = os.path.join(folders.HISTORY_PATH, classifier_name)
     if not os.path.exists(history_path):
         os.mkdir(history_path)
-    with open(os.path.join(history_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+    with open(os.path.join(history_path, '{}.txt'.format(base_fname)), 'w') as fd:
         for key in history.history.keys():
             values = history.history.get(key)
             fd.write('{} {}\n'.format(key, ' '.join(str(value) for value in values)))
@@ -419,14 +421,13 @@ def main(argv):
 
     # Predict test instances.
     print('Predicting test instances...')
-    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, sample_weights=sample_weights_test, shuffle=False)
-    Y_preds = model.predict_generator(test_generator)
+    Y_pred = model.predict_generator(test_generator)
     if label_mode == LABEL_MODE_ORDINAL:
-        Y_preds = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_preds]
+        Y_pred = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_pred]
     elif label_mode == LABEL_MODE_CATEGORICAL:
-        Y_preds = [np.argmax(y, axis=1) for y in Y_preds]
+        Y_pred = [np.argmax(y, axis=1) for y in Y_pred]
     elif label_mode == LABEL_MODE_REGRESSION:
-        Y_preds = [np.maximum(0, np.minimum(k - 1, np.round(Y_preds[i] * k))) for i, k in enumerate(category_k)]
+        Y_pred = [np.maximum(0, np.minimum(k - 1, np.round(Y_pred[i] * k))) for i, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     print('Done.')
@@ -436,7 +437,7 @@ def main(argv):
     if save_model:
         models_path = os.path.join(folders.MODELS_PATH, classifier_name)
         label_mode_path = os.path.join(models_path, label_mode)
-        model_path = os.path.join(label_mode_path, '{:d}.h5'.format(stamp))
+        model_path = os.path.join(label_mode_path, '{}.h5'.format(base_fname))
         print('Saving model to `{}`...'.format(model_path))
         if not os.path.exists(folders.MODELS_PATH):
             os.mkdir(folders.MODELS_PATH)
@@ -457,14 +458,15 @@ def main(argv):
 
     # Write results.
     print('Writing results...')
+
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
     logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
-    with open(os.path.join(logs_path, '{:d}.txt'.format(stamp)), 'w') as fd:
+    with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
         if note is not None:
-            fd.write('Note: {}\n\n'.format(note))
+            fd.write('{}\n\n'.format(note))
         fd.write('PARAMETERS\n\n')
         fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
         fd.write('epochs={:d}\n'.format(epochs))
@@ -505,8 +507,8 @@ def main(argv):
         fd.write('test_random_state={:d}\n'.format(test_random_state))
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
-        fd.write('use_sample_weights={}\n'.format(use_sample_weights))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
+        fd.write('shuffle={}\n'.format(shuffle))
         fd.write('\nRESULTS\n\n')
         fd.write('Data size: {:d}\n'.format(len(text_paragraph_tokens)))
         fd.write('Train size: {:d}\n'.format(len(X_train)))
@@ -517,44 +519,16 @@ def main(argv):
         else:
             fd.write('Model not saved.\n')
         fd.write('Time elapsed: {:d}h {:d}m {:d}s\n'.format(elapsed_h, elapsed_m, elapsed_s))
-        # Calculate statistics for predictions.
-        category_confusion, category_metrics = zip(*[evaluation.get_confusion_and_metrics(Y_test[j], Y_preds[j])
-                                                     for j in range(len(categories))])
-        averages = [sum([metrics[metric_i] for metrics in category_metrics])/len(category_metrics)
-                    for metric_i in range(len(evaluation.METRIC_NAMES))]
-        # Metric abbreviations.
-        fd.write('\n')
-        fd.write('{:>24}'.format('Metric'))
-        for abbreviation in evaluation.METRIC_ABBREVIATIONS:
-            fd.write(' | {:^7}'.format(abbreviation))
-        fd.write(' |\n')
-        # Horizontal line.
-        fd.write('{:>24}'.format(''))
-        for _ in range(len(category_metrics)):
-            fd.write('-+-{}'.format('-'*7))
-        fd.write('-+\n')
-        # Metrics per category.
-        for j, metrics in enumerate(category_metrics):
-            fd.write('{:>24}'.format(categories[j]))
-            for value in metrics:
-                fd.write(' | {:.5f}'.format(value))
-            fd.write(' |\n')
-        # Horizontal line.
-        fd.write('{:>24}'.format(''))
-        for _ in range(len(category_metrics)):
-            fd.write('-+-{}'.format('-'*7))
-        fd.write('-+\n')
-        # Average metrics.
-        fd.write('{:>24}'.format('Average'))
-        for value in averages:
-            fd.write(' | {:.5f}'.format(value))
-        fd.write(' |\n')
-        # Confusion matrices.
-        for j, category in enumerate(categories):
-            fd.write('\n`{}`\n'.format(category))
-            confusion = category_confusion[j]
-            fd.write(np.array2string(confusion))
-            fd.write('\n')
+        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
+
+    if not os.path.exists(folders.PREDICTIONS_PATH):
+        os.mkdir(folders.PREDICTIONS_PATH)
+    predictions_path = os.path.join(folders.PREDICTIONS_PATH, classifier_name)
+    if not os.path.exists(predictions_path):
+        os.mkdir(predictions_path)
+    with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
+        evaluation.write_predictions(Y_test, Y_pred, fd, categories)
+
     print('Done.')
 
 
