@@ -4,156 +4,31 @@ import time
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import backend as K
-from tensorflow.keras import initializers as initializers, regularizers, constraints
+from tensorflow.keras import regularizers
 from tensorflow.keras import utils
 from tensorflow.keras.layers import Bidirectional, Concatenate, CuDNNGRU, Dense, Dropout, Embedding, \
-    GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, Layer, TimeDistributed
+    GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
 from sklearn.model_selection import train_test_split
 
-from classification import evaluation, ordinal
+from classification import evaluation, ordinal, shared_parameters
+from classification.net.attention_with_context import AttentionWithContext
+from classification.net.batch_generators import SingleInstanceBatchGenerator, VariableLengthBatchGenerator
 import folders
 from sites.bookcave import bookcave
 from text import load_embeddings
 
 
-LABEL_MODE_ORDINAL = 'ordinal'
-LABEL_MODE_CATEGORICAL = 'categorical'
-LABEL_MODE_REGRESSION = 'regression'
-
-
-def dot_product(x, kernel):
-    """
-    Wrapper for dot product operation, in order to be compatible with both
-    Theano and Tensorflow
-    Args:
-        x (): input
-        kernel (): weights
-    Returns:
-    """
-    if K.backend() == 'tensorflow':
-        return K.squeeze(K.dot(x, K.expand_dims(kernel)), axis=-1)
-    return K.dot(x, kernel)
-
-
-class AttentionWithContext(Layer):
-    """
-    Attention operation, with a context/query vector, for temporal data.
-    Supports Masking.
-    Follows the work of Yang et al. [https://www.cs.cmu.edu/~diyiy/docs/naacl16.pdf]
-    "Hierarchical Attention Networks for Document Classification"
-    by using a context vector to assist the attention
-    # Input shape
-        3D tensor with shape: `(samples, steps, features)`.
-    # Output shape
-        2D tensor with shape: `(samples, features)`.
-    How to use:
-    Just put it on top of an RNN Layer (GRU/LSTM/SimpleRNN) with return_sequences=True.
-    The dimensions are inferred based on the output shape of the RNN.
-    Note: The layer has been tested with Keras 2.0.6
-    Example:
-        model.add(LSTM(64, return_sequences=True))
-        model.add(AttentionWithContext())
-        # next add a Dense layer (for classification/regression) or whatever...
-    """
-
-    def __init__(
-            self,
-            W_regularizer=None,
-            u_regularizer=None,
-            b_regularizer=None,
-            W_constraint=None,
-            u_constraint=None,
-            b_constraint=None,
-            bias=True,
-            **kwargs
-    ):
-        self.supports_masking = True
-        self.init = initializers.get('glorot_uniform')
-
-        self.W = None
-        self.b = None
-        self.u = None
-
-        self.W_regularizer = regularizers.get(W_regularizer)
-        self.u_regularizer = regularizers.get(u_regularizer)
-        self.b_regularizer = regularizers.get(b_regularizer)
-
-        self.W_constraint = constraints.get(W_constraint)
-        self.u_constraint = constraints.get(u_constraint)
-        self.b_constraint = constraints.get(b_constraint)
-
-        self.bias = bias
-        super(AttentionWithContext, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        assert len(input_shape) == 3
-
-        _dim = int(input_shape[-1])
-        self.W = self.add_weight('{}_W'.format(self.name),
-                                 (_dim, _dim,),
-                                 initializer=self.init,
-                                 regularizer=self.W_regularizer,
-                                 constraint=self.W_constraint)
-        if self.bias:
-            self.b = self.add_weight('{}_b'.format(self.name),
-                                     (_dim,),
-                                     initializer='zero',
-                                     regularizer=self.b_regularizer,
-                                     constraint=self.b_constraint)
-
-        self.u = self.add_weight('{}_u'.format(self.name),
-                                 (_dim,),
-                                 initializer=self.init,
-                                 regularizer=self.u_regularizer,
-                                 constraint=self.u_constraint)
-
-        super(AttentionWithContext, self).build(input_shape)
-
-    def compute_mask(self, inp, input_mask=None):
-        # do not pass the mask to the next layers
-        return None
-
-    def call(self, x, mask=None):
-        uit = dot_product(x, self.W)
-
-        if self.bias:
-            uit += self.b
-
-        uit = K.tanh(uit)
-        ait = dot_product(uit, self.u)
-
-        a = K.exp(ait)
-
-        # apply mask after the exp. will be re-normalized next
-        if mask is not None:
-            # Cast the mask to floatX to avoid float64 upcasting in theano
-            a *= K.cast(mask, K.floatx())
-
-        # in some cases especially in the early stages of training the sum may be almost zero
-        # and this results in NaN's. A workaround is to add a very small positive number (epsilon) to the sum.
-        # a /= K.cast(K.sum(a, axis=1, keepdims=True), K.floatx())
-        a /= K.cast(K.sum(a, axis=1, keepdims=True) + K.epsilon(), K.floatx())
-
-        a = K.expand_dims(a)
-        weighted_input = x * a
-        return K.sum(weighted_input, axis=1)
-
-    def compute_output_shape(self, input_shape):
-        return input_shape[0], input_shape[-1]
-
-
 def create_model(
-        output_k, output_names, n_tokens, embedding_matrix, embedding_trainable,
+        n_paragraph_tokens, embedding_matrix, embedding_trainable,
         word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
-        book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
-        label_mode):
+        book_dense_units, book_dense_activation, book_dense_l2,
+        book_dropout, output_k, output_names, label_mode):
     # Word encoder.
-    input_w = Input(shape=(n_tokens,), dtype='float32')  # (t)
+    input_w = Input(shape=(n_paragraph_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
     x_w = Embedding(max_words,
                     d,
@@ -173,7 +48,7 @@ def create_model(
     word_encoder = Model(input_w, x_w)
 
     # Consider maximum and average signals among all paragraphs of books.
-    input_p = Input(shape=(None, n_tokens), dtype='float32')  # (s, t); s is not constant!
+    input_p = Input(shape=(None, n_paragraph_tokens), dtype='float32')  # (s, t); s is not constant!
     x_p = TimeDistributed(word_encoder)(input_p)  # (s, c_w)
     g_max_p = GlobalMaxPooling1D()(x_p)  # (c_w)
     g_avg_p = GlobalAveragePooling1D()(x_p)  # (c_w)
@@ -184,11 +59,11 @@ def create_model(
                 kernel_regularizer=book_dense_l2)(x_p)  # (c_b)
     x_p = book_dense_activation(x_p)  # (c_b)
     x_p = Dropout(book_dropout)(x_p)  # (c_b)
-    if label_mode == LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
-    elif label_mode == LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         outputs = [Dense(k, activation='softmax', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
-    elif label_mode == LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         outputs = [Dense(1, activation='linear', name=output_names[i])(x_p) for i in range(len(output_k))]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
@@ -196,55 +71,17 @@ def create_model(
     return model
 
 
-class SingleInstanceBatchGenerator(utils.Sequence):
-    """
-    When fitting the model, the batch size must be 1 to accommodate variable numbers of paragraphs per text.
-    See `https://datascience.stackexchange.com/a/48814/66450`.
-    """
-    def __init__(self, X, Y, sample_weights=None, shuffle=True):
-        super(SingleInstanceBatchGenerator, self).__init__()
-        # `fit_generator` wants each `x` to be a NumPy array, not a list.
-        self.X = [np.array([x]) for x in X]
-        # Transform Y from shape (c, n, k-1) to (n, c, 1, k-1) if Y is ordinal,
-        # or from shape (c, n, k) to (n, c, 1, k) if Y is not ordinal,
-        # where `c` is the number of categories, `n` is the number of instances,
-        # and `k` is the number of classes for the current category.
-        self.Y = [[np.array([y[i]]) for y in Y]
-                  for i in range(len(X))]
-        if sample_weights is not None:
-            self.sample_weights = [[np.array([sample_weight[i]]) for sample_weight in sample_weights]
-                                   for i in range(len(X))]
-        else:
-            self.sample_weights = None
-        self.indices = np.arange(len(X))
-        self.shuffle = shuffle
-        self.shuffle_indices()
-
-    def __len__(self):
-        return len(self.indices)
-
-    def __getitem__(self, index):
-        i = self.indices[index]
-        if self.sample_weights is not None:
-            return self.X[i], self.Y[i], self.sample_weights[i]
-        return self.X[i], self.Y[i]
-
-    def on_epoch_end(self):
-        self.shuffle_indices()
-
-    def shuffle_indices(self):
-        if self.shuffle:
-            np.random.shuffle(self.indices)
-
-
 def main(argv):
-    if len(argv) < 2 or len(argv) > 3:
-        raise ValueError('Usage: <steps_per_epoch> <epochs> [note]')
-    steps_per_epoch = int(argv[0])
-    epochs = int(argv[1])
+    if len(argv) < 5 or len(argv) > 6:
+        raise ValueError('Usage: <max_words> <n_paragraph_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
+    max_words = int(argv[0])  # The maximum size of the vocabulary.
+    n_paragraph_tokens = int(argv[1])  # The maximum number of tokens to process in each paragraph.
+    batch_size = int(argv[2])
+    steps_per_epoch = int(argv[3])
+    epochs = int(argv[4])
     note = None
-    if len(argv) > 2:
-        note = argv[2]
+    if len(argv) > 5:
+        note = argv[5]
 
     script_name = os.path.basename(__file__)
     classifier_name = script_name[:script_name.index('.')]
@@ -280,7 +117,6 @@ def main(argv):
 
     # Tokenize.
     print('Tokenizing...')
-    max_words = 8192  # The maximum size of the vocabulary.
     split = '\t'
     tokenizer = Tokenizer(num_words=max_words, split=split)
     all_paragraphs = []
@@ -292,11 +128,10 @@ def main(argv):
 
     # Convert to sequences.
     print('Converting texts to sequences...')
-    n_tokens = 128  # The maximum number of tokens to process in each paragraph.
     padding = 'pre'
     truncating = 'pre'
     X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in paragraph_tokens]),
-                                maxlen=n_tokens,
+                                maxlen=n_paragraph_tokens,
                                 padding=padding,
                                 truncating=truncating))
          for paragraph_tokens in text_paragraph_tokens]
@@ -322,20 +157,20 @@ def main(argv):
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
     book_dropout = .5
-    label_mode = LABEL_MODE_ORDINAL
-    model = create_model(category_k, categories, n_tokens, embedding_matrix, embedding_trainable,
+    label_mode = shared_parameters.LABEL_MODE_ORDINAL
+    model = create_model(n_paragraph_tokens, embedding_matrix, embedding_trainable,
                          word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
-                         book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
-                         label_mode)
+                         book_dense_units, book_dense_activation, book_dense_l2,
+                         book_dropout, category_k, categories, label_mode)
     lr = .000015625
     optimizer = Adam(lr=lr)
-    if label_mode == LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
         metric = 'binary_accuracy'
-    elif label_mode == LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         loss = 'categorical_crossentropy'
         metric = 'categorical_accuracy'
-    elif label_mode == LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         loss = 'mse'
         metric = 'accuracy'
     else:
@@ -367,7 +202,7 @@ def main(argv):
 
     # Calculate class weights.
     use_class_weights = True
-    if label_mode == LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
         Y_val = [ordinal.to_multi_hot_ordinal(Y_val[j], k=k) for j, k in enumerate(category_k)]
         category_class_weights = []  # [[dict]]
@@ -378,7 +213,7 @@ def main(argv):
                 class_weight = {0: 1 / (len(y_train) - ones_count + 1), 1: 1 / (ones_count + 1)}
                 class_weights.append(class_weight)
             category_class_weights.append(class_weights)
-    elif label_mode == LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         category_class_weights = []  # [dict]
         for j, y_train in enumerate(Y_train):
             bincount = np.bincount(y_train, minlength=category_k[j])
@@ -386,7 +221,7 @@ def main(argv):
             category_class_weights.append(class_weight)
         Y_train = [utils.to_categorical(Y_train[j], num_classes=k) for j, k in enumerate(category_k)]
         Y_val = [utils.to_categorical(Y_val[j], num_classes=k) for j, k in enumerate(category_k)]
-    elif label_mode == LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         category_class_weights = None
         Y_train = [Y_train[j] / k for j, k in enumerate(category_k)]
         Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
@@ -395,9 +230,16 @@ def main(argv):
 
     # Create generators.
     shuffle = True
-    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=True)
-    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
-    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
+    if batch_size == 1:
+        train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=shuffle)
+        val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
+        test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
+    else:
+        X_shape = (n_paragraph_tokens,)
+        Y_shape = [(len(y[0]),) for y in Y_train]
+        train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=shuffle)
+        val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, batch_size, shuffle=False)
+        test_generator = VariableLengthBatchGenerator(X_test, X_shape, Y_test, Y_shape, batch_size, shuffle=False)
 
     # Train.
     history = model.fit_generator(train_generator,
@@ -422,11 +264,11 @@ def main(argv):
     # Predict test instances.
     print('Predicting test instances...')
     Y_pred = model.predict_generator(test_generator)
-    if label_mode == LABEL_MODE_ORDINAL:
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_pred = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_pred]
-    elif label_mode == LABEL_MODE_CATEGORICAL:
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         Y_pred = [np.argmax(y, axis=1) for y in Y_pred]
-    elif label_mode == LABEL_MODE_REGRESSION:
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         Y_pred = [np.maximum(0, np.minimum(k - 1, np.round(Y_pred[i] * k))) for i, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
@@ -479,7 +321,7 @@ def main(argv):
         fd.write('min_tokens={:d}\n'.format(min_tokens))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
-        fd.write('n_tokens={:d}\n'.format(n_tokens))
+        fd.write('n_paragraph_tokens={:d}\n'.format(n_paragraph_tokens))
         fd.write('padding=\'{}\'\n'.format(padding))
         fd.write('truncating=\'{}\'\n'.format(truncating))
         fd.write('\nWord Embedding\n')
