@@ -68,7 +68,7 @@ def create_model(
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     model = Model(input_b, outputs)
-    return model
+    return paragraph_encoder, model
 
 
 def main(argv):
@@ -104,7 +104,7 @@ def main(argv):
     subset_seed = shared_parameters.DATA_SUBSET_SEED
     min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
     max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
-    min_tokens = 6  # shared_parameters.DATA_MIN_TOKENS
+    min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = 'soft'
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'paragraph_tokens'},
@@ -160,11 +160,12 @@ def main(argv):
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = shared_parameters.LABEL_MODE_ORDINAL
-    model = create_model(n_paragraph_tokens, embedding_matrix, embedding_trainable,
-                         para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
-                         book_dense_units, book_dense_activation, book_dense_l2,
-                         book_dropout, category_k, categories, label_mode)
-    lr = .000015625
+    paragraph_encoder, model = create_model(
+        n_paragraph_tokens, embedding_matrix, embedding_trainable,
+        para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
+        book_dense_units, book_dense_activation, book_dense_l2,
+        book_dropout, category_k, categories, label_mode)
+    lr = 2**-16
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
@@ -181,10 +182,10 @@ def main(argv):
     print('Done.')
 
     # Split data set.
-    test_size = .25  # b
-    test_random_state = 1
-    val_size = .1  # v
-    val_random_state = 1
+    test_size = shared_parameters.EVAL_TEST_SIZE  # b
+    test_random_state = shared_parameters.EVAL_TEST_RANDOM_STATE
+    val_size = shared_parameters.EVAL_VAL_SIZE  # v
+    val_random_state = shared_parameters.EVAL_VAL_RANDOM_STATE
     Y_T = Y.transpose()  # (n, c)
     X_train, X_test, Y_train_T, Y_test_T = \
         train_test_split(X, Y_T, test_size=test_size, random_state=test_random_state)
@@ -197,9 +198,9 @@ def main(argv):
     # Calculate class weights.
     use_class_weights = True
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
+        Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
+        Y_val = [ordinal.to_multi_hot_ordinal(Y_val[j], k=k) for j, k in enumerate(category_k)]
         if use_class_weights:
-            Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
-            Y_val = [ordinal.to_multi_hot_ordinal(Y_val[j], k=k) for j, k in enumerate(category_k)]
             category_class_weights = []  # [[dict]]
             for y_train in Y_train:
                 class_weights = []
@@ -217,10 +218,10 @@ def main(argv):
                 bincount = np.bincount(y_train, minlength=category_k[j])
                 class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
                 category_class_weights.append(class_weight)
-            Y_train = [utils.to_categorical(Y_train[j], num_classes=k) for j, k in enumerate(category_k)]
-            Y_val = [utils.to_categorical(Y_val[j], num_classes=k) for j, k in enumerate(category_k)]
         else:
             category_class_weights = None
+        Y_train = [utils.to_categorical(Y_train[j], num_classes=k) for j, k in enumerate(category_k)]
+        Y_val = [utils.to_categorical(Y_val[j], num_classes=k) for j, k in enumerate(category_k)]
     elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         category_class_weights = None
         Y_train = [Y_train[j] / k for j, k in enumerate(category_k)]
@@ -314,8 +315,8 @@ def main(argv):
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
         fd.write('\nText\n')
-        fd.write('subset_ratio={:.3f}\n'.format(subset_ratio))
-        fd.write('subset_seed={:d}\n'.format(subset_seed))
+        fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
+        fd.write('subset_seed={}\n'.format(str(subset_seed)))
         fd.write('min_len={:d}\n'.format(min_len))
         fd.write('max_len={:d}\n'.format(max_len))
         fd.write('min_tokens={:d}\n'.format(min_tokens))
