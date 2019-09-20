@@ -20,12 +20,13 @@ from sites.bookcave import bookcave, bookcave_ids
 from text import generate_data
 
 
-def create_model(n_tokens, embedding_matrix, embedding_trainable,
-                 sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
-                 book_dense_units, book_dense_activation, book_dense_l2,
-                 book_dropout, output_k, output_names, label_mode):
+def create_model(
+        n_sentence_tokens, embedding_matrix, embedding_trainable,
+        sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
+        book_dense_units, book_dense_activation, book_dense_l2,
+        book_dropout, output_k, output_names, label_mode):
     # Sentence encoder.
-    input_s = Input(shape=(n_tokens,), dtype='float32')  # (t)
+    input_s = Input(shape=(n_sentence_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
     x_s = Embedding(max_words,
                     d,
@@ -45,7 +46,7 @@ def create_model(n_tokens, embedding_matrix, embedding_trainable,
     sentence_encoder = Model(input_s, x_s)
 
     # Consider maximum and average signals among all sentences of books.
-    input_b = Input(shape=(None, n_tokens), dtype='float32')  # (s, t); s is not constant!
+    input_b = Input(shape=(None, n_sentence_tokens), dtype='float32')  # (s, t); s is not constant!
     x_b = TimeDistributed(sentence_encoder)(input_b)  # (p, c_s)
     g_max_b = GlobalMaxPooling1D()(x_b)  # (c_s)
     g_avg_b = GlobalAveragePooling1D()(x_b)  # (c_s)
@@ -65,7 +66,7 @@ def create_model(n_tokens, embedding_matrix, embedding_trainable,
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
     model = Model(input_b, outputs)
-    return model
+    return sentence_encoder, model
 
 
 def main(argv):
@@ -135,10 +136,11 @@ def main(argv):
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = shared_parameters.LABEL_MODE_ORDINAL
-    model = create_model(n_sentence_tokens, embedding_matrix, embedding_trainable,
-                         sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
-                         book_dense_units, book_dense_activation, book_dense_l2,
-                         book_dropout, category_k, categories, label_mode)
+    sentence_encoder, model = create_model(
+        n_sentence_tokens, embedding_matrix, embedding_trainable,
+        sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
+        book_dense_units, book_dense_activation, book_dense_l2,
+        book_dropout, category_k, categories, label_mode)
     lr = 2**-16
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
@@ -169,7 +171,7 @@ def main(argv):
     Y_val = Y_val_T.transpose()  # (c, n * (1 - b) * v)
     Y_test = Y_test_T.transpose()  # (c, n * b)
 
-    # Train.
+    # Calculate class weights.
     use_class_weights = True
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
@@ -202,16 +204,21 @@ def main(argv):
         Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
+
+    # Create generators.
+    shuffle = True
     if batch_size == 1:
-        train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=True)
-        val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=True)
-        test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=True)
+        train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=shuffle)
+        val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
+        test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
     else:
         X_shape = (n_sentence_tokens,)
         Y_shape = [(len(y[0]),) for y in Y_train]
-        train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=True)
+        train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=shuffle)
         val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, batch_size, shuffle=False)
         test_generator = VariableLengthBatchGenerator(X_test, X_shape, Y_test, Y_shape, batch_size, shuffle=False)
+
+    # Train.
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
@@ -322,6 +329,7 @@ def main(argv):
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
+        fd.write('shuffle={}\n'.format(shuffle))
         fd.write('\nRESULTS\n\n')
         fd.write('Data size: {:d}\n'.format(len(X)))
         fd.write('Train size: {:d}\n'.format(len(X_train)))
