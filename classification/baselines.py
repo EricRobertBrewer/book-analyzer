@@ -56,22 +56,23 @@ def main(argv):
 
     # Load data.
     print('Retrieving texts...')
-    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    source = 'paragraph_tokens'
+    subset_ratio = .25
     subset_seed = shared_parameters.DATA_SUBSET_SEED
     min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
     max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = 'soft'
     inputs, Y, categories, category_levels = \
-        bookcave.get_data({'sentence_tokens'},
+        bookcave.get_data({source},
                           subset_ratio=subset_ratio,
                           subset_seed=subset_seed,
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens,
                           categories_mode=categories_mode)
-    text_sentence_tokens, text_section_ids, text_paragraph_ids = zip(*inputs['sentence_tokens'])
-    print('Retrieved {:d} texts.'.format(len(text_sentence_tokens)))
+    text_source_tokens = list(zip(*inputs[source]))[0]
+    print('Retrieved {:d} texts.'.format(len(text_source_tokens)))
 
     # Create vectorized representations of the book texts.
     print('Vectorizing text...')
@@ -84,12 +85,12 @@ def main(argv):
         norm='l2',
         sublinear_tf=True)
     text_tokens = []
-    for sentence_tokens in text_sentence_tokens:
+    for source_tokens in text_source_tokens:
         all_tokens = []
-        for tokens in sentence_tokens:
+        for tokens in source_tokens:
             all_tokens.extend(tokens)
         text_tokens.append(all_tokens)
-    X = vectorizer.fit_transform(text_tokens)  # TODO: Save to file?
+    X = vectorizer.fit_transform(text_tokens)
     print('Vectorized text with {:d} unique words.'.format(len(vectorizer.get_feature_names())))
 
     # Split data set.
