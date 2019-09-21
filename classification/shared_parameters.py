@@ -1,5 +1,10 @@
-DATA_SUBSET_RATIO = 1.
-DATA_SUBSET_SEED = 1
+from tensorflow.keras import utils
+
+from classification import ordinal
+
+
+DATA_SUBSET_RATIO = None
+DATA_SUBSET_SEED = None
 DATA_PARAGRAPH_MIN_LEN = 256  # The minimum number of paragraphs in each text.
 DATA_PARAGRAPH_MAX_LEN = 4096  # The maximum number of paragraphs in each text.
 DATA_SENTENCE_MIN_LEN = 512  # The minimum number of sentences in each text.
@@ -22,3 +27,39 @@ EVAL_TEST_SIZE = .25
 EVAL_TEST_RANDOM_STATE = 1
 EVAL_VAL_SIZE = .1
 EVAL_VAL_RANDOM_STATE = 1
+
+
+def transform_labels(Y, category_k, label_mode):
+    if label_mode == LABEL_MODE_ORDINAL:
+        return [ordinal.to_multi_hot_ordinal(Y[j], k=k) for j, k in enumerate(category_k)]  # (c, n, k - 1)
+    if label_mode == LABEL_MODE_CATEGORICAL:
+        return [utils.to_categorical(Y[j], num_classes=k) for j, k in enumerate(category_k)]  # (c, n, k)
+    if label_mode == LABEL_MODE_REGRESSION:
+        return [Y[j] / k for j, k in enumerate(category_k)]  # (c, n)
+    raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
+
+
+def get_category_class_weights(Y, label_mode):
+    if label_mode == LABEL_MODE_ORDINAL:
+        category_class_weights = []  # [[dict]], since classification will be binary cross-entropy.
+        for y in Y:
+            class_weights = []
+            for i in range(y.shape[1]):
+                ones_count = sum(y[:, i])
+                zeros_count = len(y) - ones_count
+                class_weight = {0: 1 / (zeros_count + 1), 1: 1 / (ones_count + 1)}
+                class_weights.append(class_weight)
+            category_class_weights.append(class_weights)
+        return category_class_weights
+    if label_mode == LABEL_MODE_CATEGORICAL:
+        category_class_weights = []  # [dict], since classification will be categorical cross-entropy.
+        for y in Y:
+            class_weight = dict()
+            for i in range(y.shape[1]):
+                count = sum(y[:, i])
+                class_weight[i] = 1 / (count + 1)
+            category_class_weights.append(class_weight)
+        return category_class_weights
+    if label_mode == LABEL_MODE_REGRESSION:
+        return None  # No classes.
+    raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))

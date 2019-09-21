@@ -11,7 +11,6 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras import regularizers
-from tensorflow.keras import utils
 from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal, shared_parameters
@@ -195,39 +194,16 @@ def main(argv):
     Y_val = Y_val_T.transpose()  # (c, n * (1 - b) * v)
     Y_test = Y_test_T.transpose()  # (c, n * b)
 
+    # Transform labels based on the label mode.
+    Y_train = shared_parameters.transform_labels(Y_train, category_k, label_mode)
+    Y_val = shared_parameters.transform_labels(Y_val, category_k, label_mode)
+
     # Calculate class weights.
     use_class_weights = True
-    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
-        Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
-        Y_val = [ordinal.to_multi_hot_ordinal(Y_val[j], k=k) for j, k in enumerate(category_k)]
-        if use_class_weights:
-            category_class_weights = []  # [[dict]]
-            for y_train in Y_train:
-                class_weights = []
-                for i in range(y_train.shape[1]):
-                    ones_count = sum(y_train[:, i] == 1)
-                    class_weight = {0: 1 / (len(y_train) - ones_count + 1), 1: 1 / (ones_count + 1)}
-                    class_weights.append(class_weight)
-                category_class_weights.append(class_weights)
-        else:
-            category_class_weights = None
-    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
-        if use_class_weights:
-            category_class_weights = []  # [dict]
-            for j, y_train in enumerate(Y_train):
-                bincount = np.bincount(y_train, minlength=category_k[j])
-                class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
-                category_class_weights.append(class_weight)
-        else:
-            category_class_weights = None
-        Y_train = [utils.to_categorical(Y_train[j], num_classes=k) for j, k in enumerate(category_k)]
-        Y_val = [utils.to_categorical(Y_val[j], num_classes=k) for j, k in enumerate(category_k)]
-    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
-        category_class_weights = None
-        Y_train = [Y_train[j] / k for j, k in enumerate(category_k)]
-        Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
+    if use_class_weights:
+        category_class_weights = shared_parameters.get_category_class_weights(Y_train, label_mode)
     else:
-        raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
+        category_class_weights = None
 
     # Create generators.
     shuffle = True
