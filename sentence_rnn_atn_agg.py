@@ -66,7 +66,7 @@ def create_model(
     elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
     else:
-        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
+        raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
     model = Model(input_b, outputs)
     return sentence_encoder, model
 
@@ -177,7 +177,7 @@ def main(argv):
         loss = 'mse'
         metric = 'accuracy'
     else:
-        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
+        raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
     model.compile(optimizer, loss=loss, metrics=[metric])
     print('Done.')
 
@@ -227,7 +227,7 @@ def main(argv):
         Y_train = [Y_train[j] / k for j, k in enumerate(category_k)]
         Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
     else:
-        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
+        raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
 
     # Create generators.
     shuffle = True
@@ -272,7 +272,7 @@ def main(argv):
     elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         Y_pred = [np.maximum(0, np.minimum(k - 1, np.round(Y_pred[i] * k))) for i, k in enumerate(category_k)]
     else:
-        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
+        raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
     print('Done.')
 
     # Save model.
