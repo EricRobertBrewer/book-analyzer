@@ -142,52 +142,53 @@ class AttentionWithContext(Layer):
         return input_shape[0], input_shape[-1]
 
 
-def create_model(output_k, output_names, n_paragraph_tokens, embedding_matrix, embedding_trainable,
-                 word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
-                 book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
-                 label_mode):
-    # Word encoder.
-    input_w = Input(shape=(n_paragraph_tokens,), dtype='float32')  # (t)
+def create_model(
+        n_paragraph_tokens, embedding_matrix, embedding_trainable,
+        para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
+        book_dense_units, book_dense_activation, book_dense_l2,
+        book_dropout, output_k, output_names, label_mode):
+    # Paragraph encoder.
+    input_p = Input(shape=(n_paragraph_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
-    x_w = Embedding(max_words,
+    x_p = Embedding(max_words,
                     d,
                     weights=[embedding_matrix],
-                    trainable=embedding_trainable)(input_w)  # (t, d)
-    if word_rnn_l2 is not None:
-        word_rnn_l2 = regularizers.l2(word_rnn_l2)
-    x_w = Bidirectional(word_rnn(word_rnn_units,
-                                 kernel_regularizer=word_rnn_l2,
-                                 return_sequences=True))(x_w)  # (t, h_w)
-    if word_dense_l2 is not None:
-        word_dense_l2 = regularizers.l2(word_dense_l2)
-    x_w = TimeDistributed(Dense(word_dense_units,
-                                activation=word_dense_activation,
-                                kernel_regularizer=word_dense_l2))(x_w)  # (2t, c_w)
-    x_w = AttentionWithContext()(x_w)  # (c_w)
-    word_encoder = Model(input_w, x_w)
+                    trainable=embedding_trainable)(input_p)  # (t, d)
+    if para_rnn_l2 is not None:
+        para_rnn_l2 = regularizers.l2(para_rnn_l2)
+    x_p = Bidirectional(para_rnn(para_rnn_units,
+                                 kernel_regularizer=para_rnn_l2,
+                                 return_sequences=True))(x_p)  # (2t, h_p)
+    if para_dense_l2 is not None:
+        para_dense_l2 = regularizers.l2(para_dense_l2)
+    x_p = TimeDistributed(Dense(para_dense_units,
+                                activation=para_dense_activation,
+                                kernel_regularizer=para_dense_l2))(x_p)  # (2t, c_p)
+    x_p = AttentionWithContext()(x_p)  # (c_p)
+    paragraph_encoder = Model(input_p, x_p)
 
     # Consider maximum and average signals among all paragraphs of books.
-    input_p = Input(shape=(None, n_paragraph_tokens), dtype='float32')  # (s, t); s is not constant!
-    x_p = TimeDistributed(word_encoder)(input_p)  # (s, c_w)
-    g_max_p = GlobalMaxPooling1D()(x_p)  # (c_w)
-    g_avg_p = GlobalAveragePooling1D()(x_p)  # (c_w)
-    x_p = Concatenate()([g_max_p, g_avg_p])  # (2c_w)
+    input_b = Input(shape=(None, n_paragraph_tokens), dtype='float32')  # (p, t); p is not constant!
+    x_b = TimeDistributed(paragraph_encoder)(input_b)  # (p, c_p)
+    g_max_b = GlobalMaxPooling1D()(x_b)  # (c_p)
+    g_avg_b = GlobalAveragePooling1D()(x_b)  # (c_p)
+    x_b = Concatenate()([g_max_b, g_avg_b])  # (2c_p)
     if book_dense_l2 is not None:
         book_dense_l2 = regularizers.l2(book_dense_l2)
-    x_p = Dense(book_dense_units,
-                kernel_regularizer=book_dense_l2)(x_p)  # (c_b)
-    x_p = book_dense_activation(x_p)  # (c_b)
-    x_p = Dropout(book_dropout)(x_p)  # (c_b)
+    x_b = Dense(book_dense_units,
+                kernel_regularizer=book_dense_l2)(x_b)  # (c_b)
+    x_b = book_dense_activation(x_b)  # (c_b)
+    x_b = Dropout(book_dropout)(x_b)  # (c_b)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
-        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
+        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
     elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
-        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_p) for i, k in enumerate(output_k)]
+        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
     elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
-        outputs = [Dense(1, activation='linear', name=output_names[i])(x_p) for i in range(len(output_k))]
+        outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
     else:
         raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
-    model = Model(input_p, outputs)
-    return model
+    model = Model(input_b, outputs)
+    return paragraph_encoder, model
 
 
 class SingleInstanceBatchGenerator(utils.Sequence):
@@ -302,21 +303,22 @@ def main(argv):
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
-    word_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
-    word_rnn_units = 128
-    word_rnn_l2 = .01
-    word_dense_units = 64
-    word_dense_activation = 'linear'
-    word_dense_l2 = .01
+    para_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
+    para_rnn_units = 128
+    para_rnn_l2 = .01
+    para_dense_units = 64
+    para_dense_activation = 'linear'
+    para_dense_l2 = .01
     book_dense_units = 256
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = shared_parameters.LABEL_MODE_ORDINAL
-    model = create_model(category_k, categories, n_paragraph_tokens, embedding_matrix, embedding_trainable,
-                         word_rnn, word_rnn_units, word_rnn_l2, word_dense_units, word_dense_activation, word_dense_l2,
-                         book_dense_units, book_dense_activation, book_dense_l2, book_dropout,
-                         label_mode)
+    paragraph_encoder, model = create_model(
+        n_paragraph_tokens, embedding_matrix, embedding_trainable,
+        para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
+        book_dense_units, book_dense_activation, book_dense_l2,
+        book_dropout, category_k, categories, label_mode)
     lr = 2**-16
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
@@ -477,12 +479,12 @@ def main(argv):
         fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
-        fd.write('word_rnn={}\n'.format(word_rnn.__name__))
-        fd.write('word_rnn_units={:d}\n'.format(word_rnn_units))
-        fd.write('word_rnn_l2={}\n'.format(str(word_rnn_l2)))
-        fd.write('word_dense_units={:d}\n'.format(word_dense_units))
-        fd.write('word_dense_activation=\'{}\'\n'.format(word_dense_activation))
-        fd.write('word_dense_l2={}\n'.format(str(word_dense_l2)))
+        fd.write('para_rnn={}\n'.format(para_rnn.__name__))
+        fd.write('para_rnn_units={:d}\n'.format(para_rnn_units))
+        fd.write('para_rnn_l2={}\n'.format(str(para_rnn_l2)))
+        fd.write('para_dense_units={:d}\n'.format(para_dense_units))
+        fd.write('para_dense_activation=\'{}\'\n'.format(para_dense_activation))
+        fd.write('para_dense_l2={}\n'.format(str(para_dense_l2)))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
         fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__,
                                                         book_dense_activation.__dict__))
