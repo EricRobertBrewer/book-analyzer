@@ -76,16 +76,14 @@ def create_model(
 
 
 def main(argv):
-    if len(argv) < 5 or len(argv) > 6:
-        raise ValueError('Usage: <max_words> <n_sentence_tokens> <batch_size> <steps_per_epoch> <epochs> [note]')
-    max_words = int(argv[0])  # The maximum size of the vocabulary.
-    n_sentence_tokens = int(argv[1])  # The maximum number of tokens to process in each sentence.
-    batch_size = int(argv[2])
-    steps_per_epoch = int(argv[3])
-    epochs = int(argv[4])
+    if len(argv) < 3 or len(argv) > 4:
+        raise ValueError('Usage: <batch_size> <steps_per_epoch> <epochs> [note]')
+    batch_size = int(argv[0])
+    steps_per_epoch = int(argv[1])
+    epochs = int(argv[2])
     note = None
-    if len(argv) > 5:
-        note = argv[5]
+    if len(argv) > 3:
+        note = argv[3]
 
     script_name = os.path.basename(__file__)
     classifier_name = script_name[:script_name.rindex('.')]
@@ -109,7 +107,7 @@ def main(argv):
     min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
     max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
-    categories_mode = 'soft'
+    categories_mode = shared_parameters.DATA_CATEGORIES_MODE
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'sentence_tokens'},
                           subset_ratio=subset_ratio,
@@ -123,6 +121,7 @@ def main(argv):
 
     # Tokenize.
     print('Tokenizing...')
+    max_words = shared_parameters.TEXT_MAX_WORDS
     split = '\t'
     tokenizer = Tokenizer(num_words=max_words, split=split)
     all_sentences = []
@@ -134,8 +133,9 @@ def main(argv):
 
     # Convert to sequences.
     print('Converting texts to sequences...')
-    padding = 'pre'
-    truncating = 'pre'
+    n_sentence_tokens = shared_parameters.TEXT_N_SENTENCE_TOKENS
+    padding = shared_parameters.TEXT_PADDING
+    truncating = shared_parameters.TEXT_TRUNCATING
     X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in sentence_tokens]),
                                 maxlen=n_sentence_tokens,
                                 padding=padding,
@@ -313,6 +313,7 @@ def main(argv):
         if note is not None:
             fd.write('{}\n\n'.format(note))
         fd.write('PARAMETERS\n\n')
+        fd.write('batch_size={:d}\n'.format(batch_size))
         fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
