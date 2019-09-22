@@ -3,7 +3,6 @@ import sys
 import time
 
 import numpy as np
-from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.layers import Concatenate, Conv2D, Dense, Dropout, Embedding, Flatten, \
@@ -13,6 +12,8 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras import regularizers
+# Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
+from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal, shared_parameters
 from classification.net.batch_generators import SingleInstanceBatchGenerator, VariableLengthBatchGenerator
