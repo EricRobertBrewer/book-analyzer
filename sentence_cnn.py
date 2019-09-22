@@ -3,7 +3,9 @@ import sys
 import time
 
 import numpy as np
+from sklearn.model_selection import train_test_split
 import tensorflow as tf
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.layers import Concatenate, Conv2D, Dense, Dropout, Embedding, Flatten, \
     GlobalMaxPooling1D, GlobalAveragePooling1D, Input, MaxPool2D, Reshape, TimeDistributed
 from tensorflow.keras.models import Model
@@ -11,7 +13,6 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras import regularizers
-from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal, shared_parameters
 from classification.net.batch_generators import SingleInstanceBatchGenerator, VariableLengthBatchGenerator
@@ -21,41 +22,41 @@ from text import load_embeddings
 
 
 def create_model(
-        n_paragraph_tokens, embedding_matrix, embedding_trainable,
-        para_cnn_filters, para_cnn_filter_sizes, para_cnn_activation, para_cnn_l2,
+        n_sentence_tokens, embedding_matrix, embedding_trainable,
+        sent_cnn_filters, sent_cnn_filter_sizes, sent_cnn_activation, sent_cnn_l2,
         book_dense_units, book_dense_activation, book_dense_l2,
         book_dropout, output_k, output_names, label_mode):
-    # Paragraph encoder.
-    input_p = Input(shape=(n_paragraph_tokens,), dtype='float32')  # (t)
+    # Sentence encoder.
+    input_s = Input(shape=(n_sentence_tokens,), dtype='float32')  # (t)
     max_words, d = embedding_matrix.shape
-    x_p = Embedding(max_words,
+    x_s = Embedding(max_words,
                     d,
                     weights=[embedding_matrix],
-                    trainable=embedding_trainable)(input_p)  # (t, d)
-    x_p = Reshape((n_paragraph_tokens, d, 1))(x_p)  # (t, d, 1)
-    if para_cnn_l2 is not None:
-        para_cnn_l2 = regularizers.l2(para_cnn_l2)
-    X_p = [Conv2D(para_cnn_filters,
+                    trainable=embedding_trainable)(input_s)  # (t, d)
+    x_s = Reshape((n_sentence_tokens, d, 1))(x_s)  # (t, d, 1)
+    if sent_cnn_l2 is not None:
+        sent_cnn_l2 = regularizers.l2(sent_cnn_l2)
+    X_s = [Conv2D(sent_cnn_filters,
                   (filter_size, d),
                   strides=(1, 1),
                   padding='valid',
-                  activation=para_cnn_activation,
-                  kernel_regularizer=para_cnn_l2)(x_p)
-           for filter_size in para_cnn_filter_sizes]  # [(t - z + 1, f)]; z = filter_size, f = filters
-    X_p = [MaxPool2D(pool_size=(n_paragraph_tokens - para_cnn_filter_sizes[i] + 1, 1),
+                  activation=sent_cnn_activation,
+                  kernel_regularizer=sent_cnn_l2)(x_s)
+           for filter_size in sent_cnn_filter_sizes]  # [(t - z + 1, f)]; z = filter_size, f = filters
+    X_s = [MaxPool2D(pool_size=(n_sentence_tokens - sent_cnn_filter_sizes[i] + 1, 1),
                      strides=(1, 1),
-                     padding='valid')(x_p)
-           for i, x_p in enumerate(X_p)]  # [(f, 1)]
-    x_p = Concatenate(axis=1)(X_p)  # (f * |Z|); |Z| = length of filter_sizes
-    x_p = Flatten()(x_p)
-    paragraph_encoder = Model(input_p, x_p)
+                     padding='valid')(x_s)
+           for i, x_s in enumerate(X_s)]  # [(f, 1)]
+    x_s = Concatenate(axis=1)(X_s)  # (f * |Z|); |Z| = length of filter_sizes
+    x_s = Flatten()(x_s)
+    sentence_encoder = Model(input_s, x_s)
 
-    # Consider maximum and average signals among all paragraphs of books.
-    input_b = Input(shape=(None, n_paragraph_tokens), dtype='float32')  # (p, t); p is not constant!
-    x_b = TimeDistributed(paragraph_encoder)(input_b)  # (p, c_p)
-    g_max_b = GlobalMaxPooling1D()(x_b)  # (c_p)
-    g_avg_b = GlobalAveragePooling1D()(x_b)  # (c_p)
-    x_b = Concatenate()([g_max_b, g_avg_b])  # (2c_p)
+    # Consider maximum and average signals among all sentences of books.
+    input_b = Input(shape=(None, n_sentence_tokens), dtype='float32')  # (s, t); s is not constant!
+    x_b = TimeDistributed(sentence_encoder)(input_b)  # (p, c_s)
+    g_max_b = GlobalMaxPooling1D()(x_b)  # (c_s)
+    g_avg_b = GlobalAveragePooling1D()(x_b)  # (c_s)
+    x_b = Concatenate()([g_max_b, g_avg_b])  # (2c_s)
     if book_dense_l2 is not None:
         book_dense_l2 = regularizers.l2(book_dense_l2)
     x_b = Dense(book_dense_units,
@@ -71,7 +72,7 @@ def create_model(
     else:
         raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
     model = Model(input_b, outputs)
-    return paragraph_encoder, model
+    return sentence_encoder, model
 
 
 def main(argv):
@@ -85,7 +86,7 @@ def main(argv):
         note = argv[3]
 
     script_name = os.path.basename(__file__)
-    classifier_name = script_name[:script_name.index('.')]
+    classifier_name = script_name[:script_name.rindex('.')]
 
     start_time = int(time.time())
     if 'SLURM_JOB_ID' in os.environ:
@@ -103,43 +104,43 @@ def main(argv):
     print('Retrieving texts...')
     subset_ratio = shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
-    min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
-    max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
+    min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
+    max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = shared_parameters.DATA_CATEGORIES_MODE
     inputs, Y, categories, category_levels = \
-        bookcave.get_data({'paragraph_tokens'},
+        bookcave.get_data({'sentence_tokens'},
                           subset_ratio=subset_ratio,
                           subset_seed=subset_seed,
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens,
                           categories_mode=categories_mode)
-    text_paragraph_tokens, _ = zip(*inputs['paragraph_tokens'])
-    print('Retrieved {:d} texts.'.format(len(text_paragraph_tokens)))
+    text_sentence_tokens, text_section_ids, text_paragraph_ids = zip(*inputs['sentence_tokens'])
+    print('Retrieved {:d} texts.'.format(len(text_sentence_tokens)))
 
     # Tokenize.
     print('Tokenizing...')
     max_words = shared_parameters.TEXT_MAX_WORDS
     split = '\t'
     tokenizer = Tokenizer(num_words=max_words, split=split)
-    all_paragraphs = []
-    for paragraph_tokens in text_paragraph_tokens:
-        for tokens in paragraph_tokens:
-            all_paragraphs.append(split.join(tokens))
-    tokenizer.fit_on_texts(all_paragraphs)
+    all_sentences = []
+    for sentence_tokens in text_sentence_tokens:
+        for tokens in sentence_tokens:
+            all_sentences.append(split.join(tokens))
+    tokenizer.fit_on_texts(all_sentences)
     print('Done.')
 
     # Convert to sequences.
     print('Converting texts to sequences...')
-    n_paragraph_tokens = shared_parameters.TEXT_N_PARAGRAPH_TOKENS
+    n_sentence_tokens = shared_parameters.TEXT_N_SENTENCE_TOKENS
     padding = shared_parameters.TEXT_PADDING
     truncating = shared_parameters.TEXT_TRUNCATING
-    X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in paragraph_tokens]),
-                                maxlen=n_paragraph_tokens,
+    X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in sentence_tokens]),
+                                maxlen=n_sentence_tokens,
                                 padding=padding,
                                 truncating=truncating))
-         for paragraph_tokens in text_paragraph_tokens]
+         for sentence_tokens in text_sentence_tokens]
     print('Done.')
 
     # Load embedding.
@@ -152,21 +153,21 @@ def main(argv):
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
-    para_cnn_filters = 8
-    para_cnn_filter_sizes = [1, 2, 3, 4]
-    para_cnn_activation = 'elu'
-    para_cnn_l2 = .01
-    book_dense_units = 256
+    sent_cnn_filters = 8
+    sent_cnn_filter_sizes = [1, 2, 3, 4]
+    sent_cnn_activation = 'elu'
+    sent_cnn_l2 = .01
+    book_dense_units = 128
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
     book_dropout = .5
     label_mode = shared_parameters.LABEL_MODE_ORDINAL
-    paragraph_encoder, model = create_model(
-        n_paragraph_tokens, embedding_matrix, embedding_trainable,
-        para_cnn_filters, para_cnn_filter_sizes, para_cnn_activation, para_cnn_l2,
+    sentence_encoder, model = create_model(
+        n_sentence_tokens, embedding_matrix, embedding_trainable,
+        sent_cnn_filters, sent_cnn_filter_sizes, sent_cnn_activation, sent_cnn_l2,
         book_dense_units, book_dense_activation, book_dense_l2,
         book_dropout, category_k, categories, label_mode)
-    lr = 2**-16
+    lr = 2**-21
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
@@ -214,18 +215,29 @@ def main(argv):
         val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
         test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
     else:
-        X_shape = (n_paragraph_tokens,)
+        X_shape = (n_sentence_tokens,)
         Y_shape = [(len(y[0]),) for y in Y_train]
         train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=shuffle)
         val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, batch_size, shuffle=False)
         test_generator = VariableLengthBatchGenerator(X_test, X_shape, Y_test, Y_shape, batch_size, shuffle=False)
 
     # Train.
+    plateau_monitor = 'val_loss'
+    plateau_factor = .5
+    plateau_patience = 6
+    early_stopping_monitor = 'val_loss'
+    early_stopping_min_delta = 2**-10
+    early_stopping_patience = 12
+    callbacks = [
+        ReduceLROnPlateau(monitor=plateau_monitor, factor=plateau_factor, patience=plateau_patience),
+        EarlyStopping(monitor=early_stopping_monitor, min_delta=early_stopping_min_delta, patience=early_stopping_patience)
+    ]
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
                                   validation_data=val_generator,
-                                  class_weight=category_class_weights)
+                                  class_weight=category_class_weights,
+                                  callbacks=callbacks)
 
     # Save the history to visualize loss over time.
     print('Saving training history...')
@@ -254,7 +266,7 @@ def main(argv):
     print('Done.')
 
     # Save model.
-    save_model = False
+    save_model = True
     if save_model:
         models_path = os.path.join(folders.MODELS_PATH, classifier_name)
         label_mode_path = os.path.join(models_path, label_mode)
@@ -303,17 +315,17 @@ def main(argv):
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
-        fd.write('n_paragraph_tokens={:d}\n'.format(n_paragraph_tokens))
+        fd.write('n_sentence_tokens={:d}\n'.format(n_sentence_tokens))
         fd.write('padding=\'{}\'\n'.format(padding))
         fd.write('truncating=\'{}\'\n'.format(truncating))
         fd.write('\nWord Embedding\n')
         fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
-        fd.write('para_cnn_filters={:d}\n'.format(para_cnn_filters))
-        fd.write('para_cnn_filter_sizes={}\n'.format(str(para_cnn_filter_sizes)))
-        fd.write('para_cnn_activation=\'{}\'\n'.format(para_cnn_activation))
-        fd.write('para_cnn_l2={}\n'.format(str(para_cnn_l2)))
+        fd.write('sent_cnn_filters={:d}\n'.format(sent_cnn_filters))
+        fd.write('sent_cnn_filter_sizes={}\n'.format(str(sent_cnn_filter_sizes)))
+        fd.write('sent_cnn_activation=\'{}\'\n'.format(sent_cnn_activation))
+        fd.write('sent_cnn_l2={}\n'.format(str(sent_cnn_l2)))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
         fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__,
                                                         book_dense_activation.__dict__))
@@ -332,6 +344,12 @@ def main(argv):
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
         fd.write('shuffle={}\n'.format(shuffle))
+        fd.write('plateau_monitor={}\n'.format(plateau_monitor))
+        fd.write('plateau_factor={}\n'.format(str(plateau_factor)))
+        fd.write('plateau_patience={:d}\n'.format(plateau_patience))
+        fd.write('early_stopping_monitor={}\n'.format(early_stopping_monitor))
+        fd.write('early_stopping_min_delta={}\n'.format(str(early_stopping_min_delta)))
+        fd.write('early_stopping_patience={:d}\n'.format(early_stopping_patience))
         fd.write('\nRESULTS\n\n')
         fd.write('Data size: {:d}\n'.format(len(X)))
         fd.write('Train size: {:d}\n'.format(len(X_train)))
