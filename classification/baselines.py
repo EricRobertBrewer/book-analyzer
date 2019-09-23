@@ -36,9 +36,9 @@ def create_svm():
 
 
 def main(argv):
-    if len(argv) < 1 or len(argv) > 1:
-        print('Usage: <max_words>')
-    max_words = int(argv[0])
+    if len(argv) > 1:
+        print('Usage: [note]')
+    max_words = shared_parameters.TEXT_MAX_WORDS
 
     stamp = int(time.time())
     base_fname = format(stamp, 'd')
@@ -61,7 +61,7 @@ def main(argv):
     subset_seed = shared_parameters.DATA_SUBSET_SEED
     min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
     max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
-    min_tokens = 6  # shared_parameters.DATA_MIN_TOKENS
+    min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = 'soft'
     inputs, Y, categories, category_levels = \
         bookcave.get_data({source},
@@ -136,6 +136,8 @@ def main(argv):
             y_pred = np.argmax(p, axis=1)  # (n * b)
             Y_pred.append(y_pred)
 
+        print('Writing results...')
+
         logs_path = os.path.join(logs_baselines_path, model_name)
         if not os.path.exists(logs_path):
             os.mkdir(logs_path)
@@ -166,6 +168,8 @@ def main(argv):
             os.mkdir(predictions_path)
         with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
             evaluation.write_predictions(Y_test, Y_pred, fd, categories)
+
+        print('Done.')
 
 
 if __name__ == '__main__':
