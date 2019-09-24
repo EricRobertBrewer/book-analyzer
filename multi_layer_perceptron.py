@@ -177,10 +177,10 @@ def main(argv):
     shuffle = True
     plateau_monitor = 'val_loss'
     plateau_factor = .5
-    plateau_patience = 3
+    plateau_patience = 12
     early_stopping_monitor = 'val_loss'
     early_stopping_min_delta = 2**-10
-    early_stopping_patience = 6
+    early_stopping_patience = 24
     callbacks = [
         ReduceLROnPlateau(monitor=plateau_monitor, factor=plateau_factor, patience=plateau_patience),
         EarlyStopping(monitor=early_stopping_monitor, min_delta=early_stopping_min_delta, patience=early_stopping_patience)
@@ -224,7 +224,7 @@ def main(argv):
     print('Done.')
 
     # Save model.
-    save_model = True
+    save_model = False
     if save_model:
         models_path = os.path.join(folders.MODELS_PATH, classifier_name)
         label_mode_path = os.path.join(models_path, label_mode)
