@@ -132,7 +132,7 @@ def main(argv):
         dense_1_units, dense_1_activation, dense_1_l2,
         dense_2_units, dense_2_activation, dense_2_l2,
         dropout, category_k, categories, label_mode)
-    lr = 2**-3
+    lr = 2**-10
     optimizer = Adam(lr=lr)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
