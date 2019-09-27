@@ -5,9 +5,10 @@ import time
 import numpy as np
 from sklearn.ensemble.forest import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import LinearSVC
 
 from classification import evaluation, ordinal, shared_parameters
@@ -19,16 +20,24 @@ def identity(v):
     return v
 
 
-def create_mnb():
-    return MultinomialNB(fit_prior=True)
+def create_multinomial_naive_bayes():
+    return MultinomialNB(alpha=1.0, fit_prior=True)
 
 
-def create_lr():
-    return LogisticRegression(solver='lbfgs')
+def create_linear_regression():
+    return LinearRegression()
 
 
-def create_rf():
-    return RandomForestClassifier(n_estimators=6)
+def create_logistic_regression():
+    return LogisticRegression(penalty='l2', solver='lbfgs', multi_class='ovr')
+
+
+def create_k_nearest_neighbors():
+    return KNeighborsClassifier(n_neighbors=5, metric='minkowski')
+
+
+def create_random_forest():
+    return RandomForestClassifier(n_estimators=6, criterion='gini')
 
 
 def create_svm():
@@ -101,9 +110,21 @@ def main(argv):
     Y_train = Y_train_T.transpose()  # (c, n * (1 - b))
     Y_test = Y_test_T.transpose()  # (c, n * b)
 
-    create_models = [create_mnb, create_lr, create_rf, create_svm]
-    model_names = ['multinomial_naive_bayes', 'logistic_regression', 'random_forest', 'svm']
-    for m, create_model in enumerate(create_models):
+    create_funcs = [
+        create_multinomial_naive_bayes,
+        create_linear_regression,
+        create_logistic_regression,
+        create_k_nearest_neighbors,
+        create_random_forest,
+        create_svm]
+    model_names = [
+        'multinomial_naive_bayes',
+        'linear_regression',
+        'logistic_regression',
+        'k_nearest_neighbors',
+        'random_forest',
+        'svm']
+    for m, create_func in enumerate(create_funcs):
         model_name = model_names[m]
         print('Training model `{}`...'.format(model_name))
         Y_pred = []
@@ -116,7 +137,7 @@ def main(argv):
 
             # Calculate probabilities for derived data sets.
             y_train_ordinal = ordinal.to_multi_hot_ordinal(y_train, k=k)  # (n * (1 - b), k - 1)
-            classifiers = [create_model() for _ in range(k - 1)]
+            classifiers = [create_func() for _ in range(k - 1)]
             ordinal_p = np.zeros((len(y_test), k - 1))  # (n * b, k - 1)
             for i, classifier in enumerate(classifiers):
                 classifier.fit(X_train, y_train_ordinal[:, i])
