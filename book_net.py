@@ -43,13 +43,24 @@ def create_model(
         rnn_dense_units = net_params['rnn_dense_units']
         rnn_dense_activation = net_params['rnn_dense_activation']
         rnn_dense_l2 = regularizers.l2(net_params['rnn_dense_l2']) if net_params['rnn_dense_l2'] is not None else None
+        rnn_agg = net_params['rnn_agg']
         x_p = Bidirectional(rnn(rnn_units,
                                 kernel_regularizer=rnn_l2,
                                 return_sequences=True))(x_p)  # (2t, h_p)
         x_p = TimeDistributed(Dense(rnn_dense_units,
                                     activation=rnn_dense_activation,
                                     kernel_regularizer=rnn_dense_l2))(x_p)  # (2t, c_p)
-        x_p = AttentionWithContext()(x_p)  # (c_p)
+        if rnn_agg == 'attention':
+            x_p = AttentionWithContext()(x_p)  # (c_p)
+        elif rnn_agg == 'maxavg':
+            x_p = Concatenate()([
+                GlobalMaxPooling1D()(x_p),
+                GlobalAveragePooling1D()(x_p)
+            ])  # (2c_p)
+        elif rnn_agg == 'max':
+            x_p = GlobalMaxPooling1D()(x_p)  # (c_p)
+        else:
+            raise ValueError('Unknown `rnn_agg`: {}'.format(rnn_agg))
     elif net_mode == 'cnn':
         cnn_filters = net_params['cnn_filters']
         cnn_filter_sizes = net_params['cnn_filter_sizes']
@@ -68,23 +79,23 @@ def create_model(
                          padding='valid')(x_p)
                for i, x_p in enumerate(X_p)]  # [(f, 1)]
         x_p = Concatenate(axis=1)(X_p)  # (f * |Z|); |Z| = length of filter_sizes
-        x_p = Flatten()(x_p)  # (c_p)
+        x_p = Flatten()(x_p)  # (f * |Z|)
     else:
         raise ValueError('Unknown `net_mode`: {}'.format(net_mode))
-    source_encoder = Model(input_p, x_p)
+    source_encoder = Model(input_p, x_p)  # (m_p); constant per configuration
 
     # Consider signals among all sources of books.
-    input_b = Input(shape=(None, n_tokens), dtype='float32')  # (p, t); p is not constant!
-    x_b = TimeDistributed(source_encoder)(input_b)  # (p, c_p)
+    input_b = Input(shape=(None, n_tokens), dtype='float32')  # (p, t); p is not constant per instance!
+    x_b = TimeDistributed(source_encoder)(input_b)  # (p, m_p)
     if agg_mode == 'maxavg':
         x_b = Concatenate()([
             GlobalMaxPooling1D()(x_b),
             GlobalAveragePooling1D()(x_b)
-        ])  # (2c_p)
+        ])  # (2m_p)
     elif agg_mode == 'max':
-        x_b = GlobalMaxPooling1D()(x_b)  # (c_p)
+        x_b = GlobalMaxPooling1D()(x_b)  # (m_p)
     elif agg_mode == 'avg':
-        x_b = GlobalAveragePooling1D()(x_b)  # (c_p)
+        x_b = GlobalAveragePooling1D()(x_b)  # (m_p)
     elif agg_mode == 'rnn':
         agg_rnn = agg_params['rnn']
         agg_rnn_units = agg_params['rnn_units']
@@ -214,6 +225,7 @@ def main(argv):
         net_params['rnn_dense_units'] = 32
         net_params['rnn_dense_activation'] = 'elu'
         net_params['rnn_dense_l2'] = .01
+        net_params['rnn_agg'] = 'attention'
     elif net_mode == 'cnn':
         net_params['cnn_filters'] = 8
         net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
