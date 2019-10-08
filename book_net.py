@@ -418,6 +418,7 @@ def main(argv):
             fd.write('rnn_dense_units={:d}\n'.format(net_params['rnn_dense_units']))
             fd.write('rnn_dense_activation=\'{}\'\n'.format(net_params['rnn_dense_activation']))
             fd.write('rnn_dense_l2={}\n'.format(str(net_params['rnn_dense_l2'])))
+            fd.write('rnn_agg={}\n'.format(net_params['rnn_agg']))
         elif net_mode == 'cnn':
             fd.write('cnn_filters={:d}\n'.format(net_params['cnn_filters']))
             fd.write('cnn_filter_sizes={}\n'.format(str(net_params['cnn_filter_sizes'])))
