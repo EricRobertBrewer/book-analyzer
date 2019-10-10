@@ -30,12 +30,12 @@ def create_model(
         book_dense_units, book_dense_activation, book_dense_l2,
         book_dropout, output_k, output_names, label_mode):
     # Source encoder.
-    input_p = Input(shape=(n_tokens,), dtype='float32')  # (t)
+    input_p = Input(shape=(n_tokens,), dtype='float32')  # (T)
     max_words, d = embedding_matrix.shape
     x_p = Embedding(max_words,
                     d,
                     weights=[embedding_matrix],
-                    trainable=embedding_trainable)(input_p)  # (t, d)
+                    trainable=embedding_trainable)(input_p)  # (T, d)
     if net_mode == 'rnn':
         rnn = net_params['rnn']
         rnn_units = net_params['rnn_units']
@@ -46,10 +46,10 @@ def create_model(
         rnn_agg = net_params['rnn_agg']
         x_p = Bidirectional(rnn(rnn_units,
                                 kernel_regularizer=rnn_l2,
-                                return_sequences=True))(x_p)  # (2t, h_p)
+                                return_sequences=True))(x_p)  # (2T, h_p)
         x_p = TimeDistributed(Dense(rnn_dense_units,
                                     activation=rnn_dense_activation,
-                                    kernel_regularizer=rnn_dense_l2))(x_p)  # (2t, c_p)
+                                    kernel_regularizer=rnn_dense_l2))(x_p)  # (2T, c_p)
         if rnn_agg == 'attention':
             x_p = AttentionWithContext()(x_p)  # (c_p)
         elif rnn_agg == 'maxavg':
@@ -66,14 +66,14 @@ def create_model(
         cnn_filter_sizes = net_params['cnn_filter_sizes']
         cnn_activation = net_params['cnn_activation']
         cnn_l2 = regularizers.l2(net_params['cnn_l2']) if net_params['cnn_l2'] is not None else None
-        x_p = Reshape((n_tokens, d, 1))(x_p)  # (t, d, 1)
+        x_p = Reshape((n_tokens, d, 1))(x_p)  # (T, d, 1)
         X_p = [Conv2D(cnn_filters,
                       (filter_size, d),
                       strides=(1, 1),
                       padding='valid',
                       activation=cnn_activation,
                       kernel_regularizer=cnn_l2)(x_p)
-               for filter_size in cnn_filter_sizes]  # [(t - z + 1, f)]; z = filter_size, f = filters
+               for filter_size in cnn_filter_sizes]  # [(T - z + 1, f)]; z = filter_size, f = filters
         X_p = [MaxPool2D(pool_size=(n_tokens - cnn_filter_sizes[i] + 1, 1),
                          strides=(1, 1),
                          padding='valid')(x_p)
@@ -85,8 +85,8 @@ def create_model(
     source_encoder = Model(input_p, x_p)  # (m_p); constant per configuration
 
     # Consider signals among all sources of books.
-    input_b = Input(shape=(None, n_tokens), dtype='float32')  # (p, t); p is not constant per instance!
-    x_b = TimeDistributed(source_encoder)(input_b)  # (p, m_p)
+    input_b = Input(shape=(None, n_tokens), dtype='float32')  # (P, T); P is not constant per instance!
+    x_b = TimeDistributed(source_encoder)(input_b)  # (P, m_p)
     if agg_mode == 'maxavg':
         x_b = Concatenate()([
             GlobalMaxPooling1D()(x_b),
@@ -292,8 +292,9 @@ def main(argv):
 
     # Calculate class weights.
     use_class_weights = True
+    class_weight_f = 'square inverse'
     if use_class_weights:
-        category_class_weights = shared_parameters.get_category_class_weights(Y_train, label_mode)
+        category_class_weights = shared_parameters.get_category_class_weights(Y_train, label_mode, f=class_weight_f)
     else:
         category_class_weights = None
 
@@ -313,10 +314,20 @@ def main(argv):
     # Train.
     plateau_monitor = 'val_loss'
     plateau_factor = .5
-    plateau_patience = 3
+    if net_mode == 'rnn':
+        plateau_patience = 3
+    elif net_mode == 'cnn':
+        plateau_patience = 6
+    else:
+        raise ValueError('Unknown `net_mode`: {}'.format(net_mode))
     early_stopping_monitor = 'val_loss'
     early_stopping_min_delta = 2**-10
-    early_stopping_patience = 6
+    if net_mode == 'rnn':
+        early_stopping_patience = 6
+    elif net_mode == 'cnn':
+        early_stopping_patience = 12
+    else:
+        raise ValueError('Unknown `net_mode`: {}'.format(net_mode))
     callbacks = [
         ReduceLROnPlateau(monitor=plateau_monitor, factor=plateau_factor, patience=plateau_patience),
         EarlyStopping(monitor=early_stopping_monitor, min_delta=early_stopping_min_delta, patience=early_stopping_patience)
@@ -454,6 +465,8 @@ def main(argv):
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
+        if use_class_weights:
+            fd.write('class_weight_f={}\n'.format(class_weight_f))
         fd.write('shuffle={}\n'.format(shuffle))
         fd.write('plateau_monitor={}\n'.format(plateau_monitor))
         fd.write('plateau_factor={}\n'.format(str(plateau_factor)))

@@ -20,12 +20,12 @@ def main():
     print('Retrieving labels...')
     subset_ratio = shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
-    min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
-    max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
+    min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
+    max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = 'soft'
     _, Y, categories, category_levels = \
-        bookcave.get_data({'sentence_tokens'},
+        bookcave.get_data({'paragraph_tokens'},
                           subset_ratio=subset_ratio,
                           subset_seed=subset_seed,
                           min_len=min_len,
