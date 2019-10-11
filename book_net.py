@@ -23,6 +23,56 @@ from sites.bookcave import bookcave
 from text import load_embeddings
 
 
+def create_source_rnn(net_params, x_p):
+    rnn = net_params['rnn']
+    rnn_units = net_params['rnn_units']
+    rnn_l2 = regularizers.l2(net_params['rnn_l2']) if net_params['rnn_l2'] is not None else None
+    rnn_dense_units = net_params['rnn_dense_units']
+    rnn_dense_activation = net_params['rnn_dense_activation']
+    rnn_dense_l2 = regularizers.l2(net_params['rnn_dense_l2']) if net_params['rnn_dense_l2'] is not None else None
+    rnn_agg = net_params['rnn_agg']
+    x_p = Bidirectional(rnn(rnn_units,
+                            kernel_regularizer=rnn_l2,
+                            return_sequences=True))(x_p)  # (2T, h_p)
+    x_p = TimeDistributed(Dense(rnn_dense_units,
+                                activation=rnn_dense_activation,
+                                kernel_regularizer=rnn_dense_l2))(x_p)  # (2T, c_p)
+    if rnn_agg == 'attention':
+        x_p = AttentionWithContext()(x_p)  # (c_p)
+    elif rnn_agg == 'maxavg':
+        x_p = Concatenate()([
+            GlobalMaxPooling1D()(x_p),
+            GlobalAveragePooling1D()(x_p)
+        ])  # (2c_p)
+    elif rnn_agg == 'max':
+        x_p = GlobalMaxPooling1D()(x_p)  # (c_p)
+    else:
+        raise ValueError('Unknown `rnn_agg`: {}'.format(rnn_agg))
+    return x_p
+
+
+def create_source_cnn(n_tokens, d, net_params, x_p):
+    cnn_filters = net_params['cnn_filters']
+    cnn_filter_sizes = net_params['cnn_filter_sizes']
+    cnn_activation = net_params['cnn_activation']
+    cnn_l2 = regularizers.l2(net_params['cnn_l2']) if net_params['cnn_l2'] is not None else None
+    x_p = Reshape((n_tokens, d, 1))(x_p)  # (T, d, 1)
+    X_p = [Conv2D(cnn_filters,
+                  (filter_size, d),
+                  strides=(1, 1),
+                  padding='valid',
+                  activation=cnn_activation,
+                  kernel_regularizer=cnn_l2)(x_p)
+           for filter_size in cnn_filter_sizes]  # [(T - z + 1, f)]; z = filter_size, f = filters
+    X_p = [MaxPool2D(pool_size=(n_tokens - cnn_filter_sizes[i] + 1, 1),
+                     strides=(1, 1),
+                     padding='valid')(x_p)
+           for i, x_p in enumerate(X_p)]  # [(f, 1)]
+    x_p = Concatenate(axis=1)(X_p)  # (f * |Z|); |Z| = length of filter_sizes
+    x_p = Flatten()(x_p)  # (f * |Z|)
+    return x_p
+
+
 def create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         net_mode, net_params,
@@ -37,49 +87,14 @@ def create_model(
                     weights=[embedding_matrix],
                     trainable=embedding_trainable)(input_p)  # (T, d)
     if net_mode == 'rnn':
-        rnn = net_params['rnn']
-        rnn_units = net_params['rnn_units']
-        rnn_l2 = regularizers.l2(net_params['rnn_l2']) if net_params['rnn_l2'] is not None else None
-        rnn_dense_units = net_params['rnn_dense_units']
-        rnn_dense_activation = net_params['rnn_dense_activation']
-        rnn_dense_l2 = regularizers.l2(net_params['rnn_dense_l2']) if net_params['rnn_dense_l2'] is not None else None
-        rnn_agg = net_params['rnn_agg']
-        x_p = Bidirectional(rnn(rnn_units,
-                                kernel_regularizer=rnn_l2,
-                                return_sequences=True))(x_p)  # (2T, h_p)
-        x_p = TimeDistributed(Dense(rnn_dense_units,
-                                    activation=rnn_dense_activation,
-                                    kernel_regularizer=rnn_dense_l2))(x_p)  # (2T, c_p)
-        if rnn_agg == 'attention':
-            x_p = AttentionWithContext()(x_p)  # (c_p)
-        elif rnn_agg == 'maxavg':
-            x_p = Concatenate()([
-                GlobalMaxPooling1D()(x_p),
-                GlobalAveragePooling1D()(x_p)
-            ])  # (2c_p)
-        elif rnn_agg == 'max':
-            x_p = GlobalMaxPooling1D()(x_p)  # (c_p)
-        else:
-            raise ValueError('Unknown `rnn_agg`: {}'.format(rnn_agg))
+        x_p = create_source_rnn(net_params, x_p)
     elif net_mode == 'cnn':
-        cnn_filters = net_params['cnn_filters']
-        cnn_filter_sizes = net_params['cnn_filter_sizes']
-        cnn_activation = net_params['cnn_activation']
-        cnn_l2 = regularizers.l2(net_params['cnn_l2']) if net_params['cnn_l2'] is not None else None
-        x_p = Reshape((n_tokens, d, 1))(x_p)  # (T, d, 1)
-        X_p = [Conv2D(cnn_filters,
-                      (filter_size, d),
-                      strides=(1, 1),
-                      padding='valid',
-                      activation=cnn_activation,
-                      kernel_regularizer=cnn_l2)(x_p)
-               for filter_size in cnn_filter_sizes]  # [(T - z + 1, f)]; z = filter_size, f = filters
-        X_p = [MaxPool2D(pool_size=(n_tokens - cnn_filter_sizes[i] + 1, 1),
-                         strides=(1, 1),
-                         padding='valid')(x_p)
-               for i, x_p in enumerate(X_p)]  # [(f, 1)]
-        x_p = Concatenate(axis=1)(X_p)  # (f * |Z|); |Z| = length of filter_sizes
-        x_p = Flatten()(x_p)  # (f * |Z|)
+        x_p = create_source_cnn(n_tokens, d, net_params, x_p)
+    elif net_mode == 'rnncnn':
+        x_p = Concatenate()([
+            create_source_rnn(net_params, x_p),
+            create_source_cnn(n_tokens, d, net_params, x_p)
+        ])
     else:
         raise ValueError('Unknown `net_mode`: {}'.format(net_mode))
     source_encoder = Model(input_p, x_p)  # (m_p); constant per configuration
@@ -218,7 +233,7 @@ def main(argv):
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
     net_params = dict()
-    if net_mode == 'rnn':
+    if net_mode == 'rnn' or net_mode == 'rnncnn':
         net_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
         net_params['rnn_units'] = 64
         net_params['rnn_l2'] = .01
@@ -226,13 +241,11 @@ def main(argv):
         net_params['rnn_dense_activation'] = 'elu'
         net_params['rnn_dense_l2'] = .01
         net_params['rnn_agg'] = 'attention'
-    elif net_mode == 'cnn':
+    if net_mode == 'cnn' or net_mode == 'rnncnn':
         net_params['cnn_filters'] = 8
         net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
         net_params['cnn_activation'] = 'elu'
         net_params['cnn_l2'] = .01
-    else:
-        raise ValueError('Unknown `net_mode`: {}'.format(net_mode))
     agg_params = dict()
     if agg_mode == 'maxavg':
         pass
@@ -314,7 +327,7 @@ def main(argv):
     # Train.
     plateau_monitor = 'val_loss'
     plateau_factor = .5
-    if net_mode == 'rnn':
+    if net_mode == 'rnn' or net_mode == 'rnncnn':
         plateau_patience = 3
     elif net_mode == 'cnn':
         plateau_patience = 6
@@ -322,7 +335,7 @@ def main(argv):
         raise ValueError('Unknown `net_mode`: {}'.format(net_mode))
     early_stopping_monitor = 'val_loss'
     early_stopping_min_delta = 2**-10
-    if net_mode == 'rnn':
+    if net_mode == 'rnn' or net_mode == 'rnncnn':
         early_stopping_patience = 6
     elif net_mode == 'cnn':
         early_stopping_patience = 12
@@ -422,7 +435,7 @@ def main(argv):
         fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
-        if net_mode == 'rnn':
+        if net_mode == 'rnn' or net_mode == 'rnncnn':
             fd.write('rnn={}\n'.format(net_params['rnn'].__name__))
             fd.write('rnn_units={:d}\n'.format(net_params['rnn_units']))
             fd.write('rnn_l2={}\n'.format(str(net_params['rnn_l2'])))
@@ -430,13 +443,11 @@ def main(argv):
             fd.write('rnn_dense_activation=\'{}\'\n'.format(net_params['rnn_dense_activation']))
             fd.write('rnn_dense_l2={}\n'.format(str(net_params['rnn_dense_l2'])))
             fd.write('rnn_agg={}\n'.format(net_params['rnn_agg']))
-        elif net_mode == 'cnn':
+        if net_mode == 'cnn' or net_mode == 'rnncnn':
             fd.write('cnn_filters={:d}\n'.format(net_params['cnn_filters']))
             fd.write('cnn_filter_sizes={}\n'.format(str(net_params['cnn_filter_sizes'])))
             fd.write('cnn_activation=\'{}\'\n'.format(net_params['cnn_activation']))
             fd.write('cnn_l2={}\n'.format(str(net_params['cnn_l2'])))
-        else:
-            raise ValueError('Unknown `net_mode`: {}'.format(net_mode))
         if agg_mode == 'maxavg':
             pass
         elif agg_mode == 'max':
