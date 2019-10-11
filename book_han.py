@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.layers import Bidirectional, Concatenate, CuDNNGRU, Dense, Dropout, Embedding, \
     GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, TimeDistributed
 from tensorflow.keras.models import Model
@@ -11,7 +12,7 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras import regularizers
-from tensorflow.keras import utils
+# Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
 from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal, shared_parameters
@@ -179,7 +180,7 @@ def main(argv):
 
     # Load embedding.
     print('Loading embedding matrix...')
-    embedding_path = folders.EMBEDDING_GLOVE_100_PATH
+    embedding_path = folders.EMBEDDING_GLOVE_300_PATH
     embedding_matrix = load_embeddings.load_embedding(tokenizer, embedding_path, max_words)
     print('Done.')
 
@@ -188,16 +189,16 @@ def main(argv):
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
     sent_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
-    sent_rnn_units = 64
+    sent_rnn_units = 128
     sent_rnn_l2 = .01
-    sent_dense_units = 32
-    sent_dense_activation = 'linear'
+    sent_dense_units = 64
+    sent_dense_activation = 'elu'
     sent_dense_l2 = .01
     para_rnn = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
-    para_rnn_units = 64
+    para_rnn_units = 128
     para_rnn_l2 = .01
-    para_dense_units = 32
-    para_dense_activation = 'linear'
+    para_dense_units = 64
+    para_dense_activation = 'elu'
     para_dense_l2 = .01
     book_dense_units = 128
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
@@ -240,39 +241,17 @@ def main(argv):
     Y_val = Y_val_T.transpose()  # (c, n * (1 - b) * v)
     Y_test = Y_test_T.transpose()  # (c, n * b)
 
+    # Transform labels based on the label mode.
+    Y_train = shared_parameters.transform_labels(Y_train, category_k, label_mode)
+    Y_val = shared_parameters.transform_labels(Y_val, category_k, label_mode)
+
     # Calculate class weights.
     use_class_weights = True
-    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
-        Y_train = [ordinal.to_multi_hot_ordinal(Y_train[j], k=k) for j, k in enumerate(category_k)]
-        Y_val = [ordinal.to_multi_hot_ordinal(Y_val[j], k=k) for j, k in enumerate(category_k)]
-        if use_class_weights:
-            category_class_weights = []  # [[dict]]
-            for y_train in Y_train:
-                class_weights = []
-                for i in range(y_train.shape[1]):
-                    ones_count = sum(y_train[:, i] == 1)
-                    class_weight = {0: 1 / (len(y_train) - ones_count + 1), 1: 1 / (ones_count + 1)}
-                    class_weights.append(class_weight)
-                category_class_weights.append(class_weights)
-        else:
-            category_class_weights = None
-    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
-        if use_class_weights:
-            category_class_weights = []  # [dict]
-            for j, y_train in enumerate(Y_train):
-                bincount = np.bincount(y_train, minlength=category_k[j])
-                class_weight = {i: 1 / (count + 1) for i, count in enumerate(bincount)}
-                category_class_weights.append(class_weight)
-        else:
-            category_class_weights = None
-        Y_train = [utils.to_categorical(Y_train[j], num_classes=k) for j, k in enumerate(category_k)]
-        Y_val = [utils.to_categorical(Y_val[j], num_classes=k) for j, k in enumerate(category_k)]
-    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
-        category_class_weights = None
-        Y_train = [Y_train[j] / k for j, k in enumerate(category_k)]
-        Y_val = [Y_val[j] / k for j, k in enumerate(category_k)]
+    class_weight_f = 'inverse'
+    if use_class_weights:
+        category_class_weights = shared_parameters.get_category_class_weights(Y_train, label_mode, f=class_weight_f)
     else:
-        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
+        category_class_weights = None
 
     # Create generators.
     shuffle = True
@@ -288,11 +267,22 @@ def main(argv):
         test_generator = VariableLengthBatchGenerator(X_test, X_shape, Y_test, Y_shape, batch_size, shuffle=False)
 
     # Train.
+    plateau_monitor = 'val_loss'
+    plateau_factor = .5
+    plateau_patience = 3
+    early_stopping_monitor = 'val_loss'
+    early_stopping_min_delta = 2**-10
+    early_stopping_patience = 6
+    callbacks = [
+        ReduceLROnPlateau(monitor=plateau_monitor, factor=plateau_factor, patience=plateau_patience),
+        EarlyStopping(monitor=early_stopping_monitor, min_delta=early_stopping_min_delta, patience=early_stopping_patience)
+    ]
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
                                   epochs=epochs,
                                   validation_data=val_generator,
-                                  class_weight=category_class_weights)
+                                  class_weight=category_class_weights,
+                                  callbacks=callbacks)
 
     # Save the history to visualize loss over time.
     print('Saving training history...')
@@ -407,7 +397,15 @@ def main(argv):
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
+        if use_class_weights:
+            fd.write('class_weight_f={}\n'.format(class_weight_f))
         fd.write('shuffle={}\n'.format(shuffle))
+        fd.write('plateau_monitor={}\n'.format(plateau_monitor))
+        fd.write('plateau_factor={}\n'.format(str(plateau_factor)))
+        fd.write('plateau_patience={:d}\n'.format(plateau_patience))
+        fd.write('early_stopping_monitor={}\n'.format(early_stopping_monitor))
+        fd.write('early_stopping_min_delta={}\n'.format(str(early_stopping_min_delta)))
+        fd.write('early_stopping_patience={:d}\n'.format(early_stopping_patience))
         fd.write('\nRESULTS\n\n')
         fd.write('Data size: {:d}\n'.format(len(X)))
         fd.write('Train size: {:d}\n'.format(len(X_train)))
