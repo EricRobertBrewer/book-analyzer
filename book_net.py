@@ -235,14 +235,14 @@ def main(argv):
     net_params = dict()
     if net_mode == 'rnn' or net_mode == 'rnncnn':
         net_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
-        net_params['rnn_units'] = 64
+        net_params['rnn_units'] = 128
         net_params['rnn_l2'] = .01
-        net_params['rnn_dense_units'] = 32
+        net_params['rnn_dense_units'] = 64
         net_params['rnn_dense_activation'] = 'elu'
         net_params['rnn_dense_l2'] = .01
         net_params['rnn_agg'] = 'attention'
     if net_mode == 'cnn' or net_mode == 'rnncnn':
-        net_params['cnn_filters'] = 8
+        net_params['cnn_filters'] = 16
         net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
         net_params['cnn_activation'] = 'elu'
         net_params['cnn_l2'] = .01
