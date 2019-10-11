@@ -17,7 +17,7 @@ from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal, shared_parameters
 from classification.net.attention_with_context import AttentionWithContext
-from classification.net.batch_generators import SingleInstanceBatchGenerator, VariableLengthBatchGenerator
+from classification.net.batch_generators import SingleInstanceBatchGenerator
 import folders
 from sites.bookcave import bookcave
 from text import load_embeddings
@@ -90,14 +90,13 @@ def create_model(
 
 
 def main(argv):
-    if len(argv) < 3 or len(argv) > 4:
-        raise ValueError('Usage: <batch_size> <steps_per_epoch> <epochs> [note]')
-    batch_size = int(argv[0])
-    steps_per_epoch = int(argv[1])
-    epochs = int(argv[2])
+    if len(argv) < 2 or len(argv) > 3:
+        raise ValueError('Usage: <steps_per_epoch> <epochs> [note]')
+    steps_per_epoch = int(argv[0])
+    epochs = int(argv[1])
     note = None
-    if len(argv) > 3:
-        note = argv[3]
+    if len(argv) > 2:
+        note = argv[2]
 
     script_name = os.path.basename(__file__)
     classifier_name = script_name[:script_name.index('.')]
@@ -255,16 +254,9 @@ def main(argv):
 
     # Create generators.
     shuffle = True
-    if batch_size == 1:
-        train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=shuffle)
-        val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
-        test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
-    else:
-        X_shape = (n_sentence_tokens,)
-        Y_shape = [(len(y[0]),) for y in Y_train]
-        train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=shuffle)
-        val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, batch_size, shuffle=False)
-        test_generator = VariableLengthBatchGenerator(X_test, X_shape, Y_test, Y_shape, batch_size, shuffle=False)
+    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=shuffle)
+    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
+    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
 
     # Train.
     plateau_monitor = 'val_loss'
@@ -346,7 +338,6 @@ def main(argv):
         if note is not None:
             fd.write('Note: {}\n\n'.format(note))
         fd.write('PARAMETERS\n\n')
-        fd.write('batch_size={:d}\n'.format(batch_size))
         fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')

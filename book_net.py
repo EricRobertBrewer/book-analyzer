@@ -13,11 +13,12 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras import regularizers
 # Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 
 from classification import evaluation, ordinal, shared_parameters
 from classification.net.attention_with_context import AttentionWithContext
-from classification.net.batch_generators import SingleInstanceBatchGenerator, VariableLengthBatchGenerator
+from classification.net.batch_generators import SingleInstanceBatchGenerator
 import folders
 from sites.bookcave import bookcave
 from text import load_embeddings
@@ -73,11 +74,34 @@ def create_source_cnn(n_tokens, d, net_params, x_p):
     return x_p
 
 
+def create_bag_mlp(bag_params):
+    max_words = bag_params['max_words']
+    dense_1_l2 = bag_params['dense_1_l2'] if bag_params['dense_1_l2'] is not None else None
+    dense_1_units = bag_params['dense_1_units']
+    dense_1_activation = bag_params['dense_1_activation']
+    dense_2_l2 = bag_params['dense_2_l2'] if bag_params['dense_2_l2'] is not None else None
+    dense_2_units = bag_params['dense_2_units']
+    dense_2_activation = bag_params['dense_2_activation']
+    input_w = Input(shape=(max_words,), dtype='float32')
+    if dense_1_l2 is not None:
+        dense_1_l2 = regularizers.l2(dense_1_l2)
+    x_w = Dense(dense_1_units,
+                kernel_regularizer=dense_1_l2)(input_w)
+    x_w = dense_1_activation(x_w)  # (c_w)
+    if dense_2_l2 is not None:
+        dense_2_l2 = regularizers.l2(dense_2_l2)
+    x_w = Dense(dense_2_units,
+                kernel_regularizer=dense_2_l2)(x_w)
+    x_w = dense_2_activation(x_w)  # (c_w)
+    return input_w, x_w
+
+
 def create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         net_mode, net_params,
         agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
+        bag_mode, bag_params,
         book_dropout, output_k, output_names, label_mode):
     # Source encoder.
     input_p = Input(shape=(n_tokens,), dtype='float32')  # (T)
@@ -126,6 +150,12 @@ def create_model(
     x_b = Dense(book_dense_units,
                 kernel_regularizer=book_dense_l2)(x_b)  # (c_b)
     x_b = book_dense_activation(x_b)  # (c_b)
+    if bag_mode:
+        input_w, x_w = create_bag_mlp(bag_params)
+        x_b = Concatenate()([x_b, x_w])
+        inputs = [input_b, input_w]
+    else:
+        inputs = [input_b]
     x_b = Dropout(book_dropout)(x_b)  # (c_b)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
@@ -135,22 +165,25 @@ def create_model(
         outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
     else:
         raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
-    return Model(input_b, outputs)
+    return Model(inputs, outputs)
+
+
+def identity(v):
+    return v
 
 
 def main(argv):
-    if len(argv) < 7 or len(argv) > 8:
-        raise ValueError('Usage: <source_mode> <net_mode> <agg_mode> <label_mode> <batch_size> <steps_per_epoch> <epochs> [note]')
+    if len(argv) < 6 or len(argv) > 7:
+        raise ValueError('Usage: <source_mode> <net_mode> <agg_mode> <label_mode> <steps_per_epoch> <epochs> [note]')
     source_mode = argv[0]
     net_mode = argv[1]
     agg_mode = argv[2]
     label_mode = argv[3]
-    batch_size = int(argv[4])
-    steps_per_epoch = int(argv[5])
-    epochs = int(argv[6])
+    steps_per_epoch = int(argv[4])
+    epochs = int(argv[5])
     note = None
-    if len(argv) > 7:
-        note = argv[7]
+    if len(argv) > 6:
+        note = argv[6]
 
     classifier_name = '{}_{}_{}_{}'.format(source_mode, net_mode, agg_mode, label_mode)
 
@@ -228,6 +261,30 @@ def main(argv):
     embedding_matrix = load_embeddings.load_embedding(tokenizer, embedding_path, max_words)
     print('Done.')
 
+    bag_mode = False
+    if bag_mode:
+        # Create vectorized representations of the book texts.
+        print('Vectorizing text...')
+        max_words = shared_parameters.TEXT_MAX_WORDS
+        vectorizer = TfidfVectorizer(
+            preprocessor=identity,
+            tokenizer=identity,
+            analyzer='word',
+            token_pattern=None,
+            max_features=max_words,
+            norm='l2',
+            sublinear_tf=True)
+        text_tokens = []
+        for source_tokens in text_source_tokens:
+            all_tokens = []
+            for tokens in source_tokens:
+                all_tokens.extend(tokens)
+            text_tokens.append(all_tokens)
+        X_w = vectorizer.fit_transform(text_tokens).todense()
+        print('Vectorized text with {:d} unique words.'.format(len(vectorizer.get_feature_names())))
+    else:
+        X_w = None
+
     # Create model.
     print('Creating model...')
     category_k = [len(levels) for levels in category_levels]
@@ -262,12 +319,22 @@ def main(argv):
     book_dense_units = 128
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
+    bag_params = dict()
+    if bag_mode:
+        bag_params['max_words'] = max_words
+        bag_params['dense_1_units'] = 256
+        bag_params['dense_1_activation'] = tf.keras.layers.LeakyReLU(alpha=.1)
+        bag_params['dense_1_l2'] = .01
+        bag_params['dense_2_units'] = 256
+        bag_params['dense_2_activation'] = tf.keras.layers.LeakyReLU(alpha=.1)
+        bag_params['dense_2_l2'] = .01
     book_dropout = .5
     model = create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         net_mode, net_params,
         agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
+        bag_mode, bag_params,
         book_dropout, category_k, categories, label_mode)
     lr = 2**-16
     optimizer = Adam(lr=lr)
@@ -295,6 +362,11 @@ def main(argv):
         train_test_split(X, Y_T, test_size=test_size, random_state=test_random_state)
     X_train, X_val, Y_train_T, Y_val_T = \
         train_test_split(X_train, Y_train_T, test_size=val_size, random_state=val_random_state)
+    if X_w is not None:
+        X_w_train, X_w_test = train_test_split(X_w, test_size=test_size, random_state=test_random_state)
+        X_w_train, X_w_val = train_test_split(X_w_train, test_size=val_size, random_state=val_random_state)
+    else:
+        X_w_train, X_w_val, X_w_test = None, None, None
     Y_train = Y_train_T.transpose()  # (c, n * (1 - b) * (1 - v))
     Y_val = Y_val_T.transpose()  # (c, n * (1 - b) * v)
     Y_test = Y_test_T.transpose()  # (c, n * b)
@@ -313,16 +385,9 @@ def main(argv):
 
     # Create generators.
     shuffle = True
-    if batch_size == 1:
-        train_generator = SingleInstanceBatchGenerator(X_train, Y_train, shuffle=shuffle)
-        val_generator = SingleInstanceBatchGenerator(X_val, Y_val, shuffle=False)
-        test_generator = SingleInstanceBatchGenerator(X_test, Y_test, shuffle=False)
-    else:
-        X_shape = (n_tokens,)
-        Y_shape = [(len(y[0]),) for y in Y_train]
-        train_generator = VariableLengthBatchGenerator(X_train, X_shape, Y_train, Y_shape, batch_size, shuffle=shuffle)
-        val_generator = VariableLengthBatchGenerator(X_val, X_shape, Y_val, Y_shape, batch_size, shuffle=False)
-        test_generator = VariableLengthBatchGenerator(X_test, X_shape, Y_test, Y_shape, batch_size, shuffle=False)
+    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, X_w=X_w_train, shuffle=shuffle)
+    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, X_w=X_w_val, shuffle=False)
+    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, X_w=X_w_test, shuffle=False)
 
     # Train.
     plateau_monitor = 'val_loss'
@@ -414,7 +479,6 @@ def main(argv):
         if note is not None:
             fd.write('{}\n\n'.format(note))
         fd.write('PARAMETERS\n\n')
-        fd.write('batch_size={:d}\n'.format(batch_size))
         fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
         fd.write('epochs={:d}\n'.format(epochs))
         fd.write('\nHYPERPARAMETERS\n')
@@ -464,6 +528,16 @@ def main(argv):
         fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__,
                                                         book_dense_activation.__dict__))
         fd.write('book_dense_l2={}\n'.format(str(book_dense_l2)))
+        fd.write('bag_mode={}\n'.format(bag_mode))
+        if bag_mode:
+            fd.write('dense_1_units={:d}\n'.format(bag_params['dense_1_units']))
+            fd.write('dense_1_activation={} {}\n'.format(bag_params['dense_1_activation'].__class__.__name__,
+                                                         bag_params['dense_1_activation'].__dict__))
+            fd.write('dense_1_l2={}\n'.format(str(bag_params['dense_2_l2'])))
+            fd.write('dense_2_units={:d}\n'.format(bag_params['dense_2_units']))
+            fd.write('dense_2_activation={} {}\n'.format(bag_params['dense_2_activation'].__class__.__name__,
+                                                         bag_params['dense_2_activation'].__dict__))
+            fd.write('dense_2_l2={}\n'.format(str(bag_params['dense_1_l2'])))
         fd.write('book_dropout={:.1f}\n'.format(book_dropout))
         model.summary(print_fn=lambda x: fd.write('{}\n'.format(x)))
         fd.write('\nTraining\n')
