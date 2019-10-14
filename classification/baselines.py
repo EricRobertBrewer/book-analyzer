@@ -44,24 +44,60 @@ def create_svm():
     return LinearSVC()
 
 
+def fit_ordinal(create_func, X, y, k):
+    # Create and train a classifier for each ordinal index.
+    y_train_ordinal = ordinal.to_multi_hot_ordinal(y, k=k)  # (n * (1 - b), k - 1)
+    classifiers = [create_func() for _ in range(k - 1)]
+    for i, classifier in enumerate(classifiers):
+        classifier.fit(X, y_train_ordinal[:, i])
+    return classifiers
+
+
+def predict_ordinal(classifiers, X, k):
+    try:
+        n = len(X)
+    except TypeError:
+        n = X.shape[0]
+
+    # Calculate probabilities for derived data sets.
+    ordinal_p = np.zeros((n, k - 1))  # (n * b, k - 1)
+    for i, classifier in enumerate(classifiers):
+        ordinal_p[:, i] = classifier.predict(X)
+
+    # Calculate the actual class label probabilities.
+    p = np.zeros((n, k))  # (n * b, k)
+    for i in range(k):
+        if i == 0:
+            p[:, i] = 1 - ordinal_p[:, 0]
+        elif i == k - 1:
+            p[:, i] = ordinal_p[:, i - 1]
+        else:
+            p[:, i] = ordinal_p[:, i - 1] - ordinal_p[:, i]
+
+    # Choose the most likely class label.
+    return np.argmax(p, axis=1)
+
+
 def main(argv):
     if len(argv) > 1:
-        print('Usage: [note]')
+        raise ValueError('Usage: [note]')
+    note = None
+    if len(argv) > 0:
+        note = str(argv[0])
     max_words = shared_parameters.TEXT_MAX_WORDS
 
     stamp = int(time.time())
-    base_fname = format(stamp, 'd')
+    print('Time stamp: {:d}'.format(stamp))
+    if note is not None:
+        print('Note: {}'.format(note))
+        base_fname = '{:d}_{}'.format(stamp, note)
+    else:
+        base_fname = format(stamp, 'd')
 
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
-    logs_baselines_path = os.path.join(folders.LOGS_PATH, 'baselines')
-    if not os.path.exists(logs_baselines_path):
-        os.mkdir(logs_baselines_path)
     if not os.path.exists(folders.PREDICTIONS_PATH):
         os.mkdir(folders.PREDICTIONS_PATH)
-    predictions_baselines_path = os.path.join(folders.PREDICTIONS_PATH, 'baselines')
-    if not os.path.exists(predictions_baselines_path):
-        os.mkdir(predictions_baselines_path)
 
     # Load data.
     print('Retrieving texts...')
@@ -130,36 +166,15 @@ def main(argv):
         Y_pred = []
         for j, category in enumerate(categories):
             print('Classifying category `{}`...'.format(category))
-
-            k = len(category_levels[j])
             y_train = Y_train[j]  # (n * (1 - b))
-            y_test = Y_test[j]  # (n * b)
-
-            # Calculate probabilities for derived data sets.
-            y_train_ordinal = ordinal.to_multi_hot_ordinal(y_train, k=k)  # (n * (1 - b), k - 1)
-            classifiers = [create_func() for _ in range(k - 1)]
-            ordinal_p = np.zeros((len(y_test), k - 1))  # (n * b, k - 1)
-            for i, classifier in enumerate(classifiers):
-                classifier.fit(X_train, y_train_ordinal[:, i])
-                ordinal_p[:, i] = classifier.predict(X_test)
-
-            # Calculate the actual class label probabilities.
-            p = np.zeros((len(y_test), k))  # (n * b, k)
-            for i in range(k):
-                if i == 0:
-                    p[:, i] = 1 - ordinal_p[:, 0]
-                elif i == k - 1:
-                    p[:, i] = ordinal_p[:, i - 1]
-                else:
-                    p[:, i] = ordinal_p[:, i - 1] - ordinal_p[:, i]
-
-            # Choose the most likely class label.
-            y_pred = np.argmax(p, axis=1)  # (n * b)
+            k = len(category_levels[j])
+            classifiers = fit_ordinal(create_func, X_train, y_train, k)
+            y_pred = predict_ordinal(classifiers, X_test, k)  # (n * b)
             Y_pred.append(y_pred)
 
         print('Writing results...')
 
-        logs_path = os.path.join(logs_baselines_path, model_name)
+        logs_path = os.path.join(folders.LOGS_PATH, model_name)
         if not os.path.exists(logs_path):
             os.mkdir(logs_path)
         with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
@@ -184,7 +199,7 @@ def main(argv):
             fd.write('Test size: {:d}\n\n'.format(X_test.shape[0]))
             evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
 
-        predictions_path = os.path.join(predictions_baselines_path, model_name)
+        predictions_path = os.path.join(folders.PREDICTIONS_PATH, model_name)
         if not os.path.exists(predictions_path):
             os.mkdir(predictions_path)
         with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
