@@ -19,6 +19,47 @@ def get_input_sequence(source_tokens, tokenizer, n_tokens, padding='pre', trunca
                                   truncating=truncating))
 
 
+def load_model_and_evaluate(model_path, P_predict, Q_true, categories, custom_objects=None):
+    print()
+    print(model_path)
+
+    # Load model.
+    model = load_model(model_path, custom_objects=custom_objects)
+    print(model.summary())
+
+    # Predict.
+    Q_pred_ordinal = model.predict(P_predict)
+    Q_pred = [ordinal.from_multi_hot_ordinal(q, threshold=.5) for q in Q_pred_ordinal]
+
+    # Evaluate.
+    category_metrics = []
+    for j, category in enumerate(categories):
+        print()
+        print(category)
+        q_true = Q_true[j]
+        q_pred = Q_pred[j]
+        confusion, metrics = evaluation.get_confusion_and_metrics(q_true, q_pred)
+        print(confusion)
+        print(metrics[0])
+        category_metrics.append(metrics)
+
+    # Average.
+    print()
+    print('Average')
+    metrics_avg = [sum([metrics[i] for metrics in category_metrics])/len(category_metrics)
+                   for i in range(len(category_metrics))]
+    print(metrics_avg[0])
+
+    # Overall.
+    print()
+    print('Overall')
+    q_true_overall = bookcave.get_overall_y(Q_true)
+    q_pred_overall = bookcave.get_overall_y(Q_pred)
+    confusion_overall, metrics_overall = evaluation.get_confusion_and_metrics(q_true_overall, q_pred_overall)
+    print(confusion_overall)
+    print(metrics_overall[0])
+
+
 def main(argv):
     # Load data.
     source = 'paragraph_tokens'
@@ -58,7 +99,7 @@ def main(argv):
             predict_source_labels.append(source_labels)
     Q_true = np.array(predict_source_labels).transpose()
 
-    # Tokenize.
+    # Tokenize text.
     max_words = shared_parameters.TEXT_MAX_WORDS
     split = '\t'
     tokenizer = Tokenizer(num_words=max_words, split=split)
@@ -73,6 +114,8 @@ def main(argv):
     n_tokens = shared_parameters.TEXT_N_PARAGRAPH_TOKENS
     padding = shared_parameters.TEXT_PADDING
     truncating = shared_parameters.TEXT_TRUNCATING
+    P_predict = np.array([get_input_sequence([source_tokens], tokenizer, n_tokens, padding, truncating)
+                          for source_tokens in predict_tokens])
 
     # Evaluate.
     model_paths = [
@@ -82,28 +125,7 @@ def main(argv):
         None,
         {'AttentionWithContext': AttentionWithContext}]
     for m, model_path in enumerate(model_paths):
-        print()
-        print(model_path)
-
-        # Load model.
-        model = load_model(model_path, custom_objects=model_custom_objects[m])
-        print(model.summary())
-
-        # Predict.
-        P_predict = np.array([get_input_sequence([source_tokens], tokenizer, n_tokens, padding, truncating)
-                              for source_tokens in predict_tokens])
-        Q_pred_ordinal = model.predict(P_predict)
-        Q_pred = [ordinal.from_multi_hot_ordinal(q, threshold=.5) for q in Q_pred_ordinal]
-
-        # Evaluate.
-        for j, category in enumerate(categories):
-            print()
-            print(category)
-            q_true = Q_true[j]
-            q_pred = Q_pred[j]
-            confusion, metrics = evaluation.get_confusion_and_metrics(q_true, q_pred)
-            print(confusion)
-            print(metrics[0])
+        load_model_and_evaluate(model_path, P_predict, Q_true, categories, custom_objects=model_custom_objects[m])
 
 
 if __name__ == '__main__':

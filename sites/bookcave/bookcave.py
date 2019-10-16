@@ -580,3 +580,7 @@ def save_labels(asin, category, sections, section_ids, labels, force=False, verb
         os.mkdir(asin_path)
     path = os.path.join(asin_path, fname)
     paragraph_io.write_formatted_section_paragraph_labels(section_paragraph_labels, path, force=force, verbose=verbose)
+
+
+def get_overall_y(Y):
+    return [max([Y[j][i] for j in range(7)]) for i in range(len(Y[0]))]
