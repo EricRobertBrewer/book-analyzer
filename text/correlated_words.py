@@ -52,10 +52,10 @@ def read_formatted_term_scores(category, size, min_gram, max_gram, max_features,
 def main(min_len=250, max_len=7500, min_gram=1, max_gram=1, max_features=8192, top_n=256, force=False):
     # Get data.
     inputs, Y, categories, category_levels = \
-        bookcave.get_data({'tokens'},
+        bookcave.get_data({'paragraph_tokens'},
                           min_len=min_len,
                           max_len=max_len)
-    text_paragraph_tokens = [paragraph_tokens for paragraph_tokens, _ in inputs['tokens']]
+    text_paragraph_tokens = [paragraph_tokens for paragraph_tokens, _ in inputs['paragraph_tokens']]
     text_all_tokens = []
     for paragraph_tokens in text_paragraph_tokens:
         all_tokens = []
@@ -90,6 +90,10 @@ def main(min_len=250, max_len=7500, min_gram=1, max_gram=1, max_features=8192, t
         category_term_scores.append(term_scores)
 
     # Save.
+    if not os.path.exists(folders.LOGS_PATH):
+        os.mkdir(folders.LOGS_PATH)
+    if not os.path.exists(folders.CORRELATED_WORDS_PATH):
+        os.mkdir(folders.CORRELATED_WORDS_PATH)
     size = len(text_all_tokens)
     for category_i, category in enumerate(categories):
         term_scores = category_term_scores[category_i]

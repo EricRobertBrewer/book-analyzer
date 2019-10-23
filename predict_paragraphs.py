@@ -19,7 +19,28 @@ def get_input_sequence(source_tokens, tokenizer, n_tokens, padding='pre', trunca
                                   truncating=truncating))
 
 
-def load_model_and_evaluate(model_path, P_predict, Q_true, categories, custom_objects=None):
+def get_balanced_indices(y, minlength=None, seed=None):
+    if minlength is None:
+        minlength = max(y) + 1
+
+    # Map classes to indices of instances.
+    class_to_indices = [[] for _ in range(minlength)]
+    for index, value in enumerate(y):
+        class_to_indices[value].append(index)
+
+    # Find minimum number of instances over all classes.
+    n = min([len(indices) for indices in class_to_indices])
+
+    # Sub-sample `n` instances from each class.
+    if seed is not None:
+        np.random.seed(seed)
+    balanced_indices = []
+    for value, indices in enumerate(class_to_indices):
+        balanced_indices.extend(np.random.choice(indices, n, replace=False))
+    return balanced_indices
+
+
+def load_model_and_evaluate(model_path, P_predict, Q_true, categories, category_indices=None, custom_objects=None):
     print()
     print(model_path)
 
@@ -38,6 +59,9 @@ def load_model_and_evaluate(model_path, P_predict, Q_true, categories, custom_ob
         print(category)
         q_true = Q_true[j]
         q_pred = Q_pred[j]
+        if category_indices is not None:
+            q_true = q_true[category_indices[j]]
+            q_pred = q_pred[category_indices[j]]
         confusion, metrics = evaluation.get_confusion_and_metrics(q_true, q_pred)
         print(confusion)
         print(metrics[0])
@@ -51,6 +75,8 @@ def load_model_and_evaluate(model_path, P_predict, Q_true, categories, custom_ob
     print(metrics_avg[0])
 
     # Overall.
+    if category_indices is not None:
+        return
     print()
     print('Overall')
     q_true_overall = bookcave.get_overall_y(Q_true)
@@ -99,6 +125,11 @@ def main(argv):
             predict_source_labels.append(source_labels)
     Q_true = np.array(predict_source_labels).transpose()
 
+    # Get balanced indices.
+    seed = 1
+    category_balanced_indices = [get_balanced_indices(q_true, minlength=len(category_levels[j]), seed=seed)
+                                 for j, q_true in enumerate(Q_true)]
+
     # Tokenize text.
     max_words = shared_parameters.TEXT_MAX_WORDS
     split = '\t'
@@ -125,7 +156,19 @@ def main(argv):
         None,
         {'AttentionWithContext': AttentionWithContext}]
     for m, model_path in enumerate(model_paths):
-        load_model_and_evaluate(model_path, P_predict, Q_true, categories, custom_objects=model_custom_objects[m])
+        load_model_and_evaluate(model_path,
+                                P_predict,
+                                Q_true,
+                                categories,
+                                custom_objects=model_custom_objects[m])
+        print()
+        print('Balanced')
+        load_model_and_evaluate(model_path,
+                                P_predict,
+                                Q_true,
+                                categories,
+                                category_indices=category_balanced_indices,
+                                custom_objects=model_custom_objects[m])
 
 
 if __name__ == '__main__':
