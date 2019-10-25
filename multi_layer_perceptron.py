@@ -84,7 +84,8 @@ def main(argv):
     min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
     max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
-    categories_mode = 'soft'
+    categories_mode = shared_parameters.DATA_CATEGORIES_MODE
+    return_overall = shared_parameters.DATA_RETURN_OVERALL
     inputs, Y, categories, category_levels = \
         bookcave.get_data({source},
                           subset_ratio=subset_ratio,
@@ -92,7 +93,8 @@ def main(argv):
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens,
-                          categories_mode=categories_mode)
+                          categories_mode=categories_mode,
+                          return_overall=return_overall)
     text_source_tokens = list(zip(*inputs[source]))[0]
     print('Retrieved {:d} texts.'.format(len(text_source_tokens)))
 
@@ -168,8 +170,9 @@ def main(argv):
 
     # Calculate class weights.
     use_class_weights = True
+    class_weight_f = 'square inverse'
     if use_class_weights:
-        category_class_weights = shared_parameters.get_category_class_weights(Y_train, label_mode)
+        category_class_weights = shared_parameters.get_category_class_weights(Y_train, label_mode, f=class_weight_f)
     else:
         category_class_weights = None
 
@@ -271,6 +274,7 @@ def main(argv):
         fd.write('min_tokens={:d}\n'.format(min_tokens))
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
+        fd.write('return_overall={}\n'.format(return_overall))
         fd.write('\nVectorization\n')
         fd.write('max_words={:d}\n'.format(max_words))
         fd.write('\nModel\n')
@@ -312,7 +316,7 @@ def main(argv):
         else:
             fd.write('Model not saved.\n')
         fd.write('Time elapsed: {:d}h {:d}m {:d}s\n\n'.format(elapsed_h, elapsed_m, elapsed_s))
-        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
+        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=return_overall)
 
     if not os.path.exists(folders.PREDICTIONS_PATH):
         os.mkdir(folders.PREDICTIONS_PATH)
