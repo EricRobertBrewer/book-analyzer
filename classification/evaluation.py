@@ -47,13 +47,18 @@ def get_confusion_and_metrics(y_true, y_pred, ignore_warnings=True):
     return confusion, metrics
 
 
-def write_confusion_and_metrics(Y_true, Y_pred, fd, categories):
+def write_confusion_and_metrics(Y_true, Y_pred, fd, categories, overall_last=True):
     # Calculate statistics for predictions.
     category_confusion, category_metrics = zip(*[get_confusion_and_metrics(Y_true[j], Y_pred[j])
-                                                 for j in range(len(categories))])
+                                                 for j in range(len(Y_true))])
+    if overall_last:
+        n_average = len(category_metrics) - 1
+    else:
+        n_average = len(category_metrics)
+    averages = [sum([metrics[metric_i] for metrics in category_metrics[:n_average]])/n_average
+                for metric_i in range(len(category_metrics[0]))]
+
     category_width = max(7, max([len(category) for category in categories]))
-    averages = [sum([metrics[metric_i] for metrics in category_metrics]) / len(category_metrics)
-                for metric_i in range(len(METRIC_NAMES))]
 
     # Metric abbreviations.
     fd.write('{:>{w}}'.format('Metric', w=category_width))

@@ -23,7 +23,8 @@ def main():
     min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
     max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
-    categories_mode = 'soft'
+    categories_mode = shared_parameters.DATA_CATEGORIES_MODE
+    return_overall = shared_parameters.DATA_RETURN_OVERALL
     _, Y, categories, category_levels = \
         bookcave.get_data({'paragraph_tokens'},
                           subset_ratio=subset_ratio,
@@ -31,7 +32,8 @@ def main():
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens,
-                          categories_mode=categories_mode)
+                          categories_mode=categories_mode,
+                          return_overall=return_overall)
     print('Retrieved {:d} labels.'.format(Y.shape[1]))
 
     # Split data set.
@@ -63,6 +65,7 @@ def main():
         fd.write('min_tokens={:d}\n'.format(min_tokens))
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
+        fd.write('return_overall={}\n'.format(return_overall))
         fd.write('\nTraining\n')
         fd.write('test_size={:.2f}\n'.format(test_size))
         fd.write('test_random_state={:d}\n'.format(test_random_state))
@@ -71,7 +74,7 @@ def main():
         fd.write('Train size: {:d}\n'.format(Y_train.shape[1]))
         fd.write('Test size: {:d}\n'.format(Y_test.shape[1]))
         fd.write('\n')
-        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
+        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=return_overall)
 
     if not os.path.exists(folders.PREDICTIONS_PATH):
         os.mkdir(folders.PREDICTIONS_PATH)

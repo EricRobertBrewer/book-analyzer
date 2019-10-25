@@ -107,7 +107,8 @@ def main(argv):
     min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
     max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
-    categories_mode = 'soft'
+    categories_mode = shared_parameters.DATA_CATEGORIES_MODE
+    return_overall = shared_parameters.DATA_RETURN_OVERALL
     inputs, Y, categories, category_levels = \
         bookcave.get_data({source},
                           subset_ratio=subset_ratio,
@@ -115,7 +116,8 @@ def main(argv):
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens,
-                          categories_mode=categories_mode)
+                          categories_mode=categories_mode,
+                          return_overall=return_overall)
     text_source_tokens = list(zip(*inputs[source]))[0]
     print('Retrieved {:d} texts.'.format(len(text_source_tokens)))
 
@@ -187,6 +189,7 @@ def main(argv):
             fd.write('min_tokens={:d}\n'.format(min_tokens))
             fd.write('\nLabels\n')
             fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
+            fd.write('return_overall={}\n'.format(return_overall))
             fd.write('\nVectorization\n')
             fd.write('max_words={:d}\n'.format(max_words))
             fd.write('vectorizer={}\n'.format(vectorizer.__class__.__name__))
@@ -197,7 +200,7 @@ def main(argv):
             fd.write('Data size: {:d}\n'.format(X.shape[0]))
             fd.write('Train size: {:d}\n'.format(X_train.shape[0]))
             fd.write('Test size: {:d}\n\n'.format(X_test.shape[0]))
-            evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
+            evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=return_overall)
 
         predictions_path = os.path.join(folders.PREDICTIONS_PATH, model_name)
         if not os.path.exists(predictions_path):

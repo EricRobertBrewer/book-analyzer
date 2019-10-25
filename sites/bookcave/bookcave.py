@@ -16,6 +16,7 @@ CATEGORY_INDEX_NUDITY = 4
 CATEGORY_INDEX_SEX_AND_INTIMACY = 5
 CATEGORY_INDEX_VIOLENCE_AND_HORROR = 6
 CATEGORY_INDEX_GAY_LESBIAN_CHARACTERS = 7
+CATEGORY_INDEX_OVERALL = 8
 CATEGORIES = [
     'crude_humor_language',
     'drug_alcohol_tobacco_use',
@@ -24,7 +25,8 @@ CATEGORIES = [
     'nudity',
     'sex_and_intimacy',
     'violence_and_horror',
-    'gay_lesbian_characters'
+    'gay_lesbian_characters',
+    'overall'
 ]
 CATEGORY_NAMES = {
     'crude_humor_language': 'Crude Humor/Language',
@@ -34,7 +36,8 @@ CATEGORY_NAMES = {
     'nudity': 'Nudity',
     'sex_and_intimacy': 'Sex and Intimacy',
     'violence_and_horror': 'Violence and Horror',
-    'gay_lesbian_characters': 'Gay/Lesbian Characters'
+    'gay_lesbian_characters': 'Gay/Lesbian Characters',
+    'overall': 'Overall'
 }
 CATEGORY_LEVELS = {
     'soft': [[
@@ -74,6 +77,11 @@ CATEGORY_LEVELS = {
         'None',
         'Minor gay/lesbian characters or elements',
         'Prominent gay/lesbian character(s)'
+    ], [
+        'All Ages',
+        'Mild',
+        'Moderate',
+        'Adult'
     ]],
     'medium': [[
         'None',
@@ -123,6 +131,14 @@ CATEGORY_LEVELS = {
         'None',
         'Minor gay/lesbian characters or elements',
         'Prominent gay/lesbian character(s)'
+    ], [
+        'All Ages',
+        'Mild',
+        'Mild+',
+        'Moderate',
+        'Moderate+',
+        'Adult'
+        'Adult+'
     ]],
     'hard': [[
         'None',
@@ -176,8 +192,17 @@ CATEGORY_LEVELS = {
         'None',
         'Minor gay/lesbian characters or elements',
         'Prominent gay/lesbian character(s)'
+    ], [
+        'All Ages',
+        'Mild',
+        'Mild+',
+        'Moderate',
+        'Moderate+',
+        'Adult'
+        'Adult+'
     ]]
 }
+LEVEL_SPLIT = '|'
 
 
 def is_between(value, _min=None, _max=None):
@@ -282,14 +307,6 @@ def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tok
     raise ValueError('Unknown source: `{}`.'.format(source))
 
 
-def is_image_file(fname):
-    return fname.endswith('.jpg') or \
-           fname.endswith('.png') or \
-           fname.endswith('.gif') or \
-           fname.endswith('.svg') or \
-           fname.endswith('.bmp')
-
-
 def get_data(
         sources,
         only_ids=None,
@@ -300,7 +317,7 @@ def get_data(
         min_tokens=None,
         max_tokens=None,
         categories_mode='soft',
-        only_categories=None,
+        return_overall=True,
         combine_ratings='max',
         return_meta=False,
         verbose=False):
@@ -317,7 +334,7 @@ def get_data(
         Filter the returned books by a set
     :param subset_ratio: float, optional
         Used to specify that only a subset of the data should be returned.
-        Ignored when `only_ids` is supplied.
+        Ignored when `only_ids` is provided.
     :param subset_seed: integer, optional
         Used to seed the random subset.
     :param min_len: int, optional
@@ -339,9 +356,8 @@ def get_data(
         When 'soft', all levels which would yield the same base overall rating (without a '+') will be merged.
         When 'medium', all levels which would yield the same overall rating will be merged.
         When 'hard', no levels will be merged.
-    :param only_categories: set of int, optional
-        Filter the returned labels (and meta data when `return_meta` is True) only to specific maturity categories.
-        When not provided, all category labels will be returned.
+    :param return_overall: boolean, default True
+        When `True`, each book's overall rating will be returned as an additional category.
     :param combine_ratings: string {'max' (default), 'avg ceil', 'avg floor'}
         The method by which multiple ratings for a single book will be combined.
         When `'max'`, the maximum among all rating levels per category per book will be returned.
@@ -374,10 +390,12 @@ def get_data(
     # Consider only books which have at least one rating.
     rated_books_df = all_books_df[all_books_df['community_ratings_count'] > 0]
 
-    # Filter by `only_ids`, if present.
+    # Create a subset, if needed.
     if only_ids is None and subset_ratio:
         np.random.seed(subset_seed)
         only_ids = np.random.choice(rated_books_df['id'], int(subset_ratio*len(rated_books_df)), replace=False)
+
+    # Filter by `only_ids`, if present.
     if only_ids is not None:
         rated_books_df = rated_books_df[rated_books_df['id'].isin(set(only_ids))]
 
@@ -417,78 +435,71 @@ def get_data(
     book_ids = list(books_df['id'])
     book_id_to_index = {book_id: i for i, book_id in enumerate(book_ids)}
 
+    # Get smaller ratings and levels DataFrames.
+    ratings_df = all_ratings_df[all_ratings_df['book_id'].isin(book_id_to_index.keys())]
+    levels_df = all_levels_df[all_levels_df['book_id'].isin(book_id_to_index.keys())]
+
     # Extract category data.
     if categories_mode not in {'hard', 'medium', 'soft'}:
         raise ValueError('Unknown value for `categories_mode`: `{}`'.format(categories_mode))
     categories_path = os.path.join(folders.BOOKCAVE_CATEGORIES_PATH, '{}.tsv'.format(categories_mode))
-    all_categories_df = pd.read_csv(categories_path, sep='\t')
+    categories_df = pd.read_csv(categories_path, sep='\t')
 
-    # Enumerate category names.
-    categories = list(all_categories_df['category'].unique())
-    if only_categories is not None:
-        categories = [category for i, category in enumerate(categories) if i in only_categories]
+    # Determine category names and levels.
+    if return_overall:
+        categories = CATEGORIES
+        category_levels = CATEGORY_LEVELS[categories_mode]
+    else:
+        categories = CATEGORIES[:CATEGORY_INDEX_OVERALL]
+        category_levels = CATEGORY_LEVELS[categories_mode][:CATEGORY_INDEX_OVERALL]
 
-    # Map category names to their indices.
-    category_to_index = {category: i for i, category in enumerate(categories)}
+    # Map each level name (and parts of the level name, i.e., between bars `|`) to its index within its own category.
+    # The full level name (including bars `|`) are necessary when iterating through the category DataFrame.
+    # The parts are necessary when iterating through the rating levels DataFrame.
+    category_level_to_index = []
+    for j in range(len(categories)):
+        level_to_index = dict()
+        for index, level in enumerate(category_levels[j]):
+            level_to_index[level] = index
+            for level_part in level.split(LEVEL_SPLIT):
+                level_to_index[level_part] = index
+        category_level_to_index.append(level_to_index)
 
-    # Get smaller ratings and categories DataFrames.
-    ratings_df = all_ratings_df[all_ratings_df['book_id'].isin(book_id_to_index.keys())]
-    categories_df = all_categories_df[all_categories_df['category'].isin(category_to_index.keys())]
-
-    # Map each level name to its index within its own category.
-    level_to_index = dict()
-    for category in categories:
-        category_rows = categories_df[categories_df['category'].str.match(category)]
-        levels = category_rows['level']
-        category_level_to_index = dict()
-        for j, level in enumerate(levels):
-            category_level_to_index[level] = j
-            for level_part in level.split('|'):
-                category_level_to_index[level_part] = j
-        level_to_index.update(category_level_to_index)
-
-    # Map and enumerate level names.
+    # Map each level name part to its category index.
+    # The full level name isn't necessary because we don't use this map when iterating through the category DataFrame,
+    # since the category is already included there.
     level_to_category_index = dict()
-    category_levels = [['None'] for _ in range(len(categories))]
-    for _, category_row in categories_df.iterrows():
-        level = category_row['level']
-        if level == 'None':
+    for j, levels in enumerate(category_levels):
+        if j == CATEGORY_INDEX_OVERALL:
             continue
-        # Map each level to its category index.
-        category_index = category_to_index[category_row['category']]
-        level_to_category_index[level] = category_index
-        for level_part in level.split('|'):
-            level_to_category_index[level_part] = category_index
-        # Enumerate the level names per category.
-        category_levels[category_index].append(level)
+        for level in levels:
+            if level == 'None':
+                continue
+            for level_part in level.split(LEVEL_SPLIT):
+                level_to_category_index[level_part] = j
 
-    # Get a smaller levels DataFrame.
-    levels_df = all_levels_df[all_levels_df['book_id'].isin(book_id_to_index.keys()) &
-                              all_levels_df['title'].isin(level_to_index.keys())]
-
+    # Populate Y by reading from the rating levels DataFrame.
     if verbose:
         print('Extracting labels for {} books...'.format(len(book_ids)))
     if combine_ratings == 'max':
         # For each book, take the maximum rating level in each category.
         Y = np.zeros((len(categories), len(book_ids)), dtype=np.int32)
         for _, level_row in levels_df.iterrows():
-            book_id = level_row['book_id']
-            book_index = book_id_to_index[book_id]
+            book_index = book_id_to_index[level_row['book_id']]
             level = level_row['title']
-            category_index = level_to_category_index[level]
-            level_index = level_to_index[level]
-            Y[category_index, book_index] = max(Y[category_index, book_index], level_index)
+            j = level_to_category_index[level]
+            level_index = category_level_to_index[j][level]
+            Y[j, book_index] = max(Y[j, book_index], level_index)
     elif combine_ratings == 'avg ceil' or combine_ratings == 'avg floor':
         # For each category, calculate the average rating for each book.
         Y_cont = np.zeros((len(categories), len(book_ids)), dtype=np.float32)
         # First, add all levels together for each book.
         for _, level_row in levels_df.iterrows():
-            book_id = level_row['book_id']
-            book_index = book_id_to_index[book_id]
+            book_index = book_id_to_index[level_row['book_id']]
             level = level_row['title']
-            category_index = level_to_category_index[level]
-            level_index = level_to_index[level]
-            Y_cont[category_index, book_index] += level_index * level_row['count']
+            j = level_to_category_index[level]
+            level_index = category_level_to_index[j][level]
+            Y_cont[j, book_index] += level_index * level_row['count']
         # Then calculate the average level for each book by dividing by the number of ratings for that book.
         for _, book_row in books_df.iterrows():
             book_index = book_id_to_index[book_row['id']]
@@ -501,11 +512,38 @@ def get_data(
     else:
         raise ValueError('Unknown value for `combine_ratings`: `{}`'.format(combine_ratings))
 
+    # Populate the `Overall` column, if needed.
+    if return_overall:
+        category_to_index = {category: index for index, category in enumerate(categories)}
+        rating_to_index = {rating: index for index, rating in enumerate(category_levels[CATEGORY_INDEX_OVERALL])}
+        category_level_index_to_rating_index = [dict() for _ in range(CATEGORY_INDEX_GAY_LESBIAN_CHARACTERS)]
+        for _, category_row in categories_df.iterrows():
+            rating = category_row['rating']
+            if pd.isna(rating):
+                continue
+            category = category_row['category']
+            j = category_to_index[category]
+            level = category_row['level']
+            level_index = category_level_to_index[j][level]
+            rating_index = rating_to_index[rating]
+            category_level_index_to_rating_index[j][level_index] = rating_index
+        Y[CATEGORY_INDEX_OVERALL] = [max([category_level_index_to_rating_index[j][Y[j, i]]
+                                          for j in range(len(category_level_index_to_rating_index))])
+                                     for i in range(Y.shape[1])]
+
     if return_meta:
         return inputs, Y, categories, category_levels, \
                np.array(book_ids), books_df, ratings_df, levels_df, categories_df
 
     return inputs, Y, categories, category_levels
+
+
+def is_image_file(fname):
+    return fname.endswith('.jpg') or \
+           fname.endswith('.png') or \
+           fname.endswith('.gif') or \
+           fname.endswith('.svg') or \
+           fname.endswith('.bmp')
 
 
 def get_images(
@@ -580,7 +618,3 @@ def save_labels(asin, category, sections, section_ids, labels, force=False, verb
         os.mkdir(asin_path)
     path = os.path.join(asin_path, fname)
     paragraph_io.write_formatted_section_paragraph_labels(section_paragraph_labels, path, force=force, verbose=verbose)
-
-
-def get_overall_y(Y):
-    return [max([Y[j][i] for j in range(7)]) for i in range(len(Y[0]))]

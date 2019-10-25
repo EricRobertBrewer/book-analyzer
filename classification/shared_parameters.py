@@ -11,6 +11,7 @@ DATA_SENTENCE_MIN_LEN = 512  # The minimum number of sentences in each text.
 DATA_SENTENCE_MAX_LEN = 16384  # The maximum number of sentences in each text.
 DATA_MIN_TOKENS = 8  # The minimum number of tokens in each paragraph.
 DATA_CATEGORIES_MODE = 'soft'
+DATA_RETURN_OVERALL = True
 
 TEXT_MAX_WORDS = 8192  # The maximum size of the vocabulary.
 TEXT_N_PARAGRAPH_TOKENS = 128  # The maximum number of tokens to process in each paragraph.

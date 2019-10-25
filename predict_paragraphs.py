@@ -40,7 +40,7 @@ def get_balanced_indices(y, minlength=None, seed=None):
     return balanced_indices
 
 
-def load_model_and_evaluate(model_path, P_predict, Q_true, categories, category_indices=None, custom_objects=None):
+def load_model_and_evaluate(model_path, P_predict, Q_true, categories, overall_last=True, category_indices=None, custom_objects=None):
     print()
     print(model_path)
 
@@ -70,20 +70,13 @@ def load_model_and_evaluate(model_path, P_predict, Q_true, categories, category_
     # Average.
     print()
     print('Average')
-    metrics_avg = [sum([metrics[i] for metrics in category_metrics])/len(category_metrics)
-                   for i in range(len(category_metrics))]
+    if overall_last:
+        n_average = len(category_metrics) - 1
+    else:
+        n_average = len(category_metrics)
+    metrics_avg = [sum([metrics[i] for metrics in category_metrics[:n_average]])/n_average
+                   for i in range(len(category_metrics[0]))]
     print(metrics_avg[0])
-
-    # Overall.
-    if category_indices is not None:
-        return
-    print()
-    print('Overall')
-    q_true_overall = bookcave.get_overall_y(Q_true)
-    q_pred_overall = bookcave.get_overall_y(Q_pred)
-    confusion_overall, metrics_overall = evaluation.get_confusion_and_metrics(q_true_overall, q_pred_overall)
-    print(confusion_overall)
-    print(metrics_overall[0])
 
 
 def main(argv):
@@ -95,6 +88,7 @@ def main(argv):
     max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = shared_parameters.DATA_CATEGORIES_MODE
+    return_overall = shared_parameters.DATA_RETURN_OVERALL
     inputs, Y, categories, category_levels, book_ids, books_df, _, _, categories_df = \
         bookcave.get_data({source},
                           subset_ratio=subset_ratio,
@@ -103,6 +97,7 @@ def main(argv):
                           max_len=max_len,
                           min_tokens=min_tokens,
                           categories_mode=categories_mode,
+                          return_overall=return_overall,
                           return_meta=True)
     text_source_tokens = list(zip(*inputs[source]))[0]
 
@@ -160,6 +155,7 @@ def main(argv):
                                 P_predict,
                                 Q_true,
                                 categories,
+                                overall_last=return_overall,
                                 custom_objects=model_custom_objects[m])
         print()
         print('Balanced')
@@ -167,6 +163,7 @@ def main(argv):
                                 P_predict,
                                 Q_true,
                                 categories,
+                                overall_last=return_overall,
                                 category_indices=category_balanced_indices,
                                 custom_objects=model_custom_objects[m])
 
