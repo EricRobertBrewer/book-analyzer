@@ -215,6 +215,7 @@ def main(argv):
     subset_seed = shared_parameters.DATA_SUBSET_SEED
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = shared_parameters.DATA_CATEGORIES_MODE
+    return_overall = shared_parameters.DATA_RETURN_OVERALL
     inputs, Y, categories, category_levels = \
         bookcave.get_data({source},
                           subset_ratio=subset_ratio,
@@ -222,7 +223,8 @@ def main(argv):
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens,
-                          categories_mode=categories_mode)
+                          categories_mode=categories_mode,
+                          return_overall=return_overall)
     text_source_tokens = list(zip(*inputs[source]))[0]
     print('Retrieved {:d} texts.'.format(len(text_source_tokens)))
 
@@ -490,6 +492,7 @@ def main(argv):
         fd.write('min_tokens={:d}\n'.format(min_tokens))
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
+        fd.write('return_overall={}\n'.format(return_overall))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
         fd.write('n_tokens={:d}\n'.format(n_tokens))
@@ -569,7 +572,7 @@ def main(argv):
         else:
             fd.write('Model not saved.\n')
         fd.write('Time elapsed: {:d}h {:d}m {:d}s\n\n'.format(elapsed_h, elapsed_m, elapsed_s))
-        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories)
+        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=return_overall)
 
     if not os.path.exists(folders.PREDICTIONS_PATH):
         os.mkdir(folders.PREDICTIONS_PATH)
