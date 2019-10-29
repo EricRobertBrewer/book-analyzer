@@ -299,6 +299,8 @@ def main(argv):
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_class_weights={}\n'.format(use_class_weights))
+        if use_class_weights:
+            fd.write('class_weight_f={}\n'.format(class_weight_f))
         fd.write('shuffle={}\n'.format(shuffle))
         fd.write('plateau_monitor={}\n'.format(plateau_monitor))
         fd.write('plateau_factor={}\n'.format(str(plateau_factor)))
