@@ -61,8 +61,7 @@ def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, cate
         category_metrics.append(metrics)
 
     # Average.
-    print()
-    print('Average')
+    print('\nAverage')
     if overall_last:
         n_average = len(category_metrics) - 1
     else:
@@ -148,6 +147,7 @@ def main(argv):
         None,
         {'AttentionWithContext': AttentionWithContext}]
     for m, model_path in enumerate(model_paths):
+        print('\n{}'.format(model_path))
         model = load_model(model_path, custom_objects=model_custom_objects[m])
         evaluate_model(model, P_predict, Q_true, categories, overall_last=return_overall)
         print('\nBalanced')
