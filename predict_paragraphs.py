@@ -40,14 +40,7 @@ def get_balanced_indices(y, minlength=None, seed=None):
     return balanced_indices
 
 
-def load_model_and_evaluate(model_path, P_predict, Q_true, categories, overall_last=True, category_indices=None, custom_objects=None):
-    print()
-    print(model_path)
-
-    # Load model.
-    model = load_model(model_path, custom_objects=custom_objects)
-    print(model.summary())
-
+def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, category_indices=None):
     # Predict.
     Q_pred_ordinal = model.predict(P_predict)
     Q_pred = [ordinal.from_multi_hot_ordinal(q, threshold=.5) for q in Q_pred_ordinal]
@@ -145,27 +138,16 @@ def main(argv):
 
     # Evaluate.
     model_paths = [
-        os.path.join(folders.MODELS_PATH, 'paragraph_cnn', 'ordinal', '32648160.h5'),
-        os.path.join(folders.MODELS_PATH, 'paragraph_rnn', 'ordinal', '32648155_glove300-emb.h5')]
+        os.path.join(folders.MODELS_PATH, 'paragraph_cnn_maxavg_ordinal', '33021101_overall.h5'),
+        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_maxavg_ordinal', '33021100_overall.h5')]
     model_custom_objects = [
         None,
         {'AttentionWithContext': AttentionWithContext}]
     for m, model_path in enumerate(model_paths):
-        load_model_and_evaluate(model_path,
-                                P_predict,
-                                Q_true,
-                                categories,
-                                overall_last=return_overall,
-                                custom_objects=model_custom_objects[m])
-        print()
-        print('Balanced')
-        load_model_and_evaluate(model_path,
-                                P_predict,
-                                Q_true,
-                                categories,
-                                overall_last=return_overall,
-                                category_indices=category_balanced_indices,
-                                custom_objects=model_custom_objects[m])
+        model = load_model(model_path, custom_objects=model_custom_objects[m])
+        evaluate_model(model, P_predict, Q_true, categories, overall_last=return_overall)
+        print('\nBalanced')
+        evaluate_model(model, P_predict, Q_true, categories, overall_last=return_overall, category_indices=category_balanced_indices)
 
 
 if __name__ == '__main__':

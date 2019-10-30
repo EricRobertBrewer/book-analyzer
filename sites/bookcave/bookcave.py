@@ -203,6 +203,35 @@ CATEGORY_LEVELS = {
     ]]
 }
 LEVEL_SPLIT = '|'
+CATEGORY_LEVEL_RATINGS = {
+    'soft': [
+        [0, 1, 2, 3],
+        [0, 1, 2, 3],
+        [0, 1],
+        [0, 1, 2, 3],
+        [0, 1, 2, 3],
+        [0, 1, 2, 3],
+        [0, 1, 2, 3]
+    ],
+    'medium': [
+        [0, 1, 3, 4, 6],
+        [0, 1, 2, 3, 4, 5],
+        [0, 1, 2],
+        [0, 2, 3, 4, 5, 6],
+        [0, 1, 2, 3, 5],
+        [0, 2, 3, 4, 5, 6],
+        [0, 1, 2, 3, 5, 6]
+    ],
+    'hard': [
+        [0, 1, 3, 4, 6],
+        [0, 1, 2, 3, 4, 5],
+        [0, 1, 2],
+        [0, 2, 3, 4, 5, 5, 6],
+        [0, 1, 2, 3, 5],
+        [0, 2, 3, 3, 4, 5, 5, 6, 6],
+        [0, 1, 2, 3, 5, 6]
+    ]
+}
 
 
 def is_between(value, _min=None, _max=None):
@@ -305,6 +334,13 @@ def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tok
     if source == 'sentence_tokens':
         return get_sentence_tokens(asin, min_len, max_len, min_tokens, max_tokens)
     raise ValueError('Unknown source: `{}`.'.format(source))
+
+
+def get_y_overall(Y, categories_mode='soft'):
+    category_level_ratings = CATEGORY_LEVEL_RATINGS[categories_mode]
+    return [max([category_level_ratings[j][Y[j, i]]
+                 for j in range(len(category_level_ratings))])
+            for i in range(Y.shape[1])]
 
 
 def get_data(
@@ -514,22 +550,7 @@ def get_data(
 
     # Populate the `Overall` column, if needed.
     if return_overall:
-        category_to_index = {category: index for index, category in enumerate(categories)}
-        rating_to_index = {rating: index for index, rating in enumerate(category_levels[CATEGORY_INDEX_OVERALL])}
-        category_level_index_to_rating_index = [dict() for _ in range(CATEGORY_INDEX_GAY_LESBIAN_CHARACTERS)]
-        for _, category_row in categories_df.iterrows():
-            rating = category_row['rating']
-            if pd.isna(rating):
-                continue
-            category = category_row['category']
-            j = category_to_index[category]
-            level = category_row['level']
-            level_index = category_level_to_index[j][level]
-            rating_index = rating_to_index[rating]
-            category_level_index_to_rating_index[j][level_index] = rating_index
-        Y[CATEGORY_INDEX_OVERALL] = [max([category_level_index_to_rating_index[j][Y[j, i]]
-                                          for j in range(len(category_level_index_to_rating_index))])
-                                     for i in range(Y.shape[1])]
+        Y[CATEGORY_INDEX_OVERALL] = get_y_overall(Y, categories_mode)
 
     if return_meta:
         return inputs, Y, categories, category_levels, \

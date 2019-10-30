@@ -449,15 +449,12 @@ def main(argv):
     save_model = False
     if save_model:
         models_path = os.path.join(folders.MODELS_PATH, classifier_name)
-        label_mode_path = os.path.join(models_path, label_mode)
-        model_path = os.path.join(label_mode_path, '{}.h5'.format(base_fname))
+        model_path = os.path.join(models_path, '{}.h5'.format(base_fname))
         print('Saving model to `{}`...'.format(model_path))
         if not os.path.exists(folders.MODELS_PATH):
             os.mkdir(folders.MODELS_PATH)
         if not os.path.exists(models_path):
             os.mkdir(models_path)
-        if not os.path.exists(label_mode_path):
-            os.mkdir(label_mode_path)
         model.save(model_path)
         print('Done.')
     else:
