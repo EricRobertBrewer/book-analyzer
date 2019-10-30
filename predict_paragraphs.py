@@ -101,7 +101,7 @@ def main(argv):
     for text_i, source_tokens in enumerate(text_source_tokens):
         book_id = book_ids[text_i]
         asin = books_df[books_df['id'] == book_id].iloc[0]['asin']
-        category_labels = [bookcave.get_labels(asin, category) for category in categories]
+        category_labels = [bookcave.get_labels(asin, category) for category in categories[:bookcave.CATEGORY_INDEX_OVERALL]]
         if any(labels is None for labels in category_labels):
             continue
         for source_i, tokens in enumerate(source_tokens):
@@ -111,7 +111,11 @@ def main(argv):
             predict_locations.append((text_i, source_i))
             predict_tokens.append(tokens)
             predict_source_labels.append(source_labels)
-    Q_true = np.array(predict_source_labels).transpose()
+    Q_true = np.zeros((len(categories), len(predict_source_labels)), dtype=np.int32)
+    for i, source_labels in enumerate(predict_source_labels):
+        for j, label in enumerate(source_labels):
+            Q_true[j, i] = label
+    Q_true[bookcave.CATEGORY_INDEX_OVERALL] = bookcave.get_y_overall(Q_true, categories_mode=categories_mode)
 
     # Get balanced indices.
     seed = 1
