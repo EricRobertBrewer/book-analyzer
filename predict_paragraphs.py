@@ -6,7 +6,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
 
-from classification import evaluation, ordinal, shared_parameters
+from classification import data_utils, evaluation, ordinal, shared_parameters
 from classification.net.attention_with_context import AttentionWithContext
 import folders
 from sites.bookcave import bookcave
@@ -17,27 +17,6 @@ def get_input_sequence(source_tokens, tokenizer, n_tokens, padding='pre', trunca
                                   maxlen=n_tokens,
                                   padding=padding,
                                   truncating=truncating))
-
-
-def get_balanced_indices(y, minlength=None, seed=None):
-    if minlength is None:
-        minlength = max(y) + 1
-
-    # Map classes to indices of instances.
-    class_to_indices = [[] for _ in range(minlength)]
-    for index, value in enumerate(y):
-        class_to_indices[value].append(index)
-
-    # Find minimum number of instances over all classes.
-    n = min([len(indices) for indices in class_to_indices])
-
-    # Sub-sample `n` instances from each class.
-    if seed is not None:
-        np.random.seed(seed)
-    balanced_indices = []
-    for value, indices in enumerate(class_to_indices):
-        balanced_indices.extend(np.random.choice(indices, n, replace=False))
-    return balanced_indices
 
 
 def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, category_indices=None):
@@ -118,7 +97,7 @@ def main(argv):
 
     # Get balanced indices.
     seed = 1
-    category_balanced_indices = [get_balanced_indices(q_true, minlength=len(category_levels[j]), seed=seed)
+    category_balanced_indices = [data_utils.get_balanced_indices_sample(q_true, minlength=len(category_levels[j]), seed=seed)
                                  for j, q_true in enumerate(Q_true)]
 
     # Tokenize text.

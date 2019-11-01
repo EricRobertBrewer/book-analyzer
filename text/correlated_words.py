@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.feature_selection import chi2
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from classification import shared_parameters
 import folders
 from sites.bookcave import bookcave
 
@@ -49,12 +50,24 @@ def read_formatted_term_scores(category, size, min_gram, max_gram, max_features,
     return term_scores
 
 
-def main(min_len=250, max_len=7500, min_gram=1, max_gram=1, max_features=8192, top_n=256, force=False):
+def main(min_len=shared_parameters.DATA_PARAGRAPH_MIN_LEN,
+         max_len=shared_parameters.DATA_PARAGRAPH_MAX_LEN,
+         min_tokens=shared_parameters.DATA_MIN_TOKENS,
+         categories_mode=shared_parameters.DATA_CATEGORIES_MODE,
+         return_overall=shared_parameters.DATA_RETURN_OVERALL,
+         min_gram=1,
+         max_gram=1,
+         max_features=8192,
+         top_n=256,
+         force=False):
     # Get data.
     inputs, Y, categories, category_levels = \
         bookcave.get_data({'paragraph_tokens'},
                           min_len=min_len,
-                          max_len=max_len)
+                          max_len=max_len,
+                          min_tokens=min_tokens,
+                          categories_mode=categories_mode,
+                          return_overall=return_overall)
     text_paragraph_tokens = [paragraph_tokens for paragraph_tokens, _ in inputs['paragraph_tokens']]
     text_all_tokens = []
     for paragraph_tokens in text_paragraph_tokens:

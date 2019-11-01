@@ -16,7 +16,7 @@ from tensorflow.keras import regularizers
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 
-from classification import evaluation, ordinal, shared_parameters
+from classification import data_utils, evaluation, ordinal, shared_parameters
 from classification.net.attention_with_context import AttentionWithContext
 from classification.net.batch_generators import SingleInstanceBatchGenerator
 import folders
@@ -173,17 +173,18 @@ def identity(v):
 
 
 def main(argv):
-    if len(argv) < 6 or len(argv) > 7:
-        raise ValueError('Usage: <source_mode> <net_mode> <agg_mode> <label_mode> <steps_per_epoch> <epochs> [note]')
+    if len(argv) < 7 or len(argv) > 8:
+        raise ValueError('Usage: <source_mode> <net_mode> <agg_mode> <label_mode> <category_index> <steps_per_epoch> <epochs> [note]')
     source_mode = argv[0]
     net_mode = argv[1]
     agg_mode = argv[2]
     label_mode = argv[3]
-    steps_per_epoch = int(argv[4])
-    epochs = int(argv[5])
+    category_index = int(argv[4])
+    steps_per_epoch = int(argv[5])
+    epochs = int(argv[6])
     note = None
-    if len(argv) > 6:
-        note = argv[6]
+    if len(argv) > 7:
+        note = argv[7]
 
     classifier_name = '{}_{}_{}_{}'.format(source_mode, net_mode, agg_mode, label_mode)
 
@@ -228,6 +229,38 @@ def main(argv):
     text_source_tokens = list(zip(*inputs[source]))[0]
     print('Retrieved {:d} texts.'.format(len(text_source_tokens)))
 
+    # Reduce labels to the specified category, if needed.
+    if category_index != -1:
+        Y = np.array([Y[category_index]])
+        categories = [categories[category_index]]
+        category_levels = [category_levels[category_index]]
+
+    # Balance data set, if needed.
+    balance_mode = None
+    balance_majority_tolerance = 6
+    balance_sample_seed = 1
+    if balance_mode is not None:
+        index_set = set()
+        if balance_mode == 'reduce majority':
+            majority_indices = data_utils.get_majority_indices(Y,
+                                                               minlengths=[len(category_levels[j])
+                                                                           for j in range(len(category_levels))],
+                                                               tolerance=balance_majority_tolerance)
+            index_set.update(set(np.arange(len(text_source_tokens))) - set(majority_indices))
+        elif balance_mode == 'sample union':
+            category_balanced_indices = [data_utils.get_balanced_indices_sample(y,
+                                                                                minlength=len(category_levels[j]),
+                                                                                seed=balance_sample_seed)
+                                         for j, y in enumerate(Y)]
+            for indices in category_balanced_indices:
+                index_set.update(set(indices))
+        else:
+            raise ValueError('Unknown `balance_mode`: {}'.format(balance_mode))
+        text_source_tokens = [source_tokens for i, source_tokens in enumerate(text_source_tokens) if i in index_set]
+        Y_T = Y.transpose()
+        Y_T = np.array([instance for i, instance in enumerate(Y_T) if i in index_set])
+        Y = Y_T.transpose()
+
     # Tokenize.
     print('Tokenizing...')
     max_words = shared_parameters.TEXT_MAX_WORDS
@@ -263,11 +296,11 @@ def main(argv):
     embedding_matrix = load_embeddings.load_embedding(tokenizer, embedding_path, max_words)
     print('Done.')
 
+    # Add a 2-layer MLP, if needed.
     bag_mode = False
     if bag_mode:
         # Create vectorized representations of the book texts.
         print('Vectorizing text...')
-        max_words = shared_parameters.TEXT_MAX_WORDS
         vectorizer = TfidfVectorizer(
             preprocessor=identity,
             tokenizer=identity,
@@ -490,6 +523,12 @@ def main(argv):
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('return_overall={}\n'.format(return_overall))
+        fd.write('\nResampling\n')
+        fd.write('balance_mode={}\n'.format(str(balance_mode)))
+        if balance_mode == 'reduce majority':
+            fd.write('balance_majority_tolerance={:d}\n'.format(balance_majority_tolerance))
+        elif balance_mode == 'sample union':
+            fd.write('balance_split_seed={:d}\n'.format(balance_sample_seed))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
         fd.write('n_tokens={:d}\n'.format(n_tokens))
@@ -522,8 +561,6 @@ def main(argv):
             fd.write('agg_rnn={}\n'.format(agg_params['rnn'].__name__))
             fd.write('agg_rnn_units={:d}\n'.format(agg_params['rnn_units']))
             fd.write('agg_rnn_l2={}\n'.format(str(agg_params['rnn_l2'])))
-        else:
-            raise ValueError('Unknown `agg_mode`: {}'.format(agg_mode))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
         fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__,
                                                         book_dense_activation.__dict__))
@@ -569,7 +606,8 @@ def main(argv):
         else:
             fd.write('Model not saved.\n')
         fd.write('Time elapsed: {:d}h {:d}m {:d}s\n\n'.format(elapsed_h, elapsed_m, elapsed_s))
-        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=return_overall)
+        overall_last = category_index == -1 and return_overall
+        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=overall_last)
 
     if not os.path.exists(folders.PREDICTIONS_PATH):
         os.mkdir(folders.PREDICTIONS_PATH)
