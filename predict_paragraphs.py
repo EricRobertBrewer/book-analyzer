@@ -141,8 +141,8 @@ def main(argv):
 
     # Evaluate.
     model_paths = [
-        os.path.join(folders.MODELS_PATH, 'paragraph_cnn_maxavg_ordinal', '33021101_overall.h5'),
-        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_maxavg_ordinal', '33021100_overall.h5')]
+        os.path.join(folders.MODELS_PATH, 'paragraph_cnn_max_ordinal', '33063788_overall_max-agg.h5'),
+        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_max_ordinal', '33063789_overall_max-agg.h5')]
     model_custom_objects = [
         None,
         {'AttentionWithContext': AttentionWithContext}]
