@@ -468,6 +468,8 @@ def main(argv):
     # Predict test instances.
     print('Predicting test instances...')
     Y_pred = model.predict_generator(test_generator)
+    if category_index != -1:
+        Y_pred = [Y_pred]
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_pred = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_pred]
     elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
