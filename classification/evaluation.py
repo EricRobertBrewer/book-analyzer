@@ -68,7 +68,7 @@ def write_confusion_and_metrics(Y_true, Y_pred, fd, categories, overall_last=Tru
 
     # Horizontal line.
     fd.write('{:>{w}}'.format('', w=category_width))
-    for _ in range(len(category_metrics)):
+    for _ in range(len(category_metrics[0])):
         fd.write('-+-{}'.format('-' * 7))
     fd.write('-+\n')
 
@@ -76,19 +76,19 @@ def write_confusion_and_metrics(Y_true, Y_pred, fd, categories, overall_last=Tru
     for j, metrics in enumerate(category_metrics):
         fd.write('{:>{w}}'.format(categories[j], w=category_width))
         for value in metrics:
-            fd.write(' | {:.5f}'.format(value))
+            fd.write(' | {:.4f} '.format(value))
         fd.write(' |\n')
 
     # Horizontal line.
     fd.write('{:>{w}}'.format('', w=category_width))
-    for _ in range(len(category_metrics)):
+    for _ in range(len(category_metrics[0])):
         fd.write('-+-{}'.format('-' * 7))
     fd.write('-+\n')
 
     # Average metrics.
     fd.write('{:>{w}}'.format('Average', w=category_width))
     for value in averages:
-        fd.write(' | {:.5f}'.format(value))
+        fd.write(' | {:.4f} '.format(value))
     fd.write(' |\n')
 
     # Confusion matrices.
