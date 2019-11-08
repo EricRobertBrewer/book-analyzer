@@ -51,6 +51,10 @@ def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, cate
 
 
 def main(argv):
+    if len(argv) != 1:
+        raise ValueError('Usage: <category_index>')
+    category_index = int(argv[0])
+
     # Load data.
     source = 'paragraph_tokens'
     subset_ratio = shared_parameters.DATA_SUBSET_RATIO
@@ -71,6 +75,12 @@ def main(argv):
                           return_overall=return_overall,
                           return_meta=True)
     text_source_tokens = list(zip(*inputs[source]))[0]
+
+    # Reduce labels to the specified category, if needed.
+    if category_index != -1:
+        Y = np.array([Y[category_index]])
+        categories = [categories[category_index]]
+        category_levels = [category_levels[category_index]]
 
     # Load paragraph labels.
     predict_locations = []
@@ -93,7 +103,8 @@ def main(argv):
     for i, source_labels in enumerate(predict_source_labels):
         for j, label in enumerate(source_labels):
             Q_true[j, i] = label
-    Q_true[bookcave.CATEGORY_INDEX_OVERALL] = bookcave.get_y_overall(Q_true, categories_mode=categories_mode)
+    if category_index == -1 and return_overall:
+        Q_true[bookcave.CATEGORY_INDEX_OVERALL] = bookcave.get_y_overall(Q_true, categories_mode=categories_mode)
 
     # Get balanced indices.
     seed = 1
