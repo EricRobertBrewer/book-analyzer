@@ -8,10 +8,10 @@
 
 import os
 
+from tensorflow.keras.models import load_model
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
-from tensorflow.keras.models import load_model
 
 from classification import baselines, data_utils, evaluation, shared_parameters
 import folders
