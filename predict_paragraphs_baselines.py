@@ -103,7 +103,8 @@ def predict_zero_r(category_indices=None):
         q_pred_zero = [np.argmax(np.bincount(q_true, minlength=len(category_levels[j])))]*len(q_true)
         confusion_zero, metrics_zero = evaluation.get_confusion_and_metrics(q_true, q_pred_zero)
         print(confusion_zero)
-        print(metrics_zero[0])
+        for i, metric_name in enumerate(evaluation.METRIC_NAMES):
+            print('{}: {:.4f}'.format(metric_name, metrics_zero[i]))
         category_metrics_zero.append(metrics_zero)
     print('\nAverage')
     metrics_avg_zero = [sum([metrics_zero[i] for metrics_zero in category_metrics_zero[:-1]])/(len(category_metrics_zero) - 1)
