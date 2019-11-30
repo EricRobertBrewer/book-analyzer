@@ -36,7 +36,8 @@ def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, cate
             q_pred = q_pred[category_indices[j]]
         confusion, metrics = evaluation.get_confusion_and_metrics(q_true, q_pred)
         print(confusion)
-        print(metrics[0])
+        for i, metric_name in evaluation.METRIC_NAMES:
+            print('{}: {:.4f}'.format(metric_name, metrics[i]))
         category_metrics.append(metrics)
 
     # Average.
@@ -47,7 +48,8 @@ def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, cate
         n_average = len(category_metrics)
     metrics_avg = [sum([metrics[i] for metrics in category_metrics[:n_average]])/n_average
                    for i in range(len(category_metrics[0]))]
-    print(metrics_avg[0])
+    for i, metric_name in evaluation.METRIC_NAMES:
+        print('{}: {:.4f}'.format(metric_name, metrics_avg[i]))
 
 
 def main(argv):
