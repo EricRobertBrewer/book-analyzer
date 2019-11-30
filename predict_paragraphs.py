@@ -48,7 +48,7 @@ def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, cate
         n_average = len(category_metrics)
     metrics_avg = [sum([metrics[i] for metrics in category_metrics[:n_average]])/n_average
                    for i in range(len(category_metrics[0]))]
-    for i, metric_name in enumerate(evaluation.METRIC_NAMES)S:
+    for i, metric_name in enumerate(evaluation.METRIC_NAMES):
         print('{}: {:.4f}'.format(metric_name, metrics_avg[i]))
 
 
