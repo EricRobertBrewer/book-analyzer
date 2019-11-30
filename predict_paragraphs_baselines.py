@@ -108,7 +108,7 @@ def predict_zero_r(category_indices=None):
     print('\nAverage')
     metrics_avg_zero = [sum([metrics_zero[i] for metrics_zero in category_metrics_zero[:-1]])/(len(category_metrics_zero) - 1)
                         for i in range(len(category_metrics_zero[0]))]
-    for i, metric_name in evaluation.METRIC_NAMES:
+    for i, metric_name in enumerate(evaluation.METRIC_NAMES):
         print('{}: {:.4f}'.format(metric_name, metrics_avg_zero[i]))
 
 
@@ -229,7 +229,7 @@ def evaluate_baseline_classifiers(category_classifiers, P_w_predict, Q_true, cat
         q_w_pred = Q_w_pred[j]
         confusion, metrics = evaluation.get_confusion_and_metrics(q_true, q_w_pred)
         print(confusion)
-        for i, metric_name in evaluation.METRIC_NAMES:
+        for i, metric_name in enumerate(evaluation.METRIC_NAMES):
             print('{}: {:.4f}'.format(metric_name, metrics[i]))
         category_metrics.append(metrics)
 
@@ -237,7 +237,7 @@ def evaluate_baseline_classifiers(category_classifiers, P_w_predict, Q_true, cat
     print('\nAverage')
     metrics_avg = [sum([metrics[i] for metrics in category_metrics[:-1]])/(len(category_metrics) - 1)
                    for i in range(len(category_metrics[0]))]
-    for i, metric_name in evaluation.METRIC_NAMES:
+    for i, metric_name in enumerate(evaluation.METRIC_NAMES):
         print('{}: {:.4f}'.format(metric_name, metrics_avg[i]))
 
 
