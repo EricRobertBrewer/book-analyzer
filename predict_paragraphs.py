@@ -134,10 +134,14 @@ def main(argv):
     # Evaluate.
     model_paths = [
         os.path.join(folders.MODELS_PATH, 'paragraph_cnn_max_ordinal', '33063788_overall_max-agg.h5'),
-        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_max_ordinal', '33063789_overall_max-agg.h5')]
+        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_max_ordinal', '33063789_overall_max-agg.h5'),
+        os.path.join(folders.MODELS_PATH, 'paragraph_rnncnn_max_ordinal', '33063790_overall_max-agg.h5')
+    ]
     model_custom_objects = [
         None,
-        {'AttentionWithContext': AttentionWithContext}]
+        {'AttentionWithContext': AttentionWithContext},
+        {'AttentionWithContext': AttentionWithContext}
+    ]
     for m, model_path in enumerate(model_paths):
         print('\n{}'.format(model_path))
         model = load_model(model_path, custom_objects=model_custom_objects[m])
