@@ -93,7 +93,6 @@ category_balanced_indices = [data_utils.get_balanced_indices_sample(q_true, minl
 
 def predict_zero_r(category_indices=None):
     category_metrics_zero = []
-    print('ZeroR')
     for j, category in enumerate(categories):
         print()
         print(category)
@@ -116,6 +115,7 @@ def predict_zero_r(category_indices=None):
 # In[ ]:
 
 
+print('ZeroR')
 predict_zero_r()
 print('\nBalanced')
 predict_zero_r(category_indices=category_balanced_indices)
