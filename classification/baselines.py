@@ -20,20 +20,16 @@ def identity(v):
     return v
 
 
-def create_multinomial_naive_bayes():
-    return MultinomialNB(alpha=1.0, fit_prior=True)
-
-
-def create_linear_regression():
-    return LinearRegression()
+def create_k_nearest_neighbors():
+    return KNeighborsClassifier(n_neighbors=5, weights='distance', p=2, metric='minkowski')
 
 
 def create_logistic_regression():
     return LogisticRegression(penalty='l2', solver='lbfgs', multi_class='ovr')
 
 
-def create_k_nearest_neighbors():
-    return KNeighborsClassifier(n_neighbors=5, metric='minkowski')
+def create_multinomial_naive_bayes():
+    return MultinomialNB(alpha=1.0, fit_prior=True)
 
 
 def create_random_forest():
@@ -149,19 +145,19 @@ def main(argv):
     Y_test = Y_test_T.transpose()  # (c, n * b)
 
     create_funcs = [
-        create_multinomial_naive_bayes,
-        create_linear_regression,
-        create_logistic_regression,
         create_k_nearest_neighbors,
+        create_logistic_regression,
+        create_multinomial_naive_bayes,
         create_random_forest,
-        create_svm]
+        create_svm
+    ]
     model_names = [
-        'multinomial_naive_bayes',
-        'linear_regression',
-        'logistic_regression',
         'k_nearest_neighbors',
+        'logistic_regression',
+        'multinomial_naive_bayes',
         'random_forest',
-        'svm']
+        'svm'
+    ]
     for m, create_func in enumerate(create_funcs):
         model_name = model_names[m]
         print('Training model `{}`...'.format(model_name))
