@@ -3,6 +3,8 @@ import sys
 import time
 
 import numpy as np
+# Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
+import tensorflow
 from sklearn.ensemble.forest import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LinearRegression, LogisticRegression

@@ -2,6 +2,8 @@ import os
 import time
 
 import numpy as np
+# Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
+import tensorflow
 from sklearn.model_selection import train_test_split
 
 from classification import evaluation, shared_parameters
