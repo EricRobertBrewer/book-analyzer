@@ -36,7 +36,8 @@ def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, cate
             q_pred = q_pred[category_indices[j]]
         confusion, metrics = evaluation.get_confusion_and_metrics(q_true, q_pred)
         print(confusion)
-        print(metrics[0])
+        for i, metric_name in enumerate(evaluation.METRIC_NAMES):
+            print('{}: {:.4f}'.format(metric_name, metrics[i]))
         category_metrics.append(metrics)
 
     # Average.
@@ -47,10 +48,15 @@ def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, cate
         n_average = len(category_metrics)
     metrics_avg = [sum([metrics[i] for metrics in category_metrics[:n_average]])/n_average
                    for i in range(len(category_metrics[0]))]
-    print(metrics_avg[0])
+    for i, metric_name in enumerate(evaluation.METRIC_NAMES):
+        print('{}: {:.4f}'.format(metric_name, metrics_avg[i]))
 
 
 def main(argv):
+    if len(argv) != 1:
+        raise ValueError('Usage: <category_index>')
+    category_index = int(argv[0])
+
     # Load data.
     source = 'paragraph_tokens'
     subset_ratio = shared_parameters.DATA_SUBSET_RATIO
@@ -71,6 +77,12 @@ def main(argv):
                           return_overall=return_overall,
                           return_meta=True)
     text_source_tokens = list(zip(*inputs[source]))[0]
+
+    # Reduce labels to the specified category, if needed.
+    if category_index != -1:
+        Y = np.array([Y[category_index]])
+        categories = [categories[category_index]]
+        category_levels = [category_levels[category_index]]
 
     # Load paragraph labels.
     predict_locations = []
@@ -93,7 +105,8 @@ def main(argv):
     for i, source_labels in enumerate(predict_source_labels):
         for j, label in enumerate(source_labels):
             Q_true[j, i] = label
-    Q_true[bookcave.CATEGORY_INDEX_OVERALL] = bookcave.get_y_overall(Q_true, categories_mode=categories_mode)
+    if category_index == -1 and return_overall:
+        Q_true[bookcave.CATEGORY_INDEX_OVERALL] = bookcave.get_y_overall(Q_true, categories_mode=categories_mode)
 
     # Get balanced indices.
     seed = 1
@@ -121,10 +134,14 @@ def main(argv):
     # Evaluate.
     model_paths = [
         os.path.join(folders.MODELS_PATH, 'paragraph_cnn_max_ordinal', '33063788_overall_max-agg.h5'),
-        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_max_ordinal', '33063789_overall_max-agg.h5')]
+        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_max_ordinal', '33063789_overall_max-agg.h5'),
+        os.path.join(folders.MODELS_PATH, 'paragraph_rnncnn_max_ordinal', '33063790_overall_max-agg.h5')
+    ]
     model_custom_objects = [
         None,
-        {'AttentionWithContext': AttentionWithContext}]
+        {'AttentionWithContext': AttentionWithContext},
+        {'AttentionWithContext': AttentionWithContext}
+    ]
     for m, model_path in enumerate(model_paths):
         print('\n{}'.format(model_path))
         model = load_model(model_path, custom_objects=model_custom_objects[m])
