@@ -62,13 +62,10 @@ def predict_ordinal(classifiers, X, k):
 
     # Calculate the actual class label probabilities.
     p = np.zeros((n, k))  # (n * b, k)
-    for i in range(k):
-        if i == 0:
-            p[:, i] = 1 - ordinal_p[:, 0]
-        elif i == k - 1:
-            p[:, i] = ordinal_p[:, i - 1]
-        else:
-            p[:, i] = ordinal_p[:, i - 1] - ordinal_p[:, i]
+    p[:, 0] = 1 - ordinal_p[:, 0]
+    for i in range(1, k - 1):
+        p[:, i] = ordinal_p[:, i - 1] * (1 - ordinal_p[:, i])
+    p[:, k - 1] = ordinal_p[:, k - 2]
 
     # Choose the most likely class label.
     return np.argmax(p, axis=1)
