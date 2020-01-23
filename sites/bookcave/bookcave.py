@@ -1,4 +1,3 @@
-from io import open
 import os
 
 import numpy as np
@@ -242,32 +241,6 @@ def is_between(value, _min=None, _max=None):
     return True
 
 
-def get_book(asin, min_len=None, max_len=None):
-    path = os.path.join(folders.AMAZON_KINDLE_BOOK_PATH, '{}.txt'.format(asin))
-    if not os.path.exists(path):
-        return None
-
-    # Validate file length.
-    with open(path, 'r', encoding='utf-8') as fd:
-        book = fd.read()
-    if not is_between(len(book), min_len, max_len):
-        return None
-    return book
-
-
-def get_preview(asin, min_len=None, max_len=None):
-    path = os.path.join(folders.AMAZON_KINDLE_PREVIEW_PATH, '{}.txt'.format(asin))
-    if not os.path.exists(path):
-        return None
-
-    # Validate file length.
-    with open(path, 'r', encoding='utf-8') as fd:
-        preview = fd.read()
-    if not is_between(len(preview), min_len, max_len):
-        return None
-    return preview
-
-
 def get_paragraphs(asin, min_len=None, max_len=None):
     path = os.path.join(folders.AMAZON_KINDLE_PARAGRAPHS_PATH, '{}.txt'.format(asin))
     if not os.path.exists(path):
@@ -323,10 +296,6 @@ def get_sentence_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_t
 
 
 def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None):
-    if source == 'book':
-        return get_book(asin, min_len, max_len)
-    if source == 'preview':
-        return get_preview(asin, min_len, max_len)
     if source == 'paragraphs':
         return get_paragraphs(asin, min_len, max_len)
     if source == 'paragraph_tokens':
@@ -359,15 +328,13 @@ def get_data(
         verbose=False):
     """
     Retrieve text with corresponding labels for books in the BookCave database.
-    :param sources: set of str {'book', 'preview', 'paragraphs', 'paragraph_tokens', 'sentence_tokens'}
+    :param sources: set of str {'paragraphs', 'paragraph_tokens', 'sentence_tokens'}
         The type(s) of text to be retrieved.
-        When 'book', the entire raw book texts will be returned.
-        When 'preview', the first few chapters of books will be returned.
         When 'paragraphs', the sections and paragraphs will be returned (as tuples).
         When 'paragraph_tokens', the tokens for each paragraph will be returned.
         When 'sentence_tokens', the tokens for each sentence for each paragraph will be returned.
     :param only_ids: iterable of str, optional
-        Filter the returned books by a set
+        Filter the returned books by a set.
     :param subset_ratio: float, optional
         Used to specify that only a subset of the data should be returned.
         Ignored when `only_ids` is provided.

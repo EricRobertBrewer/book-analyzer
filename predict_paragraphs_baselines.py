@@ -13,7 +13,8 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import train_test_split
 
-from classification import baselines, data_utils, evaluation, shared_parameters
+from classification import data_utils, evaluation, shared_parameters
+import baselines
 import folders
 import predict_paragraphs
 from sites.bookcave import bookcave
