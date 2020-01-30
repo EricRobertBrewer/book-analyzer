@@ -2,7 +2,7 @@ import os
 
 from PIL import Image
 
-from sites.bookcave import bookcave
+import sites.bookcave.bookcave as bookcave
 
 
 def resize_image(path, size):
@@ -30,7 +30,8 @@ def resize_image(path, size):
 
 
 def main():
-    inputs, _, _, _ = bookcave.get_data({'images'}, images_source='cover')
+    images_size = None
+    inputs, Y, categories, levels = bookcave.get_data({"images"}, image_size=images_size)
     book_images = inputs['images']
     out_size = (512, 512)
     for images in book_images:

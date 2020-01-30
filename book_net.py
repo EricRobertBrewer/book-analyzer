@@ -214,11 +214,12 @@ def main(argv):
         max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
     else:
         raise ValueError('Unknown `source_mode`: {}'.format(source_mode))
-    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    subset_ratio = .002#shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = shared_parameters.DATA_CATEGORIES_MODE
     return_overall = shared_parameters.DATA_RETURN_OVERALL
+    #source = 'paragraphs'
     inputs, Y, categories, category_levels = \
         bookcave.get_data({source},
                           subset_ratio=subset_ratio,
@@ -228,6 +229,10 @@ def main(argv):
                           min_tokens=min_tokens,
                           categories_mode=categories_mode,
                           return_overall=return_overall)
+    #print("SOURCE")
+    print(source)
+    #print("IMNPUTS")
+    print(inputs)
     text_source_tokens = list(zip(*inputs[source]))[0]
     print('Retrieved {:d} texts.'.format(len(text_source_tokens)))
 

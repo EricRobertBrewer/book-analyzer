@@ -295,9 +295,11 @@ def get_sentence_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_t
     return all_sentence_tokens, section_ids, paragraph_ids
 
 
-def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None):
+def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None, image_size=None, images_source='cover'):
     if source == 'paragraphs':
         return get_paragraphs(asin, min_len, max_len)
+    if source == 'images':
+        return get_images(asin, images_source, size=image_size)
     if source == 'paragraph_tokens':
         return get_paragraph_tokens(asin, min_len, max_len, min_tokens, max_tokens)
     if source == 'sentence_tokens':
@@ -325,7 +327,9 @@ def get_data(
         return_overall=True,
         combine_ratings='max',
         return_meta=False,
-        verbose=False):
+        verbose=False,
+        image_size=None,
+        images_source='cover'):
     """
     Retrieve text with corresponding labels for books in the BookCave database.
     :param sources: set of str {'paragraphs', 'paragraph_tokens', 'sentence_tokens'}
@@ -409,17 +413,25 @@ def get_data(
     for source in sources:
         inputs[source] = []
     book_id_set = set()
+    i = 0
     for _, rated_book_row in rated_books_df.iterrows():
         # Skip books without a known ASIN.
         asin = rated_book_row['asin']
+
         if asin is None:
             continue
+
+        i += 1
+
+        #if i > 2000:
+         #   continue
+
 
         # Ensure that all selected sources exist.
         has_all_sources = True
         book_inputs = dict()
         for source in sources:
-            book_input = get_input(source, asin, min_len, max_len, min_tokens, max_tokens)
+            book_input = get_input(source, asin, min_len, max_len, min_tokens, max_tokens, image_size, images_source)
             if book_input is None:
                 has_all_sources = False
                 break
@@ -545,7 +557,7 @@ def get_images(
         return None
 
     # Skip books whose content has not yet been scraped.
-    folder = os.path.join(folders.AMAZON_KINDLE_IMAGES_PATH, asin)
+    folder = os.path.join(folders.AMAZON_KINDLE_IMAGES_PATH,'{}'.format(asin))
     if not os.path.exists(folder):
         return None
 
