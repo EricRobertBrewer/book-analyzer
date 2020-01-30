@@ -91,9 +91,9 @@ def main():
     Y_pred_transpose_ordinal = model.predict(X_test)
 
     # Convert the ordinal one-hot encoding back to discrete labels.
-    Y_pred_transpose = np.array([from_one_hot_ordinal(y_pred_transpose_ordinal)
+    Y_pred = np.array([from_one_hot_ordinal(y_pred_transpose_ordinal)
                                  for y_pred_transpose_ordinal in Y_pred_transpose_ordinal])
-    Y_pred = Y_pred_transpose.transpose(1, 0)
+    #Y_pred = Y_pred_transpose.transpose(1, 0)
 
     for category_index, category in enumerate(categories):
         print('`{}`:'.format(category))
