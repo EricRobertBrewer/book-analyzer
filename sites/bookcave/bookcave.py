@@ -295,9 +295,11 @@ def get_sentence_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_t
     return all_sentence_tokens, section_ids, paragraph_ids
 
 
-def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None):
+def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None, image_size=None, images_source='cover'):
     if source == 'paragraphs':
         return get_paragraphs(asin, min_len, max_len)
+    if source == 'images':
+        return get_images(asin, images_source, size=image_size)
     if source == 'paragraph_tokens':
         return get_paragraph_tokens(asin, min_len, max_len, min_tokens, max_tokens)
     if source == 'sentence_tokens':
@@ -325,12 +327,15 @@ def get_data(
         return_overall=True,
         combine_ratings='max',
         return_meta=False,
-        verbose=False):
+        verbose=False,
+        image_size=None,
+        images_source='cover'):
     """
-    Retrieve text with corresponding labels for books in the BookCave database.
-    :param sources: set of str {'paragraphs', 'paragraph_tokens', 'sentence_tokens'}
-        The type(s) of text to be retrieved.
+    Retrieve text and/or images with corresponding labels for books in the BookCave database.
+    :param sources: set of str {'paragraphs', 'images', 'paragraph_tokens', 'sentence_tokens'}
+        The type(s) of media to be retrieved.
         When 'paragraphs', the sections and paragraphs will be returned (as tuples).
+        When 'images', cover images will be returned.
         When 'paragraph_tokens', the tokens for each paragraph will be returned.
         When 'sentence_tokens', the tokens for each sentence for each paragraph will be returned.
     :param only_ids: iterable of str, optional
@@ -341,11 +346,9 @@ def get_data(
     :param subset_seed: integer, optional
         Used to seed the random subset.
     :param min_len: int, optional
-        When `source` is 'book' or 'preview', this is the minimum file length of text files that will be returned.
         When `source` is 'paragraphs' or 'paragraph_tokens', this is the minimum number of paragraphs in each text.
         When `source` is 'sentence_tokens', this is the minimum number of sentences in each text.
     :param max_len: int, optional
-        When `source` is 'book' or 'preview', this is the maximum file length of text files that will be returned.
         When `source` is 'paragraphs' or 'paragraph_tokens', this is the maximum number of paragraphs in each text.
         When `source` is 'sentence_tokens', this is the maximum number of sentences in each text.
     :param min_tokens: int, optional
@@ -372,7 +375,7 @@ def get_data(
         When `True`, function progress will be printed to the console.
     :return:
         Always:
-            inputs (dict):                  A dict containing raw texts, section/section-paragraph tuples,
+            inputs (dict):                  A dict containing images, section/section-paragraph tuples,
                                                 section-paragraph-token lists,
                                                 or section-paragraph-sentence-token lists of books.
             Y (np.ndarray):                 Level (label) for the corresponding text/images in up to 8 categories.
@@ -419,7 +422,7 @@ def get_data(
         has_all_sources = True
         book_inputs = dict()
         for source in sources:
-            book_input = get_input(source, asin, min_len, max_len, min_tokens, max_tokens)
+            book_input = get_input(source, asin, min_len, max_len, min_tokens, max_tokens, image_size, images_source)
             if book_input is None:
                 has_all_sources = False
                 break
@@ -545,7 +548,7 @@ def get_images(
         return None
 
     # Skip books whose content has not yet been scraped.
-    folder = os.path.join(folders.AMAZON_KINDLE_IMAGES_PATH, asin)
+    folder = os.path.join(folders.AMAZON_KINDLE_IMAGES_PATH,'{}'.format(asin))
     if not os.path.exists(folder):
         return None
 
