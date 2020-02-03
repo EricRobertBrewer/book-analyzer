@@ -14,8 +14,7 @@ CATEGORY_INDEX_PROFANITY = 3
 CATEGORY_INDEX_NUDITY = 4
 CATEGORY_INDEX_SEX_AND_INTIMACY = 5
 CATEGORY_INDEX_VIOLENCE_AND_HORROR = 6
-CATEGORY_INDEX_GAY_LESBIAN_CHARACTERS = 7
-CATEGORY_INDEX_OVERALL = 8
+CATEGORY_INDEX_OVERALL = 7
 CATEGORIES = [
     'crude_humor_language',
     'drug_alcohol_tobacco_use',
@@ -24,7 +23,6 @@ CATEGORIES = [
     'nudity',
     'sex_and_intimacy',
     'violence_and_horror',
-    'gay_lesbian_characters',
     'overall'
 ]
 CATEGORY_NAMES = {
@@ -35,7 +33,6 @@ CATEGORY_NAMES = {
     'nudity': 'Nudity',
     'sex_and_intimacy': 'Sex and Intimacy',
     'violence_and_horror': 'Violence and Horror',
-    'gay_lesbian_characters': 'Gay/Lesbian Characters',
     'overall': 'Overall'
 }
 CATEGORY_LEVELS = {
@@ -72,10 +69,6 @@ CATEGORY_LEVELS = {
         'Mild (nonsexual) violence or horror|Some violence or horror',
         'Moderate violence or horror',
         'Graphic violence or horror|Extended gruesome and depraved violence or horror'
-    ], [
-        'None',
-        'Minor gay/lesbian characters or elements',
-        'Prominent gay/lesbian character(s)'
     ], [
         'All Ages',
         'Mild',
@@ -126,10 +119,6 @@ CATEGORY_LEVELS = {
         'Moderate violence or horror',
         'Graphic violence or horror',
         'Extended gruesome and depraved violence or horror'
-    ], [
-        'None',
-        'Minor gay/lesbian characters or elements',
-        'Prominent gay/lesbian character(s)'
     ], [
         'All Ages',
         'Mild',
@@ -187,10 +176,6 @@ CATEGORY_LEVELS = {
         'Moderate violence or horror',
         'Graphic violence or horror',
         'Extended gruesome and depraved violence or horror'
-    ], [
-        'None',
-        'Minor gay/lesbian characters or elements',
-        'Prominent gay/lesbian character(s)'
     ], [
         'All Ages',
         'Mild',
@@ -373,12 +358,16 @@ def get_data(
         When `True`, all meta data will be returned.
     :param verbose: boolean, default False
         When `True`, function progress will be printed to the console.
+    :param image_size: int or None, default None
+        The size of returned images.
+    :param images_source: str, default 'cover'
+        The kinds of images to be returned.
     :return:
         Always:
             inputs (dict):                  A dict containing images, section/section-paragraph tuples,
                                                 section-paragraph-token lists,
                                                 or section-paragraph-sentence-token lists of books.
-            Y (np.ndarray):                 Level (label) for the corresponding text/images in up to 8 categories.
+            Y (np.ndarray):                 Level (label) for the corresponding text/images in up to 7 categories.
             categories ([str]):             Names of categories.
             category_levels ([[str]]):      Names of levels per category.
         Only when `return_meta` is set to `True`:
@@ -459,30 +448,20 @@ def get_data(
         categories = CATEGORIES[:CATEGORY_INDEX_OVERALL]
         category_levels = CATEGORY_LEVELS[categories_mode][:CATEGORY_INDEX_OVERALL]
 
-    # Map each level name (and parts of the level name, i.e., between bars `|`) to its index within its own category.
-    # The full level name (including bars `|`) are necessary when iterating through the category DataFrame.
-    # The parts are necessary when iterating through the rating levels DataFrame.
-    category_level_to_index = []
-    for j in range(len(categories)):
-        level_to_index = dict()
-        for index, level in enumerate(category_levels[j]):
-            level_to_index[level] = index
-            for level_part in level.split(LEVEL_SPLIT):
-                level_to_index[level_part] = index
-        category_level_to_index.append(level_to_index)
-
-    # Map each level name part to its category index.
-    # The full level name isn't necessary because we don't use this map when iterating through the category DataFrame,
-    # since the category is already included there.
-    level_to_category_index = dict()
+    # Map each level name to its category and level indices.
+    level_to_category_level_indices = dict()
     for j, levels in enumerate(category_levels):
-        if j == CATEGORY_INDEX_OVERALL:
-            continue
-        for level in levels:
-            if level == 'None':
-                continue
-            for level_part in level.split(LEVEL_SPLIT):
-                level_to_category_index[level_part] = j
+        for level_index, level in enumerate(levels):
+            for part in level.split(LEVEL_SPLIT):
+                if part == 'None':
+                    continue
+                level_to_category_level_indices[part] = (j, level_index)
+
+    # Whitelist level names which still exist in the data base, but which we're no longer using.
+    deleted_levels = {
+        'Minor gay/lesbian characters or elements',
+        'Prominent gay/lesbian character(s)'
+    }
 
     # Populate Y by reading from the rating levels DataFrame.
     if verbose:
@@ -491,20 +470,22 @@ def get_data(
         # For each book, take the maximum rating level in each category.
         Y = np.zeros((len(categories), len(book_ids)), dtype=np.int32)
         for _, level_row in levels_df.iterrows():
-            book_index = book_id_to_index[level_row['book_id']]
             level = level_row['title']
-            j = level_to_category_index[level]
-            level_index = category_level_to_index[j][level]
+            if level in deleted_levels:
+                continue
+            j, level_index = level_to_category_level_indices[level]
+            book_index = book_id_to_index[level_row['book_id']]
             Y[j, book_index] = max(Y[j, book_index], level_index)
     elif combine_ratings == 'avg ceil' or combine_ratings == 'avg floor':
         # For each category, calculate the average rating for each book.
         Y_cont = np.zeros((len(categories), len(book_ids)), dtype=np.float32)
         # First, add all levels together for each book.
         for _, level_row in levels_df.iterrows():
-            book_index = book_id_to_index[level_row['book_id']]
             level = level_row['title']
-            j = level_to_category_index[level]
-            level_index = category_level_to_index[j][level]
+            if level in deleted_levels:
+                continue
+            j, level_index = level_to_category_level_indices[level]
+            book_index = book_id_to_index[level_row['book_id']]
             Y_cont[j, book_index] += level_index * level_row['count']
         # Then calculate the average level for each book by dividing by the number of ratings for that book.
         for _, book_row in books_df.iterrows():
