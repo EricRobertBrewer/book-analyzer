@@ -1,5 +1,5 @@
+import argparse
 import os
-import sys
 import time
 
 import numpy as np
@@ -45,10 +45,8 @@ def create_source_rnn(net_params, x_p):
             GlobalMaxPooling1D()(x_p),
             GlobalAveragePooling1D()(x_p)
         ])  # (2c_p)
-    elif rnn_agg == 'max':
+    else:  # rnn_agg == 'max':
         x_p = GlobalMaxPooling1D()(x_p)  # (c_p)
-    else:
-        raise ValueError('Unknown `rnn_agg`: {}'.format(rnn_agg))
     return x_p
 
 
@@ -114,13 +112,11 @@ def create_model(
         x_p = create_source_rnn(net_params, x_p)
     elif net_mode == 'cnn':
         x_p = create_source_cnn(n_tokens, d, net_params, x_p)
-    elif net_mode == 'rnncnn':
+    else:  # net_mode == 'rnncnn':
         x_p = Concatenate()([
             create_source_rnn(net_params, x_p),
             create_source_cnn(n_tokens, d, net_params, x_p)
         ])
-    else:
-        raise ValueError('Unknown `net_mode`: {}'.format(net_mode))
     source_encoder = Model(input_p, x_p)  # (m_p); constant per configuration
 
     # Consider signals among all sources of books.
@@ -136,7 +132,7 @@ def create_model(
         x_b = GlobalMaxPooling1D()(x_b)  # (m_p)
     elif agg_mode == 'avg':
         x_b = GlobalAveragePooling1D()(x_b)  # (m_p)
-    elif agg_mode == 'rnn':
+    else:  # agg_mode == 'rnn':
         agg_rnn = agg_params['rnn']
         agg_rnn_units = agg_params['rnn_units']
         agg_rnn_l2 = regularizers.l2(agg_params['rnn_l2']) if agg_params['rnn_l2'] is not None else None
@@ -144,8 +140,6 @@ def create_model(
                                     kernel_regularizer=agg_rnn_l2,
                                     return_sequences=False),
                             merge_mode='concat')(x_b)  # (2h_b)
-    else:
-        raise ValueError('Unknown `agg_mode`: {}'.format(agg_mode))
     if normal_agg:
         x_b = Activation('softmax')(x_b)
     if book_dense_l2 is not None:
@@ -164,10 +158,8 @@ def create_model(
         outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
     elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
-    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
+    else:  # label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
-    else:
-        raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
     return Model(inputs, outputs)
 
 
@@ -175,21 +167,54 @@ def identity(v):
     return v
 
 
-def main(argv):
-    if len(argv) < 7 or len(argv) > 8:
-        raise ValueError('Usage: <source_mode> <net_mode> <agg_mode> <label_mode> <category_index> <steps_per_epoch> <epochs> [note]')
-    source_mode = argv[0]
-    net_mode = argv[1]
-    agg_mode = argv[2]
-    label_mode = argv[3]
-    category_index = int(argv[4])
-    steps_per_epoch = int(argv[5])
-    epochs = int(argv[6])
-    note = None
-    if len(argv) > 7:
-        note = argv[7]
+def main():
+    parser = argparse.ArgumentParser(
+        description='BookNet is a neural network classifier used to determine the maturity level of books.'
+    )
+    parser.add_argument('--source_mode',
+                        default='paragraph',
+                        choices={'paragraph', 'sentence'},
+                        help='The source of text.`')
+    parser.add_argument('--net_mode',
+                        default='cnn',
+                        choices={'rnn', 'cnn', 'rnncnn'},
+                        help='The type of neural network.')
+    parser.add_argument('--agg_mode',
+                        default='maxavg',
+                        choices={'max', 'avg', 'maxavg', 'rnn'},
+                        help='The way the network will aggregate paragraphs or sentences.')
+    parser.add_argument('--label_mode',
+                        default=shared_parameters.LABEL_MODE_ORDINAL,
+                        choices={shared_parameters.LABEL_MODE_ORDINAL,
+                                 shared_parameters.LABEL_MODE_CATEGORICAL,
+                                 shared_parameters.LABEL_MODE_REGRESSION},
+                        help='The way that labels will be interpreted.')
+    parser.add_argument('--balance_mode',
+                        choices={'reduce majority', 'sample union'},
+                        help='Balance the data set. Optional.')
+    parser.add_argument('--bag_mode',
+                        action='store_true',
+                        help='Option to add a 2-layer MLP using bag-of-words representations of texts. Optional.')
+    parser.add_argument('--use_class_weights',
+                        action='store_true',
+                        help='Option to use a weighted loss function for imbalanced data.')
+    parser.add_argument('--category_index',
+                        default=-1,
+                        type=int,
+                        help='The index of the category that should be classified, or `-1` to classify all categories.')
+    parser.add_argument('--steps_per_epoch',
+                        default=0,
+                        type=int,
+                        help='Number of books to train on per epoch, or 0 to train on all books every epoch.')
+    parser.add_argument('--epochs',
+                        default=1,
+                        type=int,
+                        help='Epochs.')
+    parser.add_argument('--note',
+                        help='An optional note that will be appended to the names of generated files.')
+    args = parser.parse_args()
 
-    classifier_name = '{}_{}_{}_{}'.format(source_mode, net_mode, agg_mode, label_mode)
+    classifier_name = '{}_{}_{}_{}'.format(args.source_mode, args.net_mode, args.agg_mode, args.label_mode)
 
     start_time = int(time.time())
     if 'SLURM_JOB_ID' in os.environ:
@@ -197,24 +222,22 @@ def main(argv):
     else:
         stamp = start_time
     print('Time stamp: {:d}'.format(stamp))
-    if note is not None:
-        print('Note: {}'.format(note))
-        base_fname = '{:d}_{}'.format(stamp, note)
+    if args.note is not None:
+        print('Note: {}'.format(args.note))
+        base_fname = '{:d}_{}'.format(stamp, args.note)
     else:
         base_fname = format(stamp, 'd')
 
     # Load data.
     print('Retrieving texts...')
-    if source_mode == 'paragraph':
+    if args.source_mode == 'paragraph':
         source = 'paragraph_tokens'
         min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
         max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
-    elif source_mode == 'sentence':
+    else:  # args.source_mode == 'sentence':
         source = 'sentence_tokens'
         min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
         max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
-    else:
-        raise ValueError('Unknown `source_mode`: {}'.format(source_mode))
     subset_ratio = shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
     min_tokens = shared_parameters.DATA_MIN_TOKENS
@@ -233,32 +256,29 @@ def main(argv):
     print('Retrieved {:d} texts.'.format(len(text_source_tokens)))
 
     # Reduce labels to the specified category, if needed.
-    if category_index != -1:
-        Y = np.array([Y[category_index]])
-        categories = [categories[category_index]]
-        category_levels = [category_levels[category_index]]
+    if args.category_index != -1:
+        Y = np.array([Y[args.category_index]])
+        categories = [categories[args.category_index]]
+        category_levels = [category_levels[args.category_index]]
 
     # Balance data set, if needed.
-    balance_mode = None
     balance_majority_tolerance = 6
     balance_sample_seed = 1
-    if balance_mode is not None:
+    if args.balance_mode is not None:
         index_set = set()
-        if balance_mode == 'reduce majority':
+        if args.balance_mode == 'reduce majority':
             majority_indices = data_utils.get_majority_indices(Y,
                                                                minlengths=[len(category_levels[j])
                                                                            for j in range(len(category_levels))],
                                                                tolerance=balance_majority_tolerance)
             index_set.update(set(np.arange(len(text_source_tokens))) - set(majority_indices))
-        elif balance_mode == 'sample union':
+        else:  # args.balance_mode == 'sample union':
             category_balanced_indices = [data_utils.get_balanced_indices_sample(y,
                                                                                 minlength=len(category_levels[j]),
                                                                                 seed=balance_sample_seed)
                                          for j, y in enumerate(Y)]
             for indices in category_balanced_indices:
                 index_set.update(set(indices))
-        else:
-            raise ValueError('Unknown `balance_mode`: {}'.format(balance_mode))
         text_source_tokens = [source_tokens for i, source_tokens in enumerate(text_source_tokens) if i in index_set]
         Y_T = Y.transpose()
         Y_T = np.array([instance for i, instance in enumerate(Y_T) if i in index_set])
@@ -278,12 +298,10 @@ def main(argv):
 
     # Convert to sequences.
     print('Converting texts to sequences...')
-    if source_mode == 'paragraph':
+    if args.source_mode == 'paragraph':
         n_tokens = shared_parameters.TEXT_N_PARAGRAPH_TOKENS
-    elif source_mode == 'sentence':
+    else:  # args.source_mode == 'sentence':
         n_tokens = shared_parameters.TEXT_N_SENTENCE_TOKENS
-    else:
-        raise ValueError('Unknown `source_mode`: {}'.format(source_mode))
     padding = shared_parameters.TEXT_PADDING
     truncating = shared_parameters.TEXT_TRUNCATING
     X = [np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in source_tokens]),
@@ -300,8 +318,7 @@ def main(argv):
     print('Done.')
 
     # Add a 2-layer MLP, if needed.
-    bag_mode = False
-    if bag_mode:
+    if args.bag_mode:
         # Create vectorized representations of the book texts.
         print('Vectorizing text...')
         vectorizer = TfidfVectorizer(
@@ -328,7 +345,7 @@ def main(argv):
     category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
     net_params = dict()
-    if net_mode == 'rnn' or net_mode == 'rnncnn':
+    if args.net_mode == 'rnn' or args.net_mode == 'rnncnn':
         net_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
         net_params['rnn_units'] = 128
         net_params['rnn_l2'] = .01
@@ -336,31 +353,29 @@ def main(argv):
         net_params['rnn_dense_activation'] = 'elu'
         net_params['rnn_dense_l2'] = .01
         net_params['rnn_agg'] = 'attention'
-    if net_mode == 'cnn' or net_mode == 'rnncnn':
+    if args.net_mode == 'cnn' or args.net_mode == 'rnncnn':
         net_params['cnn_filters'] = 16
         net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
         net_params['cnn_activation'] = 'elu'
         net_params['cnn_l2'] = .01
     paragraph_dropout = .5
     agg_params = dict()
-    if agg_mode == 'maxavg':
+    if args.agg_mode == 'maxavg':
         pass
-    elif agg_mode == 'max':
+    elif args.agg_mode == 'max':
         pass
-    elif agg_mode == 'avg':
+    elif args.agg_mode == 'avg':
         pass
-    elif agg_mode == 'rnn':
+    else:  # args.agg_mode == 'rnn':
         agg_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
         agg_params['rnn_units'] = 64
         agg_params['rnn_l2'] = .01
-    else:
-        raise ValueError('Unknown `agg_mode`: {}'.format(agg_mode))
     normal_agg = True
     book_dense_units = 128
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
     bag_params = dict()
-    if bag_mode:
+    if args.bag_mode:
         bag_params['max_words'] = max_words
         bag_params['dense_1_units'] = 256
         bag_params['dense_1_activation'] = tf.keras.layers.LeakyReLU(alpha=.1)
@@ -371,24 +386,22 @@ def main(argv):
     book_dropout = .5
     model = create_model(
         n_tokens, embedding_matrix, embedding_trainable,
-        net_mode, net_params,
-        paragraph_dropout, agg_mode, agg_params, normal_agg,
+        args.net_mode, net_params,
+        paragraph_dropout, args.agg_mode, agg_params, normal_agg,
         book_dense_units, book_dense_activation, book_dense_l2,
-        bag_mode, bag_params,
-        book_dropout, category_k, categories, label_mode)
+        args.bag_mode, bag_params,
+        book_dropout, category_k, categories, args.label_mode)
     lr = 2**-16
     optimizer = Adam(lr=lr)
-    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
+    if args.label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         loss = 'binary_crossentropy'
         metric = 'binary_accuracy'
-    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
+    elif args.label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         loss = 'categorical_crossentropy'
         metric = 'categorical_accuracy'
-    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
+    else:  # args.label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         loss = 'mse'
         metric = 'accuracy'
-    else:
-        raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
     model.compile(optimizer, loss=loss, metrics=[metric])
     print('Done.')
 
@@ -412,47 +425,39 @@ def main(argv):
     Y_test = Y_test_T.transpose()  # (c, n * b)
 
     # Transform labels based on the label mode.
-    Y_train = shared_parameters.transform_labels(Y_train, category_k, label_mode)
-    Y_val = shared_parameters.transform_labels(Y_val, category_k, label_mode)
+    Y_train = shared_parameters.transform_labels(Y_train, category_k, args.label_mode)
+    Y_val = shared_parameters.transform_labels(Y_val, category_k, args.label_mode)
 
     # Calculate class weights.
-    use_class_weights = True
     class_weight_f = 'square inverse'
-    if use_class_weights:
-        category_class_weights = shared_parameters.get_category_class_weights(Y_train, label_mode, f=class_weight_f)
+    if args.use_class_weights:
+        category_class_weights = shared_parameters.get_category_class_weights(Y_train, args.label_mode, f=class_weight_f)
     else:
         category_class_weights = None
 
     # Create generators.
-    shuffle = True
-    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, X_w=X_w_train, shuffle=shuffle)
+    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, X_w=X_w_train, shuffle=True)
     val_generator = SingleInstanceBatchGenerator(X_val, Y_val, X_w=X_w_val, shuffle=False)
     test_generator = SingleInstanceBatchGenerator(X_test, Y_test, X_w=X_w_test, shuffle=False)
 
     # Train.
     plateau_monitor = 'val_loss'
     plateau_factor = .5
-    if net_mode == 'rnn' or net_mode == 'rnncnn':
-        plateau_patience = 3
-    elif net_mode == 'cnn':
-        plateau_patience = 6
-    else:
-        raise ValueError('Unknown `net_mode`: {}'.format(net_mode))
     early_stopping_monitor = 'val_loss'
     early_stopping_min_delta = 2**-10
-    if net_mode == 'rnn' or net_mode == 'rnncnn':
+    if args.net_mode == 'rnn' or args.net_mode == 'rnncnn':
+        plateau_patience = 3
         early_stopping_patience = 6
-    elif net_mode == 'cnn':
+    else:  # args.net_mode == 'cnn':
+        plateau_patience = 6
         early_stopping_patience = 12
-    else:
-        raise ValueError('Unknown `net_mode`: {}'.format(net_mode))
     callbacks = [
         ReduceLROnPlateau(monitor=plateau_monitor, factor=plateau_factor, patience=plateau_patience),
         EarlyStopping(monitor=early_stopping_monitor, min_delta=early_stopping_min_delta, patience=early_stopping_patience)
     ]
     history = model.fit_generator(train_generator,
-                                  steps_per_epoch=steps_per_epoch if steps_per_epoch > 0 else None,
-                                  epochs=epochs,
+                                  steps_per_epoch=args.steps_per_epoch if args.steps_per_epoch > 0 else None,
+                                  epochs=args.epochs,
                                   validation_data=val_generator,
                                   class_weight=category_class_weights,
                                   callbacks=callbacks)
@@ -473,16 +478,14 @@ def main(argv):
     # Predict test instances.
     print('Predicting test instances...')
     Y_pred = model.predict_generator(test_generator)
-    if category_index != -1:
+    if args.category_index != -1:
         Y_pred = [Y_pred]
-    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
+    if args.label_mode == shared_parameters.LABEL_MODE_ORDINAL:
         Y_pred = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_pred]
-    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
+    elif args.label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
         Y_pred = [np.argmax(y, axis=1) for y in Y_pred]
-    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
+    else:  # args.label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         Y_pred = [np.maximum(0, np.minimum(k - 1, np.round(Y_pred[i] * k))) for i, k in enumerate(category_k)]
-    else:
-        raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
     print('Done.')
 
     # Save model.
@@ -515,11 +518,11 @@ def main(argv):
     if not os.path.exists(logs_path):
         os.mkdir(logs_path)
     with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
-        if note is not None:
-            fd.write('{}\n\n'.format(note))
+        if args.note is not None:
+            fd.write('{}\n\n'.format(args.note))
         fd.write('PARAMETERS\n\n')
-        fd.write('steps_per_epoch={:d}\n'.format(steps_per_epoch))
-        fd.write('epochs={:d}\n'.format(epochs))
+        fd.write('steps_per_epoch={:d}\n'.format(args.steps_per_epoch))
+        fd.write('epochs={:d}\n'.format(args.epochs))
         fd.write('\nHYPERPARAMETERS\n')
         fd.write('\nText\n')
         fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
@@ -531,10 +534,10 @@ def main(argv):
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('return_overall={}\n'.format(return_overall))
         fd.write('\nResampling\n')
-        fd.write('balance_mode={}\n'.format(str(balance_mode)))
-        if balance_mode == 'reduce majority':
+        fd.write('balance_mode={}\n'.format(str(args.balance_mode)))
+        if args.balance_mode == 'reduce majority':
             fd.write('balance_majority_tolerance={:d}\n'.format(balance_majority_tolerance))
-        elif balance_mode == 'sample union':
+        elif args.balance_mode == 'sample union':
             fd.write('balance_split_seed={:d}\n'.format(balance_sample_seed))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
@@ -545,7 +548,7 @@ def main(argv):
         fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(embedding_trainable))
         fd.write('\nModel\n')
-        if net_mode == 'rnn' or net_mode == 'rnncnn':
+        if args.net_mode == 'rnn' or args.net_mode == 'rnncnn':
             fd.write('rnn={}\n'.format(net_params['rnn'].__name__))
             fd.write('rnn_units={:d}\n'.format(net_params['rnn_units']))
             fd.write('rnn_l2={}\n'.format(str(net_params['rnn_l2'])))
@@ -553,19 +556,19 @@ def main(argv):
             fd.write('rnn_dense_activation=\'{}\'\n'.format(net_params['rnn_dense_activation']))
             fd.write('rnn_dense_l2={}\n'.format(str(net_params['rnn_dense_l2'])))
             fd.write('rnn_agg={}\n'.format(net_params['rnn_agg']))
-        if net_mode == 'cnn' or net_mode == 'rnncnn':
+        if args.net_mode == 'cnn' or args.net_mode == 'rnncnn':
             fd.write('cnn_filters={:d}\n'.format(net_params['cnn_filters']))
             fd.write('cnn_filter_sizes={}\n'.format(str(net_params['cnn_filter_sizes'])))
             fd.write('cnn_activation=\'{}\'\n'.format(net_params['cnn_activation']))
             fd.write('cnn_l2={}\n'.format(str(net_params['cnn_l2'])))
-        if agg_mode == 'maxavg':
         fd.write('paragraph_dropout={:.1f}\n'.format(paragraph_dropout))
+        if args.agg_mode == 'maxavg':
             pass
-        elif agg_mode == 'max':
+        elif args.agg_mode == 'max':
             pass
-        elif agg_mode == 'avg':
+        elif args.agg_mode == 'avg':
             pass
-        elif agg_mode == 'rnn':
+        elif args.agg_mode == 'rnn':
             fd.write('agg_rnn={}\n'.format(agg_params['rnn'].__name__))
             fd.write('agg_rnn_units={:d}\n'.format(agg_params['rnn_units']))
             fd.write('agg_rnn_l2={}\n'.format(str(agg_params['rnn_l2'])))
@@ -574,8 +577,8 @@ def main(argv):
         fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__,
                                                         book_dense_activation.__dict__))
         fd.write('book_dense_l2={}\n'.format(str(book_dense_l2)))
-        fd.write('bag_mode={}\n'.format(bag_mode))
-        if bag_mode:
+        fd.write('bag_mode={}\n'.format(args.bag_mode))
+        if args.bag_mode:
             fd.write('dense_1_units={:d}\n'.format(bag_params['dense_1_units']))
             fd.write('dense_1_activation={} {}\n'.format(bag_params['dense_1_activation'].__class__.__name__,
                                                          bag_params['dense_1_activation'].__dict__))
@@ -595,10 +598,9 @@ def main(argv):
         fd.write('test_random_state={:d}\n'.format(test_random_state))
         fd.write('val_size={:.2f}\n'.format(val_size))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
-        fd.write('use_class_weights={}\n'.format(use_class_weights))
-        if use_class_weights:
+        fd.write('use_class_weights={}\n'.format(args.use_class_weights))
+        if args.use_class_weights:
             fd.write('class_weight_f={}\n'.format(class_weight_f))
-        fd.write('shuffle={}\n'.format(shuffle))
         fd.write('plateau_monitor={}\n'.format(plateau_monitor))
         fd.write('plateau_factor={}\n'.format(str(plateau_factor)))
         fd.write('plateau_patience={:d}\n'.format(plateau_patience))
@@ -615,7 +617,7 @@ def main(argv):
         else:
             fd.write('Model not saved.\n')
         fd.write('Time elapsed: {:d}h {:d}m {:d}s\n\n'.format(elapsed_h, elapsed_m, elapsed_s))
-        overall_last = category_index == -1 and return_overall
+        overall_last = args.category_index == -1 and return_overall
         evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=overall_last)
 
     if not os.path.exists(folders.PREDICTIONS_PATH):
@@ -630,4 +632,4 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    main()

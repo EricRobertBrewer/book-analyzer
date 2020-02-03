@@ -12,5 +12,4 @@ module load python/3.6
 module load tensorflow-gpu/1.9
 
 # Run.
-# Usage: <source_mode> <net_mode> <agg_mode> <label_mode> <category_index> <steps_per_epoch> <epochs> [note]
-python3 book_net.py paragraph rnn rnn ordinal -1 0 16 normalagg
+python3 book_net.py --source_mode paragraph --net_mode rnn --agg_mode rnn --label_mode ordinal --use_class_weights --category_index -1 --steps_per_epoch 0 --epochs 16 --note normalagg
