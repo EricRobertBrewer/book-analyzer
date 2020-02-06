@@ -17,4 +17,12 @@ java -mx4g -cp "*" edu.stanford.nlp.pipeline.StanfordCoreNLPServer -port 9000 -t
 
 4. Run `text/tokenize_texts.py`. Shut down the Stanford CoreNLP server.
 
-5. Classify!
+5. Classify locally using:
+```
+python3 -m python.classifiers.book_net
+```
+
+6. Classify on the Supercomputer using:
+```
+sbatch rc/net.sh
+``` 
