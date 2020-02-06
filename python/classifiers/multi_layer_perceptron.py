@@ -19,39 +19,6 @@ from python import folders
 from python.sites.bookcave import bookcave
 
 
-def identity(v):
-    return v
-
-
-def create_model(
-        max_words,
-        dense_1_units, dense_1_activation, dense_1_l2,
-        dense_2_units, dense_2_activation, dense_2_l2,
-        dropout, output_k, output_names, label_mode):
-    input_b = Input(shape=(max_words,), dtype='float32')
-    if dense_1_l2 is not None:
-        dense_1_l2 = regularizers.l2(dense_1_l2)
-    x_b = Dense(dense_1_units,
-                kernel_regularizer=dense_1_l2)(input_b)
-    x_b = dense_1_activation(x_b)  # (c_b)
-    if dense_2_l2 is not None:
-        dense_2_l2 = regularizers.l2(dense_2_l2)
-    x_b = Dense(dense_2_units,
-                kernel_regularizer=dense_2_l2)(x_b)
-    x_b = dense_2_activation(x_b)  # (c_b)
-    x_b = Dropout(dropout)(x_b)  # (c_b)
-    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
-        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
-    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
-        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
-    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
-        outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
-    else:
-        raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
-    model = Model(input_b, outputs)
-    return model
-
-
 def main(argv):
     if len(argv) < 3 or len(argv) > 4:
         raise ValueError('Usage: <batch_size> <steps_per_epoch> <epochs> [note]')
@@ -330,6 +297,39 @@ def main(argv):
         evaluation.write_predictions(Y_test, Y_pred, fd, categories)
 
     print('Done.')
+
+
+def identity(v):
+    return v
+
+
+def create_model(
+        max_words,
+        dense_1_units, dense_1_activation, dense_1_l2,
+        dense_2_units, dense_2_activation, dense_2_l2,
+        dropout, output_k, output_names, label_mode):
+    input_b = Input(shape=(max_words,), dtype='float32')
+    if dense_1_l2 is not None:
+        dense_1_l2 = regularizers.l2(dense_1_l2)
+    x_b = Dense(dense_1_units,
+                kernel_regularizer=dense_1_l2)(input_b)
+    x_b = dense_1_activation(x_b)  # (c_b)
+    if dense_2_l2 is not None:
+        dense_2_l2 = regularizers.l2(dense_2_l2)
+    x_b = Dense(dense_2_units,
+                kernel_regularizer=dense_2_l2)(x_b)
+    x_b = dense_2_activation(x_b)  # (c_b)
+    x_b = Dropout(dropout)(x_b)  # (c_b)
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
+        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
+        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
+        outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
+    else:
+        raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
+    model = Model(input_b, outputs)
+    return model
 
 
 if __name__ == '__main__':

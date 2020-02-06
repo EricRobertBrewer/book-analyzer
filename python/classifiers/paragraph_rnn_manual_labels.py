@@ -14,64 +14,6 @@ from python.sites.bookcave import bookcave
 from python.text import load_embeddings
 
 
-def get_input_array(sequence, n_tokens):
-    x = np.zeros((n_tokens,), dtype=np.int32)
-    if len(sequence) > n_tokens:
-        # Truncate center.
-        x[:n_tokens//2] = sequence[:n_tokens//2]
-        x[-n_tokens//2:] = sequence[-n_tokens//2:]
-    else:
-        # Pad beginning ('pre').
-        x[-len(sequence):] = sequence
-    return x
-
-
-def create_model(n_classes, n_tokens, embedding_matrix, hidden_size, dense_size, embedding_trainable=True):
-    inp = Input(shape=(n_tokens,))
-    x = Embedding(*embedding_matrix.shape, weights=[embedding_matrix], trainable=embedding_trainable)(inp)
-    x = Bidirectional(GRU(hidden_size, return_sequences=True, dropout=0.1, recurrent_dropout=0.1))(x)
-    x = GlobalMaxPool1D()(x)
-    x = Dense(dense_size, activation='relu')(x)
-    x = Dropout(0.5)(x)
-    # Each model outputs ordinal labels; thus, one less than the number of classes.
-    outs = [Dense(n - 1, activation='sigmoid')(x) for n in n_classes]
-    model = Model(inp, outs)
-
-    weights_fname = 'model_{:d}t_{:d}v_{:d}d_{:d}h_{:d}f{}.h5'.format(n_tokens,
-                                                                      embedding_matrix.shape[0],
-                                                                      embedding_matrix.shape[1],
-                                                                      hidden_size,
-                                                                      dense_size,
-                                                                      '' if embedding_trainable else '_static')
-
-    return model, weights_fname
-
-
-def predict_book_labels(model, X, locations, Y, get_label):
-    category_Q_pred_ordinal = model.predict(X)  # (C, m, k_c - 1)
-    category_Q_pred = [ordinal.from_multi_hot_ordinal(q_pred_ordinal)
-                       for q_pred_ordinal in category_Q_pred_ordinal]  # (C, m)
-    # Iterate over locations; calculate book label on text change or end.
-    Y_pred = np.zeros(Y.shape, dtype=np.int32)  # (C, m)
-    text_i = locations[0][0]
-    category_text_pred = [[] for _ in range(len(Y_pred))]
-    for location_i, location in enumerate(locations):
-        if location[0] != text_i:
-            # Calculate book labels.
-            labels = [get_label(text_pred) for text_pred in category_text_pred]
-            Y_pred[:, text_i] = labels
-            # Reset text counter and paragraph predictions.
-            text_i = location[0]
-            category_text_pred = [[] for _ in range(len(Y_pred))]
-        # Append paragraph predictions.
-        for category_i, q_pred in enumerate(category_Q_pred):
-            category_text_pred[category_i].append(q_pred[location_i])
-    # Calculate book labels for final book.
-    labels = [get_label(text_pred) for text_pred in category_text_pred]
-    Y_pred[:, text_i] = labels
-    return Y_pred
-
-
 def main():
     # Load data.
     if verbose:
@@ -234,6 +176,64 @@ def main():
         print('\nAll books for category `{}`:'.format(category))
         y, y_pred_all = Y[category_i], Y_pred_all[category_i]
         evaluation.print_metrics(y, y_pred_all)
+
+
+def get_input_array(sequence, n_tokens):
+    x = np.zeros((n_tokens,), dtype=np.int32)
+    if len(sequence) > n_tokens:
+        # Truncate center.
+        x[:n_tokens//2] = sequence[:n_tokens//2]
+        x[-n_tokens//2:] = sequence[-n_tokens//2:]
+    else:
+        # Pad beginning ('pre').
+        x[-len(sequence):] = sequence
+    return x
+
+
+def create_model(n_classes, n_tokens, embedding_matrix, hidden_size, dense_size, embedding_trainable=True):
+    inp = Input(shape=(n_tokens,))
+    x = Embedding(*embedding_matrix.shape, weights=[embedding_matrix], trainable=embedding_trainable)(inp)
+    x = Bidirectional(GRU(hidden_size, return_sequences=True, dropout=0.1, recurrent_dropout=0.1))(x)
+    x = GlobalMaxPool1D()(x)
+    x = Dense(dense_size, activation='relu')(x)
+    x = Dropout(0.5)(x)
+    # Each model outputs ordinal labels; thus, one less than the number of classes.
+    outs = [Dense(n - 1, activation='sigmoid')(x) for n in n_classes]
+    model = Model(inp, outs)
+
+    weights_fname = 'model_{:d}t_{:d}v_{:d}d_{:d}h_{:d}f{}.h5'.format(n_tokens,
+                                                                      embedding_matrix.shape[0],
+                                                                      embedding_matrix.shape[1],
+                                                                      hidden_size,
+                                                                      dense_size,
+                                                                      '' if embedding_trainable else '_static')
+
+    return model, weights_fname
+
+
+def predict_book_labels(model, X, locations, Y, get_label):
+    category_Q_pred_ordinal = model.predict(X)  # (C, m, k_c - 1)
+    category_Q_pred = [ordinal.from_multi_hot_ordinal(q_pred_ordinal)
+                       for q_pred_ordinal in category_Q_pred_ordinal]  # (C, m)
+    # Iterate over locations; calculate book label on text change or end.
+    Y_pred = np.zeros(Y.shape, dtype=np.int32)  # (C, m)
+    text_i = locations[0][0]
+    category_text_pred = [[] for _ in range(len(Y_pred))]
+    for location_i, location in enumerate(locations):
+        if location[0] != text_i:
+            # Calculate book labels.
+            labels = [get_label(text_pred) for text_pred in category_text_pred]
+            Y_pred[:, text_i] = labels
+            # Reset text counter and paragraph predictions.
+            text_i = location[0]
+            category_text_pred = [[] for _ in range(len(Y_pred))]
+        # Append paragraph predictions.
+        for category_i, q_pred in enumerate(category_Q_pred):
+            category_text_pred[category_i].append(q_pred[location_i])
+    # Calculate book labels for final book.
+    labels = [get_label(text_pred) for text_pred in category_text_pred]
+    Y_pred[:, text_i] = labels
+    return Y_pred
 
 
 if __name__ == '__main__':

@@ -8,49 +8,9 @@ from tensorflow.keras.preprocessing.text import Tokenizer
 
 from python.util import data_utils, evaluation, shared_parameters
 from python.util import ordinal
-from python.util import AttentionWithContext
+from python.util.net.attention_with_context import AttentionWithContext
 from python import folders
 from python.sites.bookcave import bookcave
-
-
-def get_input_sequence(source_tokens, tokenizer, n_tokens, padding='pre', truncating='pre', split='\t'):
-    return np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in source_tokens]),
-                                  maxlen=n_tokens,
-                                  padding=padding,
-                                  truncating=truncating))
-
-
-def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, category_indices=None):
-    # Predict.
-    Q_pred_ordinal = model.predict(P_predict)
-    Q_pred = [ordinal.from_multi_hot_ordinal(q, threshold=.5) for q in Q_pred_ordinal]
-
-    # Evaluate.
-    category_metrics = []
-    for j, category in enumerate(categories):
-        print()
-        print(category)
-        q_true = Q_true[j]
-        q_pred = Q_pred[j]
-        if category_indices is not None:
-            q_true = q_true[category_indices[j]]
-            q_pred = q_pred[category_indices[j]]
-        confusion, metrics = evaluation.get_confusion_and_metrics(q_true, q_pred)
-        print(confusion)
-        for i, metric_name in enumerate(evaluation.METRIC_NAMES):
-            print('{}: {:.4f}'.format(metric_name, metrics[i]))
-        category_metrics.append(metrics)
-
-    # Average.
-    print('\nAverage')
-    if overall_last:
-        n_average = len(category_metrics) - 1
-    else:
-        n_average = len(category_metrics)
-    metrics_avg = [sum([metrics[i] for metrics in category_metrics[:n_average]])/n_average
-                   for i in range(len(category_metrics[0]))]
-    for i, metric_name in enumerate(evaluation.METRIC_NAMES):
-        print('{}: {:.4f}'.format(metric_name, metrics_avg[i]))
 
 
 def main(argv):
@@ -150,6 +110,46 @@ def main(argv):
         evaluate_model(model, P_predict, Q_true, categories, overall_last=return_overall)
         print('\nBalanced')
         evaluate_model(model, P_predict, Q_true, categories, overall_last=return_overall, category_indices=category_balanced_indices)
+
+
+def get_input_sequence(source_tokens, tokenizer, n_tokens, padding='pre', truncating='pre', split='\t'):
+    return np.array(pad_sequences(tokenizer.texts_to_sequences([split.join(tokens) for tokens in source_tokens]),
+                                  maxlen=n_tokens,
+                                  padding=padding,
+                                  truncating=truncating))
+
+
+def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, category_indices=None):
+    # Predict.
+    Q_pred_ordinal = model.predict(P_predict)
+    Q_pred = [ordinal.from_multi_hot_ordinal(q, threshold=.5) for q in Q_pred_ordinal]
+
+    # Evaluate.
+    category_metrics = []
+    for j, category in enumerate(categories):
+        print()
+        print(category)
+        q_true = Q_true[j]
+        q_pred = Q_pred[j]
+        if category_indices is not None:
+            q_true = q_true[category_indices[j]]
+            q_pred = q_pred[category_indices[j]]
+        confusion, metrics = evaluation.get_confusion_and_metrics(q_true, q_pred)
+        print(confusion)
+        for i, metric_name in enumerate(evaluation.METRIC_NAMES):
+            print('{}: {:.4f}'.format(metric_name, metrics[i]))
+        category_metrics.append(metrics)
+
+    # Average.
+    print('\nAverage')
+    if overall_last:
+        n_average = len(category_metrics) - 1
+    else:
+        n_average = len(category_metrics)
+    metrics_avg = [sum([metrics[i] for metrics in category_metrics[:n_average]])/n_average
+                   for i in range(len(category_metrics[0]))]
+    for i, metric_name in enumerate(evaluation.METRIC_NAMES):
+        print('{}: {:.4f}'.format(metric_name, metrics_avg[i]))
 
 
 if __name__ == '__main__':

@@ -3,7 +3,9 @@ import sys
 import time
 
 import numpy as np
+# Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
 import tensorflow as tf
+from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.layers import Bidirectional, Concatenate, CuDNNGRU, Dense, Dropout, Embedding, \
     GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, TimeDistributed
@@ -12,82 +14,14 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.preprocessing.text import Tokenizer
 from tensorflow.keras import regularizers
-# Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
-from sklearn.model_selection import train_test_split
 
 from python.util import evaluation, shared_parameters
 from python.util import ordinal
-from python.util import AttentionWithContext
-from python.util import SingleInstanceBatchGenerator
+from python.util.net.attention_with_context import AttentionWithContext
+from python.util.net.batch_generators import SingleInstanceBatchGenerator
 from python import folders
 from python.sites.bookcave import bookcave
 from python.text import load_embeddings
-
-
-def create_model(
-        n_sentences, n_sentence_tokens, embedding_matrix, embedding_trainable,
-        sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
-        para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
-        book_dense_units, book_dense_activation, book_dense_l2,
-        book_dropout, output_k, output_names, label_mode):
-    # Sentence encoder.
-    input_s = Input(shape=(n_sentence_tokens,), dtype='float32')  # (t)
-    max_words, d = embedding_matrix.shape
-    x_s = Embedding(max_words,
-                    d,
-                    weights=[embedding_matrix],
-                    trainable=embedding_trainable)(input_s)  # (t, d)
-    if sent_rnn_l2 is not None:
-        sent_rnn_l2 = regularizers.l2(sent_rnn_l2)
-    x_s = Bidirectional(sent_rnn(sent_rnn_units,
-                                 kernel_regularizer=sent_rnn_l2,
-                                 return_sequences=True))(x_s)  # (2t, h_s)
-    if sent_dense_l2 is not None:
-        sent_dense_l2 = regularizers.l2(sent_dense_l2)
-    x_s = TimeDistributed(Dense(sent_dense_units,
-                                activation=sent_dense_activation,
-                                kernel_regularizer=sent_dense_l2))(x_s)  # (2t, c_s)
-    x_s = AttentionWithContext()(x_s)  # (c_s)
-    sentence_encoder = Model(input_s, x_s)
-
-    # Paragraph encoder.
-    input_p = Input(shape=(n_sentences, n_sentence_tokens), dtype='float32')  # (s, t)
-    x_p = TimeDistributed(sentence_encoder)(input_p)  # (s, c_s)
-    if para_rnn_l2 is not None:
-        para_rnn_l2 = regularizers.l2(para_rnn_l2)
-    x_p = Bidirectional(para_rnn(para_rnn_units,
-                                 kernel_regularizer=para_rnn_l2,
-                                 return_sequences=True))(x_p)  # (2s, h_p)
-    if para_dense_l2 is not None:
-        para_dense_l2 = regularizers.l2(para_dense_l2)
-    x_p = TimeDistributed(Dense(para_dense_units,
-                                activation=para_dense_activation,
-                                kernel_regularizer=para_dense_l2))(x_p)  # (2s, c_p)
-    x_p = AttentionWithContext()(x_p)  # (c_p)
-    paragraph_encoder = Model(input_p, x_p)
-
-    # Consider maximum and average signals among all paragraphs of books.
-    input_b = Input(shape=(None, n_sentences, n_sentence_tokens), dtype='float32')  # (p, s, t); p is not constant!
-    x_b = TimeDistributed(paragraph_encoder)(input_b)  # (p, c_p)
-    g_max_b = GlobalMaxPooling1D()(x_b)  # (c_p)
-    g_avg_b = GlobalAveragePooling1D()(x_b)  # (c_p)
-    x_b = Concatenate()([g_max_b, g_avg_b])  # (2c_p)
-    if book_dense_l2 is not None:
-        book_dense_l2 = regularizers.l2(book_dense_l2)
-    x_b = Dense(book_dense_units,
-                kernel_regularizer=book_dense_l2)(x_b)  # (c_b)
-    x_b = book_dense_activation(x_b)  # (c_b)
-    x_b = Dropout(book_dropout)(x_b)  # (c_b)
-    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
-        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
-    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
-        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
-    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
-        outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
-    else:
-        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
-    model = Model(input_b, outputs)
-    return sentence_encoder, paragraph_encoder, model
 
 
 def main(argv):
@@ -419,6 +353,72 @@ def main(argv):
         evaluation.write_predictions(Y_test, Y_pred, fd, categories)
 
     print('Done.')
+
+
+def create_model(
+        n_sentences, n_sentence_tokens, embedding_matrix, embedding_trainable,
+        sent_rnn, sent_rnn_units, sent_rnn_l2, sent_dense_units, sent_dense_activation, sent_dense_l2,
+        para_rnn, para_rnn_units, para_rnn_l2, para_dense_units, para_dense_activation, para_dense_l2,
+        book_dense_units, book_dense_activation, book_dense_l2,
+        book_dropout, output_k, output_names, label_mode):
+    # Sentence encoder.
+    input_s = Input(shape=(n_sentence_tokens,), dtype='float32')  # (t)
+    max_words, d = embedding_matrix.shape
+    x_s = Embedding(max_words,
+                    d,
+                    weights=[embedding_matrix],
+                    trainable=embedding_trainable)(input_s)  # (t, d)
+    if sent_rnn_l2 is not None:
+        sent_rnn_l2 = regularizers.l2(sent_rnn_l2)
+    x_s = Bidirectional(sent_rnn(sent_rnn_units,
+                                 kernel_regularizer=sent_rnn_l2,
+                                 return_sequences=True))(x_s)  # (2t, h_s)
+    if sent_dense_l2 is not None:
+        sent_dense_l2 = regularizers.l2(sent_dense_l2)
+    x_s = TimeDistributed(Dense(sent_dense_units,
+                                activation=sent_dense_activation,
+                                kernel_regularizer=sent_dense_l2))(x_s)  # (2t, c_s)
+    x_s = AttentionWithContext()(x_s)  # (c_s)
+    sentence_encoder = Model(input_s, x_s)
+
+    # Paragraph encoder.
+    input_p = Input(shape=(n_sentences, n_sentence_tokens), dtype='float32')  # (s, t)
+    x_p = TimeDistributed(sentence_encoder)(input_p)  # (s, c_s)
+    if para_rnn_l2 is not None:
+        para_rnn_l2 = regularizers.l2(para_rnn_l2)
+    x_p = Bidirectional(para_rnn(para_rnn_units,
+                                 kernel_regularizer=para_rnn_l2,
+                                 return_sequences=True))(x_p)  # (2s, h_p)
+    if para_dense_l2 is not None:
+        para_dense_l2 = regularizers.l2(para_dense_l2)
+    x_p = TimeDistributed(Dense(para_dense_units,
+                                activation=para_dense_activation,
+                                kernel_regularizer=para_dense_l2))(x_p)  # (2s, c_p)
+    x_p = AttentionWithContext()(x_p)  # (c_p)
+    paragraph_encoder = Model(input_p, x_p)
+
+    # Consider maximum and average signals among all paragraphs of books.
+    input_b = Input(shape=(None, n_sentences, n_sentence_tokens), dtype='float32')  # (p, s, t); p is not constant!
+    x_b = TimeDistributed(paragraph_encoder)(input_b)  # (p, c_p)
+    g_max_b = GlobalMaxPooling1D()(x_b)  # (c_p)
+    g_avg_b = GlobalAveragePooling1D()(x_b)  # (c_p)
+    x_b = Concatenate()([g_max_b, g_avg_b])  # (2c_p)
+    if book_dense_l2 is not None:
+        book_dense_l2 = regularizers.l2(book_dense_l2)
+    x_b = Dense(book_dense_units,
+                kernel_regularizer=book_dense_l2)(x_b)  # (c_b)
+    x_b = book_dense_activation(x_b)  # (c_b)
+    x_b = Dropout(book_dropout)(x_b)  # (c_b)
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
+        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
+        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+    elif label_mode == shared_parameters.LABEL_MODE_REGRESSION:
+        outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
+    else:
+        raise ValueError('Unknown value for `1abel_mode`: {}'.format(label_mode))
+    model = Model(input_b, outputs)
+    return sentence_encoder, paragraph_encoder, model
 
 
 if __name__ == '__main__':

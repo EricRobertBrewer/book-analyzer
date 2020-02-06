@@ -25,149 +25,6 @@ from python.util.net.attention_with_context import AttentionWithContext
 from python.util.net.batch_generators import SingleInstanceBatchGenerator
 
 
-def create_source_rnn(net_params, x_p):
-    rnn = net_params['rnn']
-    rnn_units = net_params['rnn_units']
-    rnn_l2 = regularizers.l2(net_params['rnn_l2']) if net_params['rnn_l2'] is not None else None
-    rnn_dense_units = net_params['rnn_dense_units']
-    rnn_dense_activation = net_params['rnn_dense_activation']
-    rnn_dense_l2 = regularizers.l2(net_params['rnn_dense_l2']) if net_params['rnn_dense_l2'] is not None else None
-    rnn_agg = net_params['rnn_agg']
-    x_p = Bidirectional(rnn(rnn_units,
-                            kernel_regularizer=rnn_l2,
-                            return_sequences=True))(x_p)  # (2T, h_p)
-    x_p = TimeDistributed(Dense(rnn_dense_units,
-                                activation=rnn_dense_activation,
-                                kernel_regularizer=rnn_dense_l2))(x_p)  # (2T, c_p)
-    if rnn_agg == 'attention':
-        x_p = AttentionWithContext()(x_p)  # (c_p)
-    elif rnn_agg == 'maxavg':
-        x_p = Concatenate()([
-            GlobalMaxPooling1D()(x_p),
-            GlobalAveragePooling1D()(x_p)
-        ])  # (2c_p)
-    else:  # rnn_agg == 'max':
-        x_p = GlobalMaxPooling1D()(x_p)  # (c_p)
-    return x_p
-
-
-def create_source_cnn(n_tokens, d, net_params, x_p):
-    cnn_filters = net_params['cnn_filters']
-    cnn_filter_sizes = net_params['cnn_filter_sizes']
-    cnn_activation = net_params['cnn_activation']
-    cnn_l2 = regularizers.l2(net_params['cnn_l2']) if net_params['cnn_l2'] is not None else None
-    x_p = Reshape((n_tokens, d, 1))(x_p)  # (T, d, 1)
-    X_p = [Conv2D(cnn_filters,
-                  (filter_size, d),
-                  strides=(1, 1),
-                  padding='valid',
-                  activation=cnn_activation,
-                  kernel_regularizer=cnn_l2)(x_p)
-           for filter_size in cnn_filter_sizes]  # [(T - z + 1, f)]; z = filter_size, f = filters
-    X_p = [MaxPool2D(pool_size=(n_tokens - cnn_filter_sizes[i] + 1, 1),
-                     strides=(1, 1),
-                     padding='valid')(x_p)
-           for i, x_p in enumerate(X_p)]  # [(f, 1)]
-    x_p = Concatenate(axis=1)(X_p)  # (f * |Z|); |Z| = length of filter_sizes
-    x_p = Flatten()(x_p)  # (f * |Z|)
-    return x_p
-
-
-def create_bag_mlp(bag_params):
-    max_words = bag_params['max_words']
-    dense_1_l2 = bag_params['dense_1_l2'] if bag_params['dense_1_l2'] is not None else None
-    dense_1_units = bag_params['dense_1_units']
-    dense_1_activation = bag_params['dense_1_activation']
-    dense_2_l2 = bag_params['dense_2_l2'] if bag_params['dense_2_l2'] is not None else None
-    dense_2_units = bag_params['dense_2_units']
-    dense_2_activation = bag_params['dense_2_activation']
-    input_w = Input(shape=(max_words,), dtype='float32')
-    if dense_1_l2 is not None:
-        dense_1_l2 = regularizers.l2(dense_1_l2)
-    x_w = Dense(dense_1_units,
-                kernel_regularizer=dense_1_l2)(input_w)
-    x_w = dense_1_activation(x_w)  # (c_w)
-    if dense_2_l2 is not None:
-        dense_2_l2 = regularizers.l2(dense_2_l2)
-    x_w = Dense(dense_2_units,
-                kernel_regularizer=dense_2_l2)(x_w)
-    x_w = dense_2_activation(x_w)  # (c_w)
-    return input_w, x_w
-
-
-def create_model(
-        n_tokens, embedding_matrix, embedding_trainable,
-        net_mode, net_params,
-        paragraph_dropout, agg_mode, agg_params, normal_agg,
-        book_dense_units, book_dense_activation, book_dense_l2,
-        bag_mode, bag_params,
-        book_dropout, output_k, output_names, label_mode):
-    # Source encoder.
-    input_p = Input(shape=(n_tokens,), dtype='float32')  # (T)
-    max_words, d = embedding_matrix.shape
-    x_p = Embedding(max_words,
-                    d,
-                    weights=[embedding_matrix],
-                    trainable=embedding_trainable)(input_p)  # (T, d)
-    if net_mode == 'rnn':
-        x_p = create_source_rnn(net_params, x_p)
-    elif net_mode == 'cnn':
-        x_p = create_source_cnn(n_tokens, d, net_params, x_p)
-    else:  # net_mode == 'rnncnn':
-        x_p = Concatenate()([
-            create_source_rnn(net_params, x_p),
-            create_source_cnn(n_tokens, d, net_params, x_p)
-        ])
-    source_encoder = Model(input_p, x_p)  # (m_p); constant per configuration
-
-    # Consider signals among all sources of books.
-    input_b = Input(shape=(None, n_tokens), dtype='float32')  # (P, T); P is not constant per instance!
-    x_b = Dropout(paragraph_dropout, noise_shape=(1, tf.shape(input_b)[1], 1))(input_b)  # (P, T)
-    x_b = TimeDistributed(source_encoder)(x_b)  # (P, m_p)
-    if agg_mode == 'maxavg':
-        x_b = Concatenate()([
-            GlobalMaxPooling1D()(x_b),
-            GlobalAveragePooling1D()(x_b)
-        ])  # (2m_p)
-    elif agg_mode == 'max':
-        x_b = GlobalMaxPooling1D()(x_b)  # (m_p)
-    elif agg_mode == 'avg':
-        x_b = GlobalAveragePooling1D()(x_b)  # (m_p)
-    else:  # agg_mode == 'rnn':
-        agg_rnn = agg_params['rnn']
-        agg_rnn_units = agg_params['rnn_units']
-        agg_rnn_l2 = regularizers.l2(agg_params['rnn_l2']) if agg_params['rnn_l2'] is not None else None
-        x_b = Bidirectional(agg_rnn(agg_rnn_units,
-                                    kernel_regularizer=agg_rnn_l2,
-                                    return_sequences=False),
-                            merge_mode='concat')(x_b)  # (2h_b)
-    if normal_agg:
-        x_b = Activation('softmax')(x_b)
-    if book_dense_l2 is not None:
-        book_dense_l2 = regularizers.l2(book_dense_l2)
-    x_b = Dense(book_dense_units,
-                kernel_regularizer=book_dense_l2)(x_b)  # (c_b)
-    x_b = book_dense_activation(x_b)  # (c_b)
-    if bag_mode:
-        input_w, x_w = create_bag_mlp(bag_params)
-        x_b = Concatenate()([x_b, x_w])
-        inputs = [input_b, input_w]
-    else:
-        inputs = [input_b]
-    x_b = Dropout(book_dropout)(x_b)  # (c_b)
-    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
-        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
-    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
-        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
-    else:  # label_mode == shared_parameters.LABEL_MODE_REGRESSION:
-        outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
-    return Model(inputs, outputs)
-
-
-def identity(v):
-    return v
-
-
 def main():
     parser = argparse.ArgumentParser(
         description='BookNet is a neural network classifier used to determine the maturity level of books.'
@@ -630,6 +487,149 @@ def main():
         evaluation.write_predictions(Y_test, Y_pred, fd, categories)
 
     print('Done.')
+
+
+def identity(v):
+    return v
+
+
+def create_model(
+        n_tokens, embedding_matrix, embedding_trainable,
+        net_mode, net_params,
+        paragraph_dropout, agg_mode, agg_params, normal_agg,
+        book_dense_units, book_dense_activation, book_dense_l2,
+        bag_mode, bag_params,
+        book_dropout, output_k, output_names, label_mode):
+    # Source encoder.
+    input_p = Input(shape=(n_tokens,), dtype='float32')  # (T)
+    max_words, d = embedding_matrix.shape
+    x_p = Embedding(max_words,
+                    d,
+                    weights=[embedding_matrix],
+                    trainable=embedding_trainable)(input_p)  # (T, d)
+    if net_mode == 'rnn':
+        x_p = create_source_rnn(net_params, x_p)
+    elif net_mode == 'cnn':
+        x_p = create_source_cnn(n_tokens, d, net_params, x_p)
+    else:  # net_mode == 'rnncnn':
+        x_p = Concatenate()([
+            create_source_rnn(net_params, x_p),
+            create_source_cnn(n_tokens, d, net_params, x_p)
+        ])
+    source_encoder = Model(input_p, x_p)  # (m_p); constant per configuration
+
+    # Consider signals among all sources of books.
+    input_b = Input(shape=(None, n_tokens), dtype='float32')  # (P, T); P is not constant per instance!
+    x_b = Dropout(paragraph_dropout, noise_shape=(1, tf.shape(input_b)[1], 1))(input_b)  # (P, T)
+    x_b = TimeDistributed(source_encoder)(x_b)  # (P, m_p)
+    if agg_mode == 'maxavg':
+        x_b = Concatenate()([
+            GlobalMaxPooling1D()(x_b),
+            GlobalAveragePooling1D()(x_b)
+        ])  # (2m_p)
+    elif agg_mode == 'max':
+        x_b = GlobalMaxPooling1D()(x_b)  # (m_p)
+    elif agg_mode == 'avg':
+        x_b = GlobalAveragePooling1D()(x_b)  # (m_p)
+    else:  # agg_mode == 'rnn':
+        agg_rnn = agg_params['rnn']
+        agg_rnn_units = agg_params['rnn_units']
+        agg_rnn_l2 = regularizers.l2(agg_params['rnn_l2']) if agg_params['rnn_l2'] is not None else None
+        x_b = Bidirectional(agg_rnn(agg_rnn_units,
+                                    kernel_regularizer=agg_rnn_l2,
+                                    return_sequences=False),
+                            merge_mode='concat')(x_b)  # (2h_b)
+    if normal_agg:
+        x_b = Activation('softmax')(x_b)
+    if book_dense_l2 is not None:
+        book_dense_l2 = regularizers.l2(book_dense_l2)
+    x_b = Dense(book_dense_units,
+                kernel_regularizer=book_dense_l2)(x_b)  # (c_b)
+    x_b = book_dense_activation(x_b)  # (c_b)
+    if bag_mode:
+        input_w, x_w = create_bag_mlp(bag_params)
+        x_b = Concatenate()([x_b, x_w])
+        inputs = [input_b, input_w]
+    else:
+        inputs = [input_b]
+    x_b = Dropout(book_dropout)(x_b)  # (c_b)
+    if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
+        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+    elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
+        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+    else:  # label_mode == shared_parameters.LABEL_MODE_REGRESSION:
+        outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
+    return Model(inputs, outputs)
+
+
+def create_source_rnn(net_params, x_p):
+    rnn = net_params['rnn']
+    rnn_units = net_params['rnn_units']
+    rnn_l2 = regularizers.l2(net_params['rnn_l2']) if net_params['rnn_l2'] is not None else None
+    rnn_dense_units = net_params['rnn_dense_units']
+    rnn_dense_activation = net_params['rnn_dense_activation']
+    rnn_dense_l2 = regularizers.l2(net_params['rnn_dense_l2']) if net_params['rnn_dense_l2'] is not None else None
+    rnn_agg = net_params['rnn_agg']
+    x_p = Bidirectional(rnn(rnn_units,
+                            kernel_regularizer=rnn_l2,
+                            return_sequences=True))(x_p)  # (2T, h_p)
+    x_p = TimeDistributed(Dense(rnn_dense_units,
+                                activation=rnn_dense_activation,
+                                kernel_regularizer=rnn_dense_l2))(x_p)  # (2T, c_p)
+    if rnn_agg == 'attention':
+        x_p = AttentionWithContext()(x_p)  # (c_p)
+    elif rnn_agg == 'maxavg':
+        x_p = Concatenate()([
+            GlobalMaxPooling1D()(x_p),
+            GlobalAveragePooling1D()(x_p)
+        ])  # (2c_p)
+    else:  # rnn_agg == 'max':
+        x_p = GlobalMaxPooling1D()(x_p)  # (c_p)
+    return x_p
+
+
+def create_source_cnn(n_tokens, d, net_params, x_p):
+    cnn_filters = net_params['cnn_filters']
+    cnn_filter_sizes = net_params['cnn_filter_sizes']
+    cnn_activation = net_params['cnn_activation']
+    cnn_l2 = regularizers.l2(net_params['cnn_l2']) if net_params['cnn_l2'] is not None else None
+    x_p = Reshape((n_tokens, d, 1))(x_p)  # (T, d, 1)
+    X_p = [Conv2D(cnn_filters,
+                  (filter_size, d),
+                  strides=(1, 1),
+                  padding='valid',
+                  activation=cnn_activation,
+                  kernel_regularizer=cnn_l2)(x_p)
+           for filter_size in cnn_filter_sizes]  # [(T - z + 1, f)]; z = filter_size, f = filters
+    X_p = [MaxPool2D(pool_size=(n_tokens - cnn_filter_sizes[i] + 1, 1),
+                     strides=(1, 1),
+                     padding='valid')(x_p)
+           for i, x_p in enumerate(X_p)]  # [(f, 1)]
+    x_p = Concatenate(axis=1)(X_p)  # (f * |Z|); |Z| = length of filter_sizes
+    x_p = Flatten()(x_p)  # (f * |Z|)
+    return x_p
+
+
+def create_bag_mlp(bag_params):
+    max_words = bag_params['max_words']
+    dense_1_l2 = bag_params['dense_1_l2'] if bag_params['dense_1_l2'] is not None else None
+    dense_1_units = bag_params['dense_1_units']
+    dense_1_activation = bag_params['dense_1_activation']
+    dense_2_l2 = bag_params['dense_2_l2'] if bag_params['dense_2_l2'] is not None else None
+    dense_2_units = bag_params['dense_2_units']
+    dense_2_activation = bag_params['dense_2_activation']
+    input_w = Input(shape=(max_words,), dtype='float32')
+    if dense_1_l2 is not None:
+        dense_1_l2 = regularizers.l2(dense_1_l2)
+    x_w = Dense(dense_1_units,
+                kernel_regularizer=dense_1_l2)(input_w)
+    x_w = dense_1_activation(x_w)  # (c_w)
+    if dense_2_l2 is not None:
+        dense_2_l2 = regularizers.l2(dense_2_l2)
+    x_w = Dense(dense_2_units,
+                kernel_regularizer=dense_2_l2)(x_w)
+    x_w = dense_2_activation(x_w)  # (c_w)
+    return input_w, x_w
 
 
 if __name__ == '__main__':

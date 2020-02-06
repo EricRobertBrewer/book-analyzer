@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 # Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
+import tensorflow as tf
 from sklearn.ensemble.forest import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -16,61 +17,6 @@ from python.util import evaluation, shared_parameters
 from python.util import ordinal
 from python import folders
 from python.sites.bookcave import bookcave
-
-
-def identity(v):
-    return v
-
-
-def create_k_nearest_neighbors():
-    return KNeighborsClassifier(n_neighbors=5, weights='distance', p=2, metric='minkowski')
-
-
-def create_logistic_regression():
-    return LogisticRegression(penalty='l2', solver='lbfgs', multi_class='ovr')
-
-
-def create_multinomial_naive_bayes():
-    return MultinomialNB(alpha=1.0, fit_prior=True)
-
-
-def create_random_forest():
-    return RandomForestClassifier(n_estimators=6, criterion='gini')
-
-
-def create_svm():
-    return LinearSVC()
-
-
-def fit_ordinal(create_func, X, y, k):
-    # Create and train a classifier for each ordinal index.
-    y_train_ordinal = ordinal.to_multi_hot_ordinal(y, k=k)  # (n * (1 - b), k - 1)
-    classifiers = [create_func() for _ in range(k - 1)]
-    for i, classifier in enumerate(classifiers):
-        classifier.fit(X, y_train_ordinal[:, i])
-    return classifiers
-
-
-def predict_ordinal(classifiers, X, k):
-    try:
-        n = len(X)
-    except TypeError:
-        n = X.shape[0]
-
-    # Calculate probabilities for derived data sets.
-    ordinal_p = np.zeros((n, k - 1))  # (n * b, k - 1)
-    for i, classifier in enumerate(classifiers):
-        ordinal_p[:, i] = classifier.predict(X)
-
-    # Calculate the actual class label probabilities.
-    p = np.zeros((n, k))  # (n * b, k)
-    p[:, 0] = 1 - ordinal_p[:, 0]
-    for i in range(1, k - 1):
-        p[:, i] = ordinal_p[:, i - 1] * (1 - ordinal_p[:, i])
-    p[:, k - 1] = ordinal_p[:, k - 2]
-
-    # Choose the most likely class label.
-    return np.argmax(p, axis=1)
 
 
 def main(argv):
@@ -204,6 +150,61 @@ def main(argv):
             evaluation.write_predictions(Y_test, Y_pred, fd, categories)
 
         print('Done.')
+
+
+def identity(v):
+    return v
+
+
+def create_k_nearest_neighbors():
+    return KNeighborsClassifier(n_neighbors=5, weights='distance', p=2, metric='minkowski')
+
+
+def create_logistic_regression():
+    return LogisticRegression(penalty='l2', solver='lbfgs', multi_class='ovr')
+
+
+def create_multinomial_naive_bayes():
+    return MultinomialNB(alpha=1.0, fit_prior=True)
+
+
+def create_random_forest():
+    return RandomForestClassifier(n_estimators=6, criterion='gini')
+
+
+def create_svm():
+    return LinearSVC()
+
+
+def fit_ordinal(create_func, X, y, k):
+    # Create and train a classifier for each ordinal index.
+    y_train_ordinal = ordinal.to_multi_hot_ordinal(y, k=k)  # (n * (1 - b), k - 1)
+    classifiers = [create_func() for _ in range(k - 1)]
+    for i, classifier in enumerate(classifiers):
+        classifier.fit(X, y_train_ordinal[:, i])
+    return classifiers
+
+
+def predict_ordinal(classifiers, X, k):
+    try:
+        n = len(X)
+    except TypeError:
+        n = X.shape[0]
+
+    # Calculate probabilities for derived data sets.
+    ordinal_p = np.zeros((n, k - 1))  # (n * b, k - 1)
+    for i, classifier in enumerate(classifiers):
+        ordinal_p[:, i] = classifier.predict(X)
+
+    # Calculate the actual class label probabilities.
+    p = np.zeros((n, k))  # (n * b, k)
+    p[:, 0] = 1 - ordinal_p[:, 0]
+    for i in range(1, k - 1):
+        p[:, i] = ordinal_p[:, i - 1] * (1 - ordinal_p[:, i])
+    p[:, k - 1] = ordinal_p[:, k - 2]
+
+    # Choose the most likely class label.
+    return np.argmax(p, axis=1)
 
 
 if __name__ == '__main__':
