@@ -97,7 +97,7 @@ def create_bag_mlp(bag_params):
 def create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         net_mode, net_params,
-        paragraph_dropout, agg_mode, agg_params, normal_agg,
+        agg_mode, agg_params, normal_agg,
         book_dense_units, book_dense_activation, book_dense_l2,
         bag_mode, bag_params,
         book_dropout, output_k, output_names, label_mode):
@@ -121,8 +121,7 @@ def create_model(
 
     # Consider signals among all sources of books.
     input_b = Input(shape=(None, n_tokens), dtype='float32')  # (P, T); P is not constant per instance!
-    x_b = Dropout(paragraph_dropout)(input_b)  # (P, T)
-    x_b = TimeDistributed(source_encoder)(x_b)  # (P, m_p)
+    x_b = TimeDistributed(source_encoder)(input_b)  # (P, m_p)
     if agg_mode == 'maxavg':
         x_b = Concatenate()([
             GlobalMaxPooling1D()(x_b),
@@ -358,7 +357,6 @@ def main():
         net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
         net_params['cnn_activation'] = 'elu'
         net_params['cnn_l2'] = .01
-    paragraph_dropout = .5
     agg_params = dict()
     if args.agg_mode == 'maxavg':
         pass
@@ -387,7 +385,7 @@ def main():
     model = create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         args.net_mode, net_params,
-        paragraph_dropout, args.agg_mode, agg_params, normal_agg,
+        args.agg_mode, agg_params, normal_agg,
         book_dense_units, book_dense_activation, book_dense_l2,
         args.bag_mode, bag_params,
         book_dropout, category_k, categories, args.label_mode)
@@ -561,7 +559,6 @@ def main():
             fd.write('cnn_filter_sizes={}\n'.format(str(net_params['cnn_filter_sizes'])))
             fd.write('cnn_activation=\'{}\'\n'.format(net_params['cnn_activation']))
             fd.write('cnn_l2={}\n'.format(str(net_params['cnn_l2'])))
-        fd.write('paragraph_dropout={:.1f}\n'.format(paragraph_dropout))
         if args.agg_mode == 'maxavg':
             pass
         elif args.agg_mode == 'max':
