@@ -61,8 +61,9 @@ def main():
                         default=0.5,
                         type=float,
                         help='Dropout probability before final classification layer. Default is 0.5.')
-    parser.add_argument('--use_class_weights',
-                        action='store_true',
+    parser.add_argument('--class_weight_f',
+                        default='square_inverse',
+                        choices=['inverse', 'square_inverse', 'none'],
                         help='Option to use a weighted loss function for imbalanced data.')
     parser.add_argument('--category_index',
                         default=-1,
@@ -295,8 +296,8 @@ def main():
     Y_val = shared_parameters.transform_labels(Y_val, category_k, args.label_mode)
 
     # Calculate class weights.
-    class_weight_f = 'square inverse'
-    if args.use_class_weights:
+    class_weight_f = args.class_weight_f
+    if class_weight_f is not 'none':
         category_class_weights = shared_parameters.get_category_class_weights(Y_train, args.label_mode, f=class_weight_f)
     else:
         category_class_weights = None
@@ -464,9 +465,7 @@ def main():
         fd.write('test_random_state={:d}\n'.format(test_random_state))
         fd.write('val_size={}\n'.format(str(val_size)))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
-        fd.write('use_class_weights={}\n'.format(args.use_class_weights))
-        if args.use_class_weights:
-            fd.write('class_weight_f={}\n'.format(class_weight_f))
+        fd.write('class_weight_f={}\n'.format(class_weight_f))
         fd.write('plateau_monitor={}\n'.format(plateau_monitor))
         fd.write('plateau_factor={}\n'.format(str(plateau_factor)))
         fd.write('plateau_patience={:d}\n'.format(plateau_patience))

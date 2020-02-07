@@ -41,7 +41,7 @@ def transform_labels(Y, category_k, label_mode):
 
 def get_category_class_weights(Y, label_mode, f='inverse'):
     if label_mode == LABEL_MODE_ORDINAL:
-        category_class_weights = []  # [[dict]], since util will be binary cross-entropy.
+        category_class_weights = []  # [[dict]], since objective will be binary cross-entropy.
         for y in Y:
             class_weights = []
             for i in range(y.shape[1]):
@@ -49,7 +49,7 @@ def get_category_class_weights(Y, label_mode, f='inverse'):
                 zeros_count = len(y) - ones_count
                 if f == 'inverse':
                     class_weight = {0: 1 / (zeros_count + 1), 1: 1 / (ones_count + 1)}
-                elif f == 'square inverse':
+                elif f == 'square_inverse':
                     class_weight = {0: 1 / (zeros_count + 1)**2, 1: 1 / (ones_count + 1)**2}
                 else:
                     raise ValueError('Unknown f: {}'.format(f))
@@ -57,14 +57,14 @@ def get_category_class_weights(Y, label_mode, f='inverse'):
             category_class_weights.append(class_weights)
         return category_class_weights
     if label_mode == LABEL_MODE_CATEGORICAL:
-        category_class_weights = []  # [dict], since util will be categorical cross-entropy.
+        category_class_weights = []  # [dict], since objective will be categorical cross-entropy.
         for y in Y:
             class_weight = dict()
             for i in range(y.shape[1]):
                 count = sum(y[:, i])
                 if f == 'inverse':
                     class_weight[i] = 1 / (count + 1)
-                elif f == 'square inverse':
+                elif f == 'square_inverse':
                     class_weight[i] = 1 / (count + 1)**2
                 else:
                     raise ValueError('Unknown f: {}'.format(f))
