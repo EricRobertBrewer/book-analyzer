@@ -48,7 +48,7 @@ def main():
                                  shared_parameters.LABEL_MODE_REGRESSION],
                         help='The way that labels will be interpreted.')
     parser.add_argument('--balance_mode',
-                        choices=['reduce majority', 'sample union'],
+                        choices=['reduce_majority', 'sample_union'],
                         help='Balance the data set. Optional.')
     parser.add_argument('--bag_mode',
                         action='store_true',
@@ -132,13 +132,13 @@ def main():
     balance_sample_seed = 1
     if args.balance_mode is not None:
         index_set = set()
-        if args.balance_mode == 'reduce majority':
+        if args.balance_mode == 'reduce_majority':
             majority_indices = data_utils.get_majority_indices(Y,
                                                                minlengths=[len(category_levels[j])
                                                                            for j in range(len(category_levels))],
                                                                tolerance=balance_majority_tolerance)
             index_set.update(set(np.arange(len(text_source_tokens))) - set(majority_indices))
-        else:  # args.balance_mode == 'sample union':
+        else:  # args.balance_mode == 'sample_union':
             category_balanced_indices = [data_utils.get_balanced_indices_sample(y,
                                                                                 minlength=len(category_levels[j]),
                                                                                 seed=balance_sample_seed)
