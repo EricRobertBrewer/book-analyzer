@@ -419,7 +419,7 @@ def main():
             fd.write('cnn_filter_sizes={}\n'.format(str(net_params['cnn_filter_sizes'])))
             fd.write('cnn_activation=\'{}\'\n'.format(net_params['cnn_activation']))
             fd.write('cnn_l2={}\n'.format(str(net_params['cnn_l2'])))
-        fd.write('paragraph_dropout={:.1f}\n'.format(paragraph_dropout))
+        fd.write('paragraph_dropout={}\n'.format(str(paragraph_dropout)))
         if args.agg_mode == 'maxavg':
             pass
         elif args.agg_mode == 'max':
@@ -445,16 +445,16 @@ def main():
             fd.write('dense_2_activation={} {}\n'.format(bag_params['dense_2_activation'].__class__.__name__,
                                                          bag_params['dense_2_activation'].__dict__))
             fd.write('dense_2_l2={}\n'.format(str(bag_params['dense_1_l2'])))
-        fd.write('book_dropout={:.1f}\n'.format(book_dropout))
+        fd.write('book_dropout={}\n'.format(str(book_dropout)))
         model.summary(print_fn=lambda x: fd.write('{}\n'.format(x)))
         fd.write('\nTraining\n')
         fd.write('optimizer={}\n'.format(optimizer.__class__.__name__))
         fd.write('lr={}\n'.format(str(lr)))
         fd.write('loss=\'{}\'\n'.format(loss))
         fd.write('metric=\'{}\'\n'.format(metric))
-        fd.write('test_size={:.2f}\n'.format(test_size))
+        fd.write('test_size={}\n'.format(str(test_size)))
         fd.write('test_random_state={:d}\n'.format(test_random_state))
-        fd.write('val_size={:.2f}\n'.format(val_size))
+        fd.write('val_size={}\n'.format(str(val_size)))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('use_class_weights={}\n'.format(args.use_class_weights))
         if args.use_class_weights:
