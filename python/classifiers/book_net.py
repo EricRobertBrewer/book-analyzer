@@ -31,28 +31,36 @@ def main():
     )
     parser.add_argument('--source_mode',
                         default='paragraph',
-                        choices={'paragraph', 'sentence'},
+                        choices=['paragraph', 'sentence'],
                         help='The source of text.`')
     parser.add_argument('--net_mode',
                         default='cnn',
-                        choices={'rnn', 'cnn', 'rnncnn'},
+                        choices=['rnn', 'cnn', 'rnncnn'],
                         help='The type of neural network.')
     parser.add_argument('--agg_mode',
                         default='maxavg',
-                        choices={'max', 'avg', 'maxavg', 'rnn'},
+                        choices=['max', 'avg', 'maxavg', 'rnn'],
                         help='The way the network will aggregate paragraphs or sentences.')
     parser.add_argument('--label_mode',
                         default=shared_parameters.LABEL_MODE_ORDINAL,
-                        choices={shared_parameters.LABEL_MODE_ORDINAL,
+                        choices=[shared_parameters.LABEL_MODE_ORDINAL,
                                  shared_parameters.LABEL_MODE_CATEGORICAL,
-                                 shared_parameters.LABEL_MODE_REGRESSION},
+                                 shared_parameters.LABEL_MODE_REGRESSION],
                         help='The way that labels will be interpreted.')
     parser.add_argument('--balance_mode',
-                        choices={'reduce majority', 'sample union'},
+                        choices=['reduce majority', 'sample union'],
                         help='Balance the data set. Optional.')
     parser.add_argument('--bag_mode',
                         action='store_true',
                         help='Option to add a 2-layer MLP using bag-of-words representations of texts. Optional.')
+    parser.add_argument('--paragraph_dropout',
+                        default=0.0,
+                        type=float,
+                        help='Probability to drop paragraphs during training. Default is 0.')
+    parser.add_argument('--book_dropout',
+                        default=0.5,
+                        type=float,
+                        help='Dropout probability before final classification layer. Default is 0.5.')
     parser.add_argument('--use_class_weights',
                         action='store_true',
                         help='Option to use a weighted loss function for imbalanced data.')
@@ -216,7 +224,7 @@ def main():
         net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
         net_params['cnn_activation'] = 'elu'
         net_params['cnn_l2'] = .01
-    paragraph_dropout = .5
+    paragraph_dropout = args.paragraph_dropout
     agg_params = dict()
     if args.agg_mode == 'maxavg':
         pass
@@ -241,7 +249,7 @@ def main():
         bag_params['dense_2_units'] = 256
         bag_params['dense_2_activation'] = tf.keras.layers.LeakyReLU(alpha=.1)
         bag_params['dense_2_l2'] = .01
-    book_dropout = .5
+    book_dropout = args.book_dropout
     model = create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         args.net_mode, net_params,
