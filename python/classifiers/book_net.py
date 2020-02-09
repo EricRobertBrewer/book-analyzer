@@ -161,7 +161,6 @@ def main():
         for tokens in source_tokens:
             all_sources.append(split.join(tokens))
     tokenizer.fit_on_texts(all_sources)
-    print('Done.')
 
     # Convert to sequences.
     print('Converting texts to sequences...')
@@ -176,13 +175,11 @@ def main():
                                 padding=padding,
                                 truncating=truncating))
          for source_tokens in text_source_tokens]
-    print('Done.')
 
     # Load embedding.
     print('Loading embedding matrix...')
     embedding_path = folders.EMBEDDING_GLOVE_300_PATH
     embedding_matrix = load_embeddings.load_embedding(tokenizer, embedding_path, max_words)
-    print('Done.')
 
     # Add a 2-layer MLP, if needed.
     if args.bag_mode:
@@ -270,9 +267,9 @@ def main():
         loss = 'mse'
         metric = 'accuracy'
     model.compile(optimizer, loss=loss, metrics=[metric])
-    print('Done.')
 
     # Split data set.
+    print('Splitting data set...')
     test_size = shared_parameters.EVAL_TEST_SIZE  # b
     test_random_state = shared_parameters.EVAL_TEST_RANDOM_STATE
     val_size = shared_parameters.EVAL_VAL_SIZE  # v
@@ -292,10 +289,12 @@ def main():
     Y_test = Y_test_T.transpose()  # (c, n * b)
 
     # Transform labels based on the label mode.
+    print('Transforming labels...')
     Y_train = shared_parameters.transform_labels(Y_train, category_k, args.label_mode)
     Y_val = shared_parameters.transform_labels(Y_val, category_k, args.label_mode)
 
     # Calculate class weights.
+    print('Calculating class weights...')
     class_weight_f = args.class_weight_f
     if class_weight_f is not 'none':
         category_class_weights = shared_parameters.get_category_class_weights(Y_train, args.label_mode, f=class_weight_f)
@@ -303,6 +302,7 @@ def main():
         category_class_weights = None
 
     # Create generators.
+    print('Creating data generators...')
     train_generator = SingleInstanceBatchGenerator(X_train, Y_train, X_w=X_w_train, shuffle=True)
     val_generator = SingleInstanceBatchGenerator(X_val, Y_val, X_w=X_w_val, shuffle=False)
     test_generator = SingleInstanceBatchGenerator(X_test, Y_test, X_w=X_w_test, shuffle=False)
@@ -328,6 +328,7 @@ def main():
                                   validation_data=val_generator,
                                   class_weight=category_class_weights,
                                   callbacks=callbacks)
+    epochs_complete = len(history.history.get('val_loss'))
 
     # Save the history to visualize loss over time.
     print('Saving training history...')
@@ -340,7 +341,6 @@ def main():
         for key in history.history.keys():
             values = history.history.get(key)
             fd.write('{} {}\n'.format(key, ' '.join(str(value) for value in values)))
-    print('Done.')
 
     # Predict test instances.
     print('Predicting test instances...')
@@ -353,7 +353,6 @@ def main():
         Y_pred = [np.argmax(y, axis=1) for y in Y_pred]
     else:  # args.label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         Y_pred = [np.maximum(0, np.minimum(k - 1, np.round(Y_pred[i] * k))) for i, k in enumerate(category_k)]
-    print('Done.')
 
     # Save model.
     save_model = False
@@ -366,7 +365,6 @@ def main():
         if not os.path.exists(models_path):
             os.mkdir(models_path)
         model.save(model_path)
-        print('Done.')
     else:
         model_path = None
 
@@ -378,7 +376,6 @@ def main():
 
     # Write results.
     print('Writing results...')
-
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
     logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
@@ -481,10 +478,13 @@ def main():
             fd.write('Model path: \'{}\'\n'.format(model_path))
         else:
             fd.write('Model not saved.\n')
+        fd.write('Epochs completed: {:d}\n'.format(epochs_complete))
         fd.write('Time elapsed: {:d}h {:d}m {:d}s\n\n'.format(elapsed_h, elapsed_m, elapsed_s))
         overall_last = args.category_index == -1 and return_overall
         evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=overall_last)
 
+    # Write predictions.
+    print('Writing predictions...')
     if not os.path.exists(folders.PREDICTIONS_PATH):
         os.mkdir(folders.PREDICTIONS_PATH)
     predictions_path = os.path.join(folders.PREDICTIONS_PATH, classifier_name)
