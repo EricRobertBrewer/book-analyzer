@@ -17,7 +17,9 @@ python3 -m python.classifiers.book_net \
   --net_mode cnn \
   --agg_mode maxavg \
   --label_mode ordinal \
-  --use_class_weights \
+  --paragraph_dropout 0.0 \
+  --book_dropout 0.5 \
+  --class_weight_f square_inverse \
   --category_index -1 \
   --steps_per_epoch 0 \
   --epochs 16

@@ -31,30 +31,39 @@ def main():
     )
     parser.add_argument('--source_mode',
                         default='paragraph',
-                        choices={'paragraph', 'sentence'},
+                        choices=['paragraph', 'sentence'],
                         help='The source of text.`')
     parser.add_argument('--net_mode',
                         default='cnn',
-                        choices={'rnn', 'cnn', 'rnncnn'},
+                        choices=['rnn', 'cnn', 'rnncnn'],
                         help='The type of neural network.')
     parser.add_argument('--agg_mode',
                         default='maxavg',
-                        choices={'max', 'avg', 'maxavg', 'rnn'},
+                        choices=['max', 'avg', 'maxavg', 'rnn'],
                         help='The way the network will aggregate paragraphs or sentences.')
     parser.add_argument('--label_mode',
                         default=shared_parameters.LABEL_MODE_ORDINAL,
-                        choices={shared_parameters.LABEL_MODE_ORDINAL,
+                        choices=[shared_parameters.LABEL_MODE_ORDINAL,
                                  shared_parameters.LABEL_MODE_CATEGORICAL,
-                                 shared_parameters.LABEL_MODE_REGRESSION},
+                                 shared_parameters.LABEL_MODE_REGRESSION],
                         help='The way that labels will be interpreted.')
     parser.add_argument('--balance_mode',
-                        choices={'reduce majority', 'sample union'},
+                        choices=['reduce_majority', 'sample_union'],
                         help='Balance the data set. Optional.')
     parser.add_argument('--bag_mode',
                         action='store_true',
                         help='Option to add a 2-layer MLP using bag-of-words representations of texts. Optional.')
-    parser.add_argument('--use_class_weights',
-                        action='store_true',
+    parser.add_argument('--paragraph_dropout',
+                        default=0.0,
+                        type=float,
+                        help='Probability to drop paragraphs during training. Default is 0.')
+    parser.add_argument('--book_dropout',
+                        default=0.5,
+                        type=float,
+                        help='Dropout probability before final classification layer. Default is 0.5.')
+    parser.add_argument('--class_weight_f',
+                        default='square_inverse',
+                        choices=['inverse', 'square_inverse', 'none'],
                         help='Option to use a weighted loss function for imbalanced data.')
     parser.add_argument('--category_index',
                         default=-1,
@@ -124,13 +133,13 @@ def main():
     balance_sample_seed = 1
     if args.balance_mode is not None:
         index_set = set()
-        if args.balance_mode == 'reduce majority':
+        if args.balance_mode == 'reduce_majority':
             majority_indices = data_utils.get_majority_indices(Y,
                                                                minlengths=[len(category_levels[j])
                                                                            for j in range(len(category_levels))],
                                                                tolerance=balance_majority_tolerance)
             index_set.update(set(np.arange(len(text_source_tokens))) - set(majority_indices))
-        else:  # args.balance_mode == 'sample union':
+        else:  # args.balance_mode == 'sample_union':
             category_balanced_indices = [data_utils.get_balanced_indices_sample(y,
                                                                                 minlength=len(category_levels[j]),
                                                                                 seed=balance_sample_seed)
@@ -152,7 +161,6 @@ def main():
         for tokens in source_tokens:
             all_sources.append(split.join(tokens))
     tokenizer.fit_on_texts(all_sources)
-    print('Done.')
 
     # Convert to sequences.
     print('Converting texts to sequences...')
@@ -167,13 +175,11 @@ def main():
                                 padding=padding,
                                 truncating=truncating))
          for source_tokens in text_source_tokens]
-    print('Done.')
 
     # Load embedding.
     print('Loading embedding matrix...')
     embedding_path = folders.EMBEDDING_GLOVE_300_PATH
     embedding_matrix = load_embeddings.load_embedding(tokenizer, embedding_path, max_words)
-    print('Done.')
 
     # Add a 2-layer MLP, if needed.
     if args.bag_mode:
@@ -216,7 +222,7 @@ def main():
         net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
         net_params['cnn_activation'] = 'elu'
         net_params['cnn_l2'] = .01
-    paragraph_dropout = .5
+    paragraph_dropout = args.paragraph_dropout
     agg_params = dict()
     if args.agg_mode == 'maxavg':
         pass
@@ -241,7 +247,7 @@ def main():
         bag_params['dense_2_units'] = 256
         bag_params['dense_2_activation'] = tf.keras.layers.LeakyReLU(alpha=.1)
         bag_params['dense_2_l2'] = .01
-    book_dropout = .5
+    book_dropout = args.book_dropout
     model = create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         args.net_mode, net_params,
@@ -261,9 +267,9 @@ def main():
         loss = 'mse'
         metric = 'accuracy'
     model.compile(optimizer, loss=loss, metrics=[metric])
-    print('Done.')
 
     # Split data set.
+    print('Splitting data set...')
     test_size = shared_parameters.EVAL_TEST_SIZE  # b
     test_random_state = shared_parameters.EVAL_TEST_RANDOM_STATE
     val_size = shared_parameters.EVAL_VAL_SIZE  # v
@@ -283,17 +289,20 @@ def main():
     Y_test = Y_test_T.transpose()  # (c, n * b)
 
     # Transform labels based on the label mode.
+    print('Transforming labels...')
     Y_train = shared_parameters.transform_labels(Y_train, category_k, args.label_mode)
     Y_val = shared_parameters.transform_labels(Y_val, category_k, args.label_mode)
 
     # Calculate class weights.
-    class_weight_f = 'square inverse'
-    if args.use_class_weights:
+    print('Calculating class weights...')
+    class_weight_f = args.class_weight_f
+    if class_weight_f is not 'none':
         category_class_weights = shared_parameters.get_category_class_weights(Y_train, args.label_mode, f=class_weight_f)
     else:
         category_class_weights = None
 
     # Create generators.
+    print('Creating data generators...')
     train_generator = SingleInstanceBatchGenerator(X_train, Y_train, X_w=X_w_train, shuffle=True)
     val_generator = SingleInstanceBatchGenerator(X_val, Y_val, X_w=X_w_val, shuffle=False)
     test_generator = SingleInstanceBatchGenerator(X_test, Y_test, X_w=X_w_test, shuffle=False)
@@ -319,6 +328,7 @@ def main():
                                   validation_data=val_generator,
                                   class_weight=category_class_weights,
                                   callbacks=callbacks)
+    epochs_complete = len(history.history.get('val_loss'))
 
     # Save the history to visualize loss over time.
     print('Saving training history...')
@@ -331,7 +341,6 @@ def main():
         for key in history.history.keys():
             values = history.history.get(key)
             fd.write('{} {}\n'.format(key, ' '.join(str(value) for value in values)))
-    print('Done.')
 
     # Predict test instances.
     print('Predicting test instances...')
@@ -344,7 +353,6 @@ def main():
         Y_pred = [np.argmax(y, axis=1) for y in Y_pred]
     else:  # args.label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         Y_pred = [np.maximum(0, np.minimum(k - 1, np.round(Y_pred[i] * k))) for i, k in enumerate(category_k)]
-    print('Done.')
 
     # Save model.
     save_model = False
@@ -357,7 +365,6 @@ def main():
         if not os.path.exists(models_path):
             os.mkdir(models_path)
         model.save(model_path)
-        print('Done.')
     else:
         model_path = None
 
@@ -369,7 +376,6 @@ def main():
 
     # Write results.
     print('Writing results...')
-
     if not os.path.exists(folders.LOGS_PATH):
         os.mkdir(folders.LOGS_PATH)
     logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
@@ -419,7 +425,7 @@ def main():
             fd.write('cnn_filter_sizes={}\n'.format(str(net_params['cnn_filter_sizes'])))
             fd.write('cnn_activation=\'{}\'\n'.format(net_params['cnn_activation']))
             fd.write('cnn_l2={}\n'.format(str(net_params['cnn_l2'])))
-        fd.write('paragraph_dropout={:.1f}\n'.format(paragraph_dropout))
+        fd.write('paragraph_dropout={}\n'.format(str(paragraph_dropout)))
         if args.agg_mode == 'maxavg':
             pass
         elif args.agg_mode == 'max':
@@ -445,20 +451,18 @@ def main():
             fd.write('dense_2_activation={} {}\n'.format(bag_params['dense_2_activation'].__class__.__name__,
                                                          bag_params['dense_2_activation'].__dict__))
             fd.write('dense_2_l2={}\n'.format(str(bag_params['dense_1_l2'])))
-        fd.write('book_dropout={:.1f}\n'.format(book_dropout))
+        fd.write('book_dropout={}\n'.format(str(book_dropout)))
         model.summary(print_fn=lambda x: fd.write('{}\n'.format(x)))
         fd.write('\nTraining\n')
         fd.write('optimizer={}\n'.format(optimizer.__class__.__name__))
         fd.write('lr={}\n'.format(str(lr)))
         fd.write('loss=\'{}\'\n'.format(loss))
         fd.write('metric=\'{}\'\n'.format(metric))
-        fd.write('test_size={:.2f}\n'.format(test_size))
+        fd.write('test_size={}\n'.format(str(test_size)))
         fd.write('test_random_state={:d}\n'.format(test_random_state))
-        fd.write('val_size={:.2f}\n'.format(val_size))
+        fd.write('val_size={}\n'.format(str(val_size)))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
-        fd.write('use_class_weights={}\n'.format(args.use_class_weights))
-        if args.use_class_weights:
-            fd.write('class_weight_f={}\n'.format(class_weight_f))
+        fd.write('class_weight_f={}\n'.format(class_weight_f))
         fd.write('plateau_monitor={}\n'.format(plateau_monitor))
         fd.write('plateau_factor={}\n'.format(str(plateau_factor)))
         fd.write('plateau_patience={:d}\n'.format(plateau_patience))
@@ -474,10 +478,13 @@ def main():
             fd.write('Model path: \'{}\'\n'.format(model_path))
         else:
             fd.write('Model not saved.\n')
+        fd.write('Epochs completed: {:d}\n'.format(epochs_complete))
         fd.write('Time elapsed: {:d}h {:d}m {:d}s\n\n'.format(elapsed_h, elapsed_m, elapsed_s))
         overall_last = args.category_index == -1 and return_overall
         evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=overall_last)
 
+    # Write predictions.
+    print('Writing predictions...')
     if not os.path.exists(folders.PREDICTIONS_PATH):
         os.mkdir(folders.PREDICTIONS_PATH)
     predictions_path = os.path.join(folders.PREDICTIONS_PATH, classifier_name)
