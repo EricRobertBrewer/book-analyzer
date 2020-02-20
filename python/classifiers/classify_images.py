@@ -6,9 +6,9 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.image import img_to_array, load_img
 from sklearn.metrics import accuracy_score, confusion_matrix
 from sklearn.model_selection import train_test_split
-from classification import shared_parameters
+from python.util import shared_parameters
 
-import sites.bookcave.bookcave as bookcave
+from python.sites.bookcave import bookcave
 
 
 def get_model(images_size, num_classes, optimizer):
@@ -64,8 +64,11 @@ def main():
 
 
     print(Y[0])
+    print(Y[0].size)
 
+    #inputs = inputs[:15]
 
+    Y = np.array([Y[0]])
 
     #Add code to mask out categories here so they may be trained independently
 
@@ -81,6 +84,8 @@ def main():
     images = [load_img(book_images[0]) for book_images in inputs['images']]
     X = np.array([img_to_array(image) for image in images])
 
+    #X = X[:25]
+
     # Train.
 
     test_size = shared_parameters.EVAL_TEST_SIZE  # b
@@ -92,6 +97,7 @@ def main():
 
     # Turn the discrete labels into an ordinal one-hot encoding.
     # See `http://orca.st.usm.edu/~zwang/files/rank.pdf`.
+    levels = [levels[0]]
     num_classes = [len(category_levels) - 1 for category_levels in levels]
     Y_train_transpose_ordinal = [to_one_hot_ordinal(y, num_classes=num_classes[i])
                                  for i, y in enumerate(Y_train)]
@@ -100,12 +106,13 @@ def main():
 
     optimizer = Adam()
     model = get_model(images_size, num_classes, optimizer)
+    #history = model.fit(X_train, Y_train_transpose_ordinal, epochs=1, batch_size=32)
     history = model.fit(X_train, Y_train_transpose_ordinal, epochs=1, batch_size=32, class_weight=weight)
-    Y_pred_transpose_ordinal = model.predict(X_test)
+    Y_pred_transpose_ordinal = [model.predict(X_test)]
 
     # Convert the ordinal one-hot encoding back to discrete labels.
-    Y_pred = np.array([from_one_hot_ordinal(y_pred_transpose_ordinal)
-                                 for y_pred_transpose_ordinal in Y_pred_transpose_ordinal])
+
+    Y_pred = np.array([from_one_hot_ordinal(y_pred_transpose_ordinal) for y_pred_transpose_ordinal in Y_pred_transpose_ordinal])
     #Y_pred = Y_pred_transpose.transpose(1, 0)
 
     for category_index, category in enumerate(categories):
