@@ -105,7 +105,7 @@ def main():
         source = 'sentence_tokens'
         min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
         max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
-    subset_ratio = .002#shared_parameters.DATA_SUBSET_RATIO
+    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = shared_parameters.DATA_CATEGORIES_MODE
