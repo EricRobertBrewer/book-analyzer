@@ -355,7 +355,7 @@ def main():
         Y_pred = [np.maximum(0, np.minimum(k - 1, np.round(Y_pred[i] * k))) for i, k in enumerate(category_k)]
 
     # Save model.
-    save_model = False
+    save_model = True
     if save_model:
         models_path = os.path.join(folders.MODELS_PATH, classifier_name)
         model_path = os.path.join(models_path, '{}.h5'.format(base_fname))
