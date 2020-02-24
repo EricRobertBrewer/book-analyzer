@@ -105,7 +105,7 @@ def main():
         source = 'sentence_tokens'
         min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
         max_len = shared_parameters.DATA_SENTENCE_MAX_LEN
-    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    subset_ratio = .002#shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = shared_parameters.DATA_CATEGORIES_MODE
@@ -222,7 +222,6 @@ def main():
         net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
         net_params['cnn_activation'] = 'elu'
         net_params['cnn_l2'] = .01
-    paragraph_dropout = args.paragraph_dropout
     agg_params = dict()
     if args.agg_mode == 'maxavg':
         pass
@@ -251,7 +250,7 @@ def main():
     model = create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         args.net_mode, net_params,
-        paragraph_dropout, args.agg_mode, agg_params, normal_agg,
+        args.agg_mode, agg_params, normal_agg,
         book_dense_units, book_dense_activation, book_dense_l2,
         args.bag_mode, bag_params,
         book_dropout, category_k, categories, args.label_mode)
@@ -303,7 +302,10 @@ def main():
 
     # Create generators.
     print('Creating data generators...')
-    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, X_w=X_w_train, shuffle=True)
+    paragraph_dropout = abs(args.paragraph_dropout)
+    if paragraph_dropout > 1:
+        paragraph_dropout = 1 / paragraph_dropout
+    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, X_w=X_w_train, shuffle=True, row_dropout=paragraph_dropout)
     val_generator = SingleInstanceBatchGenerator(X_val, Y_val, X_w=X_w_val, shuffle=False)
     test_generator = SingleInstanceBatchGenerator(X_test, Y_test, X_w=X_w_test, shuffle=False)
 
@@ -425,7 +427,6 @@ def main():
             fd.write('cnn_filter_sizes={}\n'.format(str(net_params['cnn_filter_sizes'])))
             fd.write('cnn_activation=\'{}\'\n'.format(net_params['cnn_activation']))
             fd.write('cnn_l2={}\n'.format(str(net_params['cnn_l2'])))
-        fd.write('paragraph_dropout={}\n'.format(str(paragraph_dropout)))
         if args.agg_mode == 'maxavg':
             pass
         elif args.agg_mode == 'max':
@@ -463,6 +464,7 @@ def main():
         fd.write('val_size={}\n'.format(str(val_size)))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('class_weight_f={}\n'.format(class_weight_f))
+        fd.write('paragraph_dropout={}\n'.format(str(paragraph_dropout)))
         fd.write('plateau_monitor={}\n'.format(plateau_monitor))
         fd.write('plateau_factor={}\n'.format(str(plateau_factor)))
         fd.write('plateau_patience={:d}\n'.format(plateau_patience))
@@ -503,7 +505,7 @@ def identity(v):
 def create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         net_mode, net_params,
-        paragraph_dropout, agg_mode, agg_params, normal_agg,
+        agg_mode, agg_params, normal_agg,
         book_dense_units, book_dense_activation, book_dense_l2,
         bag_mode, bag_params,
         book_dropout, output_k, output_names, label_mode):
@@ -527,8 +529,7 @@ def create_model(
 
     # Consider signals among all sources of books.
     input_b = Input(shape=(None, n_tokens), dtype='float32')  # (P, T); P is not constant per instance!
-    x_b = Dropout(paragraph_dropout, noise_shape=(1, tf.shape(input_b)[1], 1))(input_b)  # (P, T)
-    x_b = TimeDistributed(source_encoder)(x_b)  # (P, m_p)
+    x_b = TimeDistributed(source_encoder)(input_b)  # (P, m_p)
     if agg_mode == 'maxavg':
         x_b = Concatenate()([
             GlobalMaxPooling1D()(x_b),
