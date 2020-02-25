@@ -5,8 +5,8 @@ import time
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from tensorflow.keras.layers import Activation, Bidirectional, Concatenate, Conv2D, CuDNNGRU, Dense, Dropout, Embedding, \
-    Flatten, GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, MaxPool2D, Reshape, TimeDistributed
+from tensorflow.keras.layers import Bidirectional, Concatenate, Conv2D, CuDNNGRU, Dense, Dropout, Embedding, Flatten, \
+    GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, MaxPool2D, Reshape, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
@@ -233,7 +233,6 @@ def main():
         agg_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
         agg_params['rnn_units'] = 64
         agg_params['rnn_l2'] = .01
-    normal_agg = False
     book_dense_units = 128
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
@@ -250,7 +249,7 @@ def main():
     model = create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         args.net_mode, net_params,
-        args.agg_mode, agg_params, normal_agg,
+        args.agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
         args.bag_mode, bag_params,
         book_dropout, category_k, categories, args.label_mode)
@@ -437,7 +436,6 @@ def main():
             fd.write('agg_rnn={}\n'.format(agg_params['rnn'].__name__))
             fd.write('agg_rnn_units={:d}\n'.format(agg_params['rnn_units']))
             fd.write('agg_rnn_l2={}\n'.format(str(agg_params['rnn_l2'])))
-        fd.write('normal_agg={}'.format(normal_agg))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
         fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__,
                                                         book_dense_activation.__dict__))
@@ -505,7 +503,7 @@ def identity(v):
 def create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         net_mode, net_params,
-        agg_mode, agg_params, normal_agg,
+        agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
         bag_mode, bag_params,
         book_dropout, output_k, output_names, label_mode):
@@ -547,8 +545,6 @@ def create_model(
                                     kernel_regularizer=agg_rnn_l2,
                                     return_sequences=False),
                             merge_mode='concat')(x_b)  # (2h_b)
-    if normal_agg:
-        x_b = Activation('softmax')(x_b)
     if book_dense_l2 is not None:
         book_dense_l2 = regularizers.l2(book_dense_l2)
     x_b = Dense(book_dense_units,
