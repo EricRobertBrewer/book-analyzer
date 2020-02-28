@@ -2,7 +2,7 @@ import os
 
 from PIL import Image
 
-from python import sites as bookcave
+from python.sites.bookcave import bookcave
 
 
 def resize_image(path, size):

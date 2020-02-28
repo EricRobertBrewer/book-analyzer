@@ -1,7 +1,13 @@
 import os
 
 
-CONTENT_PATH = os.path.join('..', 'content')
+def ensure(path):
+    if not os.path.exists(path):
+        os.mkdir(path)
+    return path
+
+
+CONTENT_PATH = ensure(os.path.join('..', 'content'))
 CONTENT_BOOKCAVE_BOOKS_CSV_PATH = os.path.join(CONTENT_PATH, 'bookcave_books.csv')
 CONTENT_BOOKCAVE_BOOK_RATINGS_CSV_PATH = os.path.join(CONTENT_PATH, 'bookcave_book_ratings.csv')
 CONTENT_BOOKCAVE_BOOK_RATING_LEVELS_CSV_PATH = os.path.join(CONTENT_PATH, 'bookcave_book_rating_levels.csv')
@@ -19,24 +25,24 @@ EMBEDDING_GLOVE_100_PATH = os.path.join(EMBEDDINGS_PATH, 'glove.6B.100d.txt')
 EMBEDDING_GLOVE_200_PATH = os.path.join(EMBEDDINGS_PATH, 'glove.6B.200d.txt')
 EMBEDDING_GLOVE_300_PATH = os.path.join(EMBEDDINGS_PATH, 'glove.6B.300d.txt')
 
-FIGURES_PATH = os.path.join('..', 'figures')
+FIGURES_PATH = ensure(os.path.join('..', 'figures'))
 
-GENERATED_PATH = os.path.join('..', 'generated')
+GENERATED_PATH = ensure(os.path.join('..', 'generated'))
 
-HISTORY_PATH = 'history'
+HISTORY_PATH = ensure('history')
 
 INPUT_PATH = 'input'
 
-LOGS_PATH = 'logs'
+LOGS_PATH = ensure('logs')
 CORRELATED_WORDS_PATH = os.path.join(LOGS_PATH, 'correlated_words')
 CORRELATED_WORDS_FNAME_FORMAT = 'words-{}-{:d}-{:d}g{:d}-{:d}f.txt'
 
-MODELS_PATH = 'models'
+MODELS_PATH = ensure('models')
 
-PREDICTIONS_PATH = 'predictions'
+PREDICTIONS_PATH = ensure('predictions')
 
 SITES_PATH = os.path.join('python', 'sites')
 BOOKCAVE_PATH = os.path.join(SITES_PATH, 'bookcave')
 BOOKCAVE_CATEGORIES_PATH = os.path.join(BOOKCAVE_PATH, 'categories')
 
-VECTORS_PATH = 'vectors'
+VECTORS_PATH = ensure('vectors')

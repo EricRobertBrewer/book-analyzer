@@ -35,11 +35,6 @@ def main(argv):
     else:
         base_fname = format(stamp, 'd')
 
-    if not os.path.exists(folders.LOGS_PATH):
-        os.mkdir(folders.LOGS_PATH)
-    if not os.path.exists(folders.PREDICTIONS_PATH):
-        os.mkdir(folders.PREDICTIONS_PATH)
-
     # Load data.
     print('Retrieving texts...')
     source = 'paragraph_tokens'
@@ -117,9 +112,7 @@ def main(argv):
 
         print('Writing results...')
 
-        logs_path = os.path.join(folders.LOGS_PATH, model_name)
-        if not os.path.exists(logs_path):
-            os.mkdir(logs_path)
+        logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, model_name))
         with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
             fd.write('HYPERPARAMETERS\n')
             fd.write('\nText\n')
@@ -143,9 +136,7 @@ def main(argv):
             fd.write('Test size: {:d}\n\n'.format(X_test.shape[0]))
             evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=return_overall)
 
-        predictions_path = os.path.join(folders.PREDICTIONS_PATH, model_name)
-        if not os.path.exists(predictions_path):
-            os.mkdir(predictions_path)
+        predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, model_name))
         with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
             evaluation.write_predictions(Y_test, Y_pred, fd, categories)
 

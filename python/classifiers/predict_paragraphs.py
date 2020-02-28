@@ -27,7 +27,7 @@ def main(argv):
     min_tokens = shared_parameters.DATA_MIN_TOKENS
     categories_mode = shared_parameters.DATA_CATEGORIES_MODE
     return_overall = shared_parameters.DATA_RETURN_OVERALL
-    inputs, Y, categories, category_levels, book_ids, books_df, _, _, categories_df = \
+    inputs, _, categories, category_levels, book_ids, books_df, _, _, _ = \
         bookcave.get_data({source},
                           subset_ratio=subset_ratio,
                           subset_seed=subset_seed,
@@ -41,7 +41,6 @@ def main(argv):
 
     # Reduce labels to the specified category, if needed.
     if category_index != -1:
-        Y = np.array([Y[category_index]])
         categories = [categories[category_index]]
         category_levels = [category_levels[category_index]]
 
@@ -52,7 +51,8 @@ def main(argv):
     for text_i, source_tokens in enumerate(text_source_tokens):
         book_id = book_ids[text_i]
         asin = books_df[books_df['id'] == book_id].iloc[0]['asin']
-        category_labels = [bookcave.get_labels(asin, category) for category in categories[:bookcave.CATEGORY_INDEX_OVERALL]]
+        category_labels = [bookcave.get_labels(asin, category)
+                           for category in categories[:bookcave.CATEGORY_INDEX_OVERALL]]
         if any(labels is None for labels in category_labels):
             continue
         for source_i, tokens in enumerate(source_tokens):
@@ -107,9 +107,18 @@ def main(argv):
     for m, model_path in enumerate(model_paths):
         print('\n{}'.format(model_path))
         model = load_model(model_path, custom_objects=model_custom_objects[m])
-        evaluate_model(model, P_predict, Q_true, categories, overall_last=return_overall)
+        evaluate_model(model,
+                       P_predict,
+                       Q_true,
+                       categories,
+                       overall_last=return_overall)
         print('\nBalanced')
-        evaluate_model(model, P_predict, Q_true, categories, overall_last=return_overall, category_indices=category_balanced_indices)
+        evaluate_model(model,
+                       P_predict,
+                       Q_true,
+                       categories,
+                       overall_last=return_overall,
+                       category_indices=category_balanced_indices)
 
 
 def get_input_sequence(source_tokens, tokenizer, n_tokens, padding='pre', truncating='pre', split='\t'):

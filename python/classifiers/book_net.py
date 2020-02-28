@@ -319,8 +319,12 @@ def main():
         plateau_patience = 6
         early_stopping_patience = 12
     callbacks = [
-        ReduceLROnPlateau(monitor=plateau_monitor, factor=plateau_factor, patience=plateau_patience),
-        EarlyStopping(monitor=early_stopping_monitor, min_delta=early_stopping_min_delta, patience=early_stopping_patience)
+        ReduceLROnPlateau(monitor=plateau_monitor,
+                          factor=plateau_factor,
+                          patience=plateau_patience),
+        EarlyStopping(monitor=early_stopping_monitor,
+                      min_delta=early_stopping_min_delta,
+                      patience=early_stopping_patience)
     ]
     history = model.fit_generator(train_generator,
                                   steps_per_epoch=args.steps_per_epoch if args.steps_per_epoch > 0 else None,
@@ -332,11 +336,7 @@ def main():
 
     # Save the history to visualize loss over time.
     print('Saving training history...')
-    if not os.path.exists(folders.HISTORY_PATH):
-        os.mkdir(folders.HISTORY_PATH)
-    history_path = os.path.join(folders.HISTORY_PATH, classifier_name)
-    if not os.path.exists(history_path):
-        os.mkdir(history_path)
+    history_path = folders.ensure(os.path.join(folders.HISTORY_PATH, classifier_name))
     with open(os.path.join(history_path, '{}.txt'.format(base_fname)), 'w') as fd:
         for key in history.history.keys():
             values = history.history.get(key)
@@ -357,13 +357,9 @@ def main():
     # Save model.
     save_model = False
     if save_model:
-        models_path = os.path.join(folders.MODELS_PATH, classifier_name)
+        models_path = folders.ensure(os.path.join(folders.MODELS_PATH, classifier_name))
         model_path = os.path.join(models_path, '{}.h5'.format(base_fname))
         print('Saving model to `{}`...'.format(model_path))
-        if not os.path.exists(folders.MODELS_PATH):
-            os.mkdir(folders.MODELS_PATH)
-        if not os.path.exists(models_path):
-            os.mkdir(models_path)
         model.save(model_path)
     else:
         model_path = None
@@ -376,11 +372,7 @@ def main():
 
     # Write results.
     print('Writing results...')
-    if not os.path.exists(folders.LOGS_PATH):
-        os.mkdir(folders.LOGS_PATH)
-    logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
-    if not os.path.exists(logs_path):
-        os.mkdir(logs_path)
+    logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, classifier_name))
     with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
         if args.note is not None:
             fd.write('{}\n\n'.format(args.note))
@@ -485,11 +477,7 @@ def main():
 
     # Write predictions.
     print('Writing predictions...')
-    if not os.path.exists(folders.PREDICTIONS_PATH):
-        os.mkdir(folders.PREDICTIONS_PATH)
-    predictions_path = os.path.join(folders.PREDICTIONS_PATH, classifier_name)
-    if not os.path.exists(predictions_path):
-        os.mkdir(predictions_path)
+    predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, classifier_name))
     with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
         evaluation.write_predictions(Y_test, Y_pred, fd, categories)
 

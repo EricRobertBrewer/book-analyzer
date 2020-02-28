@@ -52,11 +52,7 @@ def main():
 
     print('Writing results...')
 
-    if not os.path.exists(folders.LOGS_PATH):
-        os.mkdir(folders.LOGS_PATH)
-    logs_path = os.path.join(folders.LOGS_PATH, classifier_name)
-    if not os.path.exists(logs_path):
-        os.mkdir(logs_path)
+    logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, classifier_name))
     with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
         fd.write('HYPERPARAMETERS\n')
         fd.write('\nText\n')
@@ -78,11 +74,7 @@ def main():
         fd.write('\n')
         evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=return_overall)
 
-    if not os.path.exists(folders.PREDICTIONS_PATH):
-        os.mkdir(folders.PREDICTIONS_PATH)
-    predictions_path = os.path.join(folders.PREDICTIONS_PATH, classifier_name)
-    if not os.path.exists(predictions_path):
-        os.mkdir(predictions_path)
+    predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, classifier_name))
     with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
         evaluation.write_predictions(Y_test, Y_pred, fd, categories)
 
