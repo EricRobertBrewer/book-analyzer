@@ -5,6 +5,16 @@ from PIL import Image
 from python.sites.bookcave import bookcave
 
 
+def main():
+    images_size = None
+    inputs, _, _, _ = bookcave.get_data({'images'}, image_size=images_size)
+    book_images = inputs['images']
+    out_size = (256, 256)
+    for images in book_images:
+        path = images[0]
+        resize_image(path, out_size)
+
+
 def resize_image(path, size):
     path_parts = path.split(os.sep)
     base_ext = os.path.splitext(path_parts[-1])
@@ -27,16 +37,6 @@ def resize_image(path, size):
         print('Resized `{}` from size {} to size {}.'.format(path, image_size, out_image.size))
     except IOError:
         print('Unable to resize `{}`.'.format(path))
-
-
-def main():
-    images_size = None
-    inputs, _, _, _ = bookcave.get_data({'images'}, image_size=images_size)
-    book_images = inputs['images']
-    out_size = (512, 512)
-    for images in book_images:
-        path = images[0]
-        resize_image(path, out_size)
 
 
 if __name__ == '__main__':
