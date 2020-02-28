@@ -11,6 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network.multilayer_perceptron import MLPClassifier
 from sklearn.svm import LinearSVC
 
 from python.util import evaluation, shared_parameters
@@ -87,6 +88,7 @@ def main(argv):
     create_funcs = [
         create_k_nearest_neighbors,
         create_logistic_regression,
+        create_multi_layer_perceptron,
         create_multinomial_naive_bayes,
         create_random_forest,
         create_svm
@@ -94,6 +96,7 @@ def main(argv):
     model_names = [
         'k_nearest_neighbors',
         'logistic_regression',
+        'multi_layer_perceptron',
         'multinomial_naive_bayes',
         'random_forest',
         'svm'
@@ -153,6 +156,10 @@ def create_k_nearest_neighbors():
 
 def create_logistic_regression():
     return LogisticRegression(penalty='l2', solver='lbfgs', multi_class='ovr')
+
+
+def create_multi_layer_perceptron():
+    return MLPClassifier((512, 128))
 
 
 def create_multinomial_naive_bayes():
