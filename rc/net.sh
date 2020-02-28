@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --time=20:00:00   # walltime
+#SBATCH --time=48:00:00   # walltime
 #SBATCH --ntasks=1   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
 #SBATCH --gres=gpu:1   # number of GPUs
@@ -22,4 +22,4 @@ python3 -m python.classifiers.book_net \
   --class_weight_f square_inverse \
   --category_index -1 \
   --steps_per_epoch 0 \
-  --epochs 16
+  --epochs 256

@@ -5,8 +5,8 @@ import time
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from tensorflow.keras.layers import Activation, Bidirectional, Concatenate, Conv2D, CuDNNGRU, Dense, Dropout, Embedding, \
-    Flatten, GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, MaxPool2D, Reshape, TimeDistributed
+from tensorflow.keras.layers import Bidirectional, Concatenate, Conv2D, CuDNNGRU, Dense, Dropout, Embedding, Flatten, \
+    GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, MaxPool2D, Reshape, TimeDistributed
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.preprocessing.sequence import pad_sequences
@@ -222,7 +222,6 @@ def main():
         net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
         net_params['cnn_activation'] = 'elu'
         net_params['cnn_l2'] = .01
-    paragraph_dropout = args.paragraph_dropout
     agg_params = dict()
     if args.agg_mode == 'maxavg':
         pass
@@ -234,7 +233,6 @@ def main():
         agg_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
         agg_params['rnn_units'] = 64
         agg_params['rnn_l2'] = .01
-    normal_agg = False
     book_dense_units = 128
     book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
     book_dense_l2 = .01
@@ -251,7 +249,7 @@ def main():
     model = create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         args.net_mode, net_params,
-        paragraph_dropout, args.agg_mode, agg_params, normal_agg,
+        args.agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
         args.bag_mode, bag_params,
         book_dropout, category_k, categories, args.label_mode)
@@ -303,7 +301,10 @@ def main():
 
     # Create generators.
     print('Creating data generators...')
-    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, X_w=X_w_train, shuffle=True)
+    paragraph_dropout = abs(args.paragraph_dropout)
+    if paragraph_dropout > 1:
+        paragraph_dropout = 1 / paragraph_dropout
+    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, X_w=X_w_train, shuffle=True, row_dropout=paragraph_dropout)
     val_generator = SingleInstanceBatchGenerator(X_val, Y_val, X_w=X_w_val, shuffle=False)
     test_generator = SingleInstanceBatchGenerator(X_test, Y_test, X_w=X_w_test, shuffle=False)
 
@@ -355,7 +356,7 @@ def main():
         Y_pred = [np.maximum(0, np.minimum(k - 1, np.round(Y_pred[i] * k))) for i, k in enumerate(category_k)]
 
     # Save model.
-    save_model = False
+    save_model = True
     if save_model:
         models_path = folders.ensure(os.path.join(folders.MODELS_PATH, classifier_name))
         model_path = os.path.join(models_path, '{}.h5'.format(base_fname))
@@ -417,7 +418,6 @@ def main():
             fd.write('cnn_filter_sizes={}\n'.format(str(net_params['cnn_filter_sizes'])))
             fd.write('cnn_activation=\'{}\'\n'.format(net_params['cnn_activation']))
             fd.write('cnn_l2={}\n'.format(str(net_params['cnn_l2'])))
-        fd.write('paragraph_dropout={}\n'.format(str(paragraph_dropout)))
         if args.agg_mode == 'maxavg':
             pass
         elif args.agg_mode == 'max':
@@ -428,7 +428,6 @@ def main():
             fd.write('agg_rnn={}\n'.format(agg_params['rnn'].__name__))
             fd.write('agg_rnn_units={:d}\n'.format(agg_params['rnn_units']))
             fd.write('agg_rnn_l2={}\n'.format(str(agg_params['rnn_l2'])))
-        fd.write('normal_agg={}'.format(normal_agg))
         fd.write('book_dense_units={:d}\n'.format(book_dense_units))
         fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__,
                                                         book_dense_activation.__dict__))
@@ -455,6 +454,7 @@ def main():
         fd.write('val_size={}\n'.format(str(val_size)))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
         fd.write('class_weight_f={}\n'.format(class_weight_f))
+        fd.write('paragraph_dropout={}\n'.format(str(paragraph_dropout)))
         fd.write('plateau_monitor={}\n'.format(plateau_monitor))
         fd.write('plateau_factor={}\n'.format(str(plateau_factor)))
         fd.write('plateau_patience={:d}\n'.format(plateau_patience))
@@ -491,7 +491,7 @@ def identity(v):
 def create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         net_mode, net_params,
-        paragraph_dropout, agg_mode, agg_params, normal_agg,
+        agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
         bag_mode, bag_params,
         book_dropout, output_k, output_names, label_mode):
@@ -515,8 +515,7 @@ def create_model(
 
     # Consider signals among all sources of books.
     input_b = Input(shape=(None, n_tokens), dtype='float32')  # (P, T); P is not constant per instance!
-    x_b = Dropout(paragraph_dropout, noise_shape=(1, tf.shape(input_b)[1], 1))(input_b)  # (P, T)
-    x_b = TimeDistributed(source_encoder)(x_b)  # (P, m_p)
+    x_b = TimeDistributed(source_encoder)(input_b)  # (P, m_p)
     if agg_mode == 'maxavg':
         x_b = Concatenate()([
             GlobalMaxPooling1D()(x_b),
@@ -534,8 +533,6 @@ def create_model(
                                     kernel_regularizer=agg_rnn_l2,
                                     return_sequences=False),
                             merge_mode='concat')(x_b)  # (2h_b)
-    if normal_agg:
-        x_b = Activation('softmax')(x_b)
     if book_dense_l2 is not None:
         book_dense_l2 = regularizers.l2(book_dense_l2)
     x_b = Dense(book_dense_units,
