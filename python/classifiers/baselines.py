@@ -159,7 +159,7 @@ def create_logistic_regression():
 
 
 def create_multi_layer_perceptron():
-    return MLPClassifier((512, 128))
+    return MLPClassifier(hidden_layer_sizes=(128, 64), max_iter=128)
 
 
 def create_multinomial_naive_bayes():

@@ -1,5 +1,5 @@
+import argparse
 import os
-import sys
 
 import numpy as np
 from tensorflow.keras.models import load_model
@@ -13,10 +13,15 @@ from python import folders
 from python.sites.bookcave import bookcave
 
 
-def main(argv):
-    if len(argv) != 1:
-        raise ValueError('Usage: <category_index>')
-    category_index = int(argv[0])
+def main():
+    parser = argparse.ArgumentParser(
+        description=''
+    )
+    parser.add_argument('category_index')
+    parser.add_argument('cnn')
+    parser.add_argument('rnn')
+    parser.add_argument('rnncnn')
+    args = parser.parse_args()
 
     # Load data.
     source = 'paragraph_tokens'
@@ -40,9 +45,9 @@ def main(argv):
     text_source_tokens = list(zip(*inputs[source]))[0]
 
     # Reduce labels to the specified category, if needed.
-    if category_index != -1:
-        categories = [categories[category_index]]
-        category_levels = [category_levels[category_index]]
+    if args.category_index != -1:
+        categories = [categories[args.category_index]]
+        category_levels = [category_levels[args.category_index]]
 
     # Load paragraph labels.
     predict_locations = []
@@ -66,7 +71,7 @@ def main(argv):
     for i, source_labels in enumerate(predict_source_labels):
         for j, label in enumerate(source_labels):
             Q_true[j, i] = label
-    if category_index == -1 and return_overall:
+    if args.category_index == -1 and return_overall:
         Q_true[bookcave.CATEGORY_INDEX_OVERALL] = bookcave.get_y_overall(Q_true, categories_mode=categories_mode)
 
     # Get balanced indices.
@@ -95,9 +100,9 @@ def main(argv):
 
     # Evaluate.
     model_paths = [
-        os.path.join(folders.MODELS_PATH, 'paragraph_cnn_max_ordinal', '33063788_overall_max-agg.h5'),
-        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_max_ordinal', '33063789_overall_max-agg.h5'),
-        os.path.join(folders.MODELS_PATH, 'paragraph_rnncnn_max_ordinal', '33063790_overall_max-agg.h5')
+        os.path.join(folders.MODELS_PATH, 'paragraph_cnn_maxavg_ordinal', '{}.h5'.format(args.cnn)),
+        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_maxavg_ordinal', '{}.h5'.format(args.rnn)),
+        os.path.join(folders.MODELS_PATH, 'paragraph_rnncnn_maxavg_ordinal', '{}.h5'.format(args.rnncnn))
     ]
     model_custom_objects = [
         None,
@@ -162,4 +167,4 @@ def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, cate
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    main()
