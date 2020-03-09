@@ -17,7 +17,10 @@ def main():
     parser = argparse.ArgumentParser(
         description=''
     )
-    parser.add_argument('category_index')
+    parser.add_argument('category_index',
+                        default=-1,
+                        type=int,
+                        help='Category index. Default is -1 (all categories).')
     parser.add_argument('cnn')
     parser.add_argument('rnn')
     parser.add_argument('rnncnn')
