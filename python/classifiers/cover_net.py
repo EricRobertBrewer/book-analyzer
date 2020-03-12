@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from python import folders
 from python.sites.bookcave import bookcave
 from python.util import ordinal, shared_parameters
-from python.util.net.batch_generators import TransformBalancedBatchGenerator
+from python.util.net.batch_generators import OrdinalBalancedBatchGenerator
 
 
 def get_model(images_size, k, optimizer):
