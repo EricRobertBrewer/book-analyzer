@@ -1,3 +1,4 @@
+from argparse import ArgumentParser, RawTextHelpFormatter
 import os
 import time
 
@@ -14,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from python import folders
 from python.sites.bookcave import bookcave
 from python.util import ordinal, shared_parameters
-from python.util.net.batch_generators import OrdinalBalancedBatchGenerator
+from python.util.net.batch_generators import TransformBalancedBatchGenerator
 
 
 def get_model(images_size, k, optimizer):
@@ -38,6 +39,18 @@ def get_model(images_size, k, optimizer):
 
 
 def main():
+    parser = ArgumentParser(
+        description='Classify the maturity level of a book by its cover.',
+        formatter_class=RawTextHelpFormatter
+    )
+    parser.add_argument('category_index',
+                        type=int,
+                        help='The category index.\n  {}'.format(
+                            '\n  '.join(['{:d} {}'.format(j, bookcave.CATEGORY_NAMES[category])
+                                         for j, category in enumerate(bookcave.CATEGORIES)]
+                        )))
+    args = parser.parse_args()
+
     classifier_name = 'cover_net'
     start_time = int(time.time())
     if 'SLURM_JOB_ID' in os.environ:
@@ -55,10 +68,10 @@ def main():
                           subset_seed=1,
                           image_size=images_size)
 
-    category_index = 5
-    y = Y[category_index]
-    category = categories[category_index]
-    levels = levels[category_index]
+    # Reduce the labels to the specified category.
+    y = Y[args.category_index]
+    category = categories[args.category_index]
+    levels = levels[args.category_index]
 
     # Transform file paths into images, then images into numerical tensors.
     image_paths = inputs['images']
