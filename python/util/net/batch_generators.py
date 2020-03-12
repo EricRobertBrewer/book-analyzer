@@ -1,5 +1,8 @@
+from imblearn.keras import BalancedBatchGenerator
 import numpy as np
 from tensorflow.keras.utils import Sequence
+
+from python.util.shared_parameters import ordinal
 
 
 class SingleInstanceBatchGenerator(Sequence):
@@ -41,3 +44,18 @@ class SingleInstanceBatchGenerator(Sequence):
     def shuffle_indices(self):
         if self.shuffle:
             np.random.shuffle(self.indices)
+
+
+class OrdinalBalancedBatchGenerator(BalancedBatchGenerator):
+
+    def __init__(self, X, y, transform_X, k, batch_size=32):
+        super(OrdinalBalancedBatchGenerator, self).__init__(X, y, sample_weight=None, batch_size=batch_size)
+        self.transform_X = transform_X
+        self.k = k
+
+    def __len__(self):
+        return super(OrdinalBalancedBatchGenerator, self).__len__()
+
+    def __getitem__(self, index):
+        X, y = super(OrdinalBalancedBatchGenerator, self).__getitem__(index)
+        return self.transform_X(X), ordinal.to_multi_hot_ordinal(y, k=self.k)
