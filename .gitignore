@@ -7,4 +7,5 @@ history/
 logs/
 models/
 predictions/
+rc/gen/
 vectors/
