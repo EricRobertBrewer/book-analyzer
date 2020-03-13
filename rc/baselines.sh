@@ -12,4 +12,4 @@ module load python/3.6
 module load tensorflow-gpu/1.9
 
 # Run.
-python3 -m python.classifiers.baselines -1
+python3 -m python.classifiers.baselines

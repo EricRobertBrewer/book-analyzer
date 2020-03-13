@@ -1,4 +1,4 @@
-import argparse
+from argparse import ArgumentParser, RawTextHelpFormatter
 import os
 
 import numpy as np
@@ -14,9 +14,16 @@ from python.sites.bookcave import bookcave
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='Use a model trained on books to predict the categorical maturity levels of paragraphs.'
+    parser = ArgumentParser(
+        description='Use a model trained on books to predict the categorical maturity levels of paragraphs.',
+        formatter_class = RawTextHelpFormatter
     )
+    parser.add_argument('category_index',
+                        type=int,
+                        help='The category index.\n  {}'.format(
+                            '\n  '.join(['{:d} {}'.format(j, bookcave.CATEGORY_NAMES[category])
+                                         for j, category in enumerate(bookcave.CATEGORIES)]
+                        )))
     parser.add_argument('cnn',
                         help='CNN base file name.')
     parser.add_argument('rnn',
@@ -90,26 +97,24 @@ def main():
                           for source_tokens in predict_tokens])
 
     # Evaluate.
-    for j, category in enumerate(categories):
-        model_paths = [
-            os.path.join(folders.MODELS_PATH, 'paragraph_cnn_maxavg_ordinal', '{}_{:d}.h5'.format(args.cnn, j)),
-            os.path.join(folders.MODELS_PATH, 'paragraph_rnn_maxavg_ordinal', '{}_{:d}.h5'.format(args.rnn, j)),
-            os.path.join(folders.MODELS_PATH, 'paragraph_rnncnn_maxavg_ordinal', '{}_{:d}.h5'.format(args.rnncnn, j))
-        ]
-        model_custom_objects = [
-            None,
-            {'AttentionWithContext': AttentionWithContext},
-            {'AttentionWithContext': AttentionWithContext}
-        ]
-
-        q_true = Q_true[j]
-        for m, model_path in enumerate(model_paths):
-            print('\n{}'.format(model_path))
-            model = load_model(model_path, custom_objects=model_custom_objects[m])
-            evaluate_model(model,
-                           P_predict,
-                           q_true,
-                           category)
+    model_paths = [
+        os.path.join(folders.MODELS_PATH, 'paragraph_cnn_maxavg_ordinal', '{}.h5'.format(args.cnn)),
+        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_maxavg_ordinal', '{}.h5'.format(args.rnn)),
+        os.path.join(folders.MODELS_PATH, 'paragraph_rnncnn_maxavg_ordinal', '{}.h5'.format(args.rnncnn))
+    ]
+    model_custom_objects = [
+        None,
+        {'AttentionWithContext': AttentionWithContext},
+        {'AttentionWithContext': AttentionWithContext}
+    ]
+    q_true = Q_true[args.category_index]
+    for m, model_path in enumerate(model_paths):
+        print('\n{}'.format(model_path))
+        model = load_model(model_path, custom_objects=model_custom_objects[m])
+        evaluate_model(model,
+                       P_predict,
+                       q_true,
+                       categories[args.category_index])
 
 
 def get_input_sequence(source_tokens, tokenizer, n_tokens, padding='pre', truncating='pre', split='\t'):

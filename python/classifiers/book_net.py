@@ -47,14 +47,14 @@ def main():
                         default='maxavg',
                         choices=['max', 'avg', 'maxavg', 'rnn'],
                         help='The way the network will aggregate paragraphs or sentences. Default is `maxavg`.')
-    parser.add_argument('--book_dropout',
-                        default=0.5,
-                        type=float,
-                        help='Dropout probability before final classification layer. Default is 0.5.')
     parser.add_argument('--book_dense_units',
                         default='128',
                         help='The number of neurons in the final fully-connected layers, comma separated. '
                              'Default is `128`.')
+    parser.add_argument('--book_dropout',
+                        default=0.5,
+                        type=float,
+                        help='Dropout probability before final classification layer. Default is 0.5.')
     parser.add_argument('--label_mode',
                         default=shared_parameters.LABEL_MODE_ORDINAL,
                         choices=[shared_parameters.LABEL_MODE_ORDINAL,

@@ -12,14 +12,11 @@ module load python/3.6
 module load tensorflow-gpu/1.9
 
 # Run.
-python3 -m python.classifiers.book_net \
+python3 -m python.classifiers.book_net 0 \
   --source_mode paragraph \
   --net_mode cnn \
   --agg_mode maxavg \
-  --label_mode ordinal \
-  --paragraph_dropout 0.0 \
+  --book_dense_units 128 \
   --book_dropout 0.5 \
-  --class_weight_f square_inverse \
-  --category_index -1 \
-  --steps_per_epoch 0 \
+  --label_mode ordinal \
   --epochs 256
