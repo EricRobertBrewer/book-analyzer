@@ -1,9 +1,9 @@
 import os
 import time
 
-import numpy as np
 # Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
 import tensorflow as tf
+import numpy as np
 from sklearn.model_selection import train_test_split
 
 from python.util import evaluation, shared_parameters
@@ -15,8 +15,11 @@ def main():
     script_name = os.path.basename(__file__)
     classifier_name = script_name[:script_name.rindex('.')]
 
-    stamp = int(time.time())
-    base_fname = format(stamp, 'd')
+    start_time = int(time.time())
+    if 'SLURM_JOB_ID' in os.environ:
+        stamp = int(os.environ['SLURM_JOB_ID'])
+    else:
+        stamp = start_time
 
     # Load data.
     print('Retrieving labels...')
@@ -46,37 +49,39 @@ def main():
     Y_train = Y_train_T.transpose()  # (c, n * (1 - b))
     Y_test = Y_test_T.transpose()  # (c, n * b)
 
-    # Predict the most common class seen in the training data for each category.
-    Y_pred = [[np.argmax(np.bincount(Y_train[j], minlength=len(category_levels[j])))]*Y_test.shape[1]
-              for j in range(len(categories))]
+    for j, category in enumerate(categories):
+        levels = category_levels[j]
+        y_train = Y_train[j]
+        y_test = Y_test[j]
+        # Predict the most common class seen in the training data.
+        y_pred = [np.argmax(np.bincount(y_train, minlength=len(levels)))] * len(y_test)
 
-    print('Writing results...')
+        base_fname = '{:d}_{:d}'.format(stamp, j)
+        logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, classifier_name))
+        with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
+            fd.write('HYPERPARAMETERS\n')
+            fd.write('\nText\n')
+            fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
+            fd.write('subset_seed={}\n'.format(str(subset_seed)))
+            fd.write('min_len={:d}\n'.format(min_len))
+            fd.write('max_len={:d}\n'.format(max_len))
+            fd.write('min_tokens={:d}\n'.format(min_tokens))
+            fd.write('\nLabels\n')
+            fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
+            fd.write('return_overall={}\n'.format(return_overall))
+            fd.write('\nTraining\n')
+            fd.write('test_size={}\n'.format(str(test_size)))
+            fd.write('test_random_state={:d}\n'.format(test_random_state))
+            fd.write('\nRESULTS\n\n')
+            fd.write('Data size: {:d}\n'.format(Y.shape[1]))
+            fd.write('Train size: {:d}\n'.format(Y_train.shape[1]))
+            fd.write('Test size: {:d}\n'.format(Y_test.shape[1]))
+            fd.write('\n')
+            evaluation.write_confusion_and_metrics(y_test, y_pred, fd, category)
 
-    logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, classifier_name))
-    with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
-        fd.write('HYPERPARAMETERS\n')
-        fd.write('\nText\n')
-        fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
-        fd.write('subset_seed={}\n'.format(str(subset_seed)))
-        fd.write('min_len={:d}\n'.format(min_len))
-        fd.write('max_len={:d}\n'.format(max_len))
-        fd.write('min_tokens={:d}\n'.format(min_tokens))
-        fd.write('\nLabels\n')
-        fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
-        fd.write('return_overall={}\n'.format(return_overall))
-        fd.write('\nTraining\n')
-        fd.write('test_size={:.2f}\n'.format(test_size))
-        fd.write('test_random_state={:d}\n'.format(test_random_state))
-        fd.write('\nRESULTS\n\n')
-        fd.write('Data size: {:d}\n'.format(Y.shape[1]))
-        fd.write('Train size: {:d}\n'.format(Y_train.shape[1]))
-        fd.write('Test size: {:d}\n'.format(Y_test.shape[1]))
-        fd.write('\n')
-        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=return_overall)
-
-    predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, classifier_name))
-    with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
-        evaluation.write_predictions(Y_test, Y_pred, fd, categories)
+        predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, classifier_name))
+        with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
+            evaluation.write_predictions(y_test, y_pred, fd, category)
 
     print('Done.')
 

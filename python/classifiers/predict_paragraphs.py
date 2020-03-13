@@ -2,11 +2,11 @@ import argparse
 import os
 
 import numpy as np
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.preprocessing.text import Tokenizer
+from keras.models import load_model
+from keras.preprocessing.sequence import pad_sequences
+from keras.preprocessing.text import Tokenizer
 
-from python.util import data_utils, evaluation, shared_parameters
+from python.util import evaluation, shared_parameters
 from python.util import ordinal
 from python.util.net.attention_with_context import AttentionWithContext
 from python import folders
@@ -15,15 +15,14 @@ from python.sites.bookcave import bookcave
 
 def main():
     parser = argparse.ArgumentParser(
-        description=''
+        description='Use a model trained on books to predict the categorical maturity levels of paragraphs.'
     )
-    parser.add_argument('category_index',
-                        default=-1,
-                        type=int,
-                        help='Category index. Default is -1 (all categories).')
-    parser.add_argument('cnn')
-    parser.add_argument('rnn')
-    parser.add_argument('rnncnn')
+    parser.add_argument('cnn',
+                        help='CNN base file name.')
+    parser.add_argument('rnn',
+                        help='RNN base file name.')
+    parser.add_argument('rnncnn',
+                        help='RNN-CNN base file name.')
     args = parser.parse_args()
 
     # Load data.
@@ -47,11 +46,6 @@ def main():
                           return_meta=True)
     text_source_tokens = list(zip(*inputs[source]))[0]
 
-    # Reduce labels to the specified category, if needed.
-    if args.category_index != -1:
-        categories = [categories[args.category_index]]
-        category_levels = [category_levels[args.category_index]]
-
     # Load paragraph labels.
     predict_locations = []
     predict_tokens = []
@@ -74,14 +68,8 @@ def main():
     for i, source_labels in enumerate(predict_source_labels):
         for j, label in enumerate(source_labels):
             Q_true[j, i] = label
-    if args.category_index == -1 and return_overall:
+    if return_overall:
         Q_true[bookcave.CATEGORY_INDEX_OVERALL] = bookcave.get_y_overall(Q_true, categories_mode=categories_mode)
-
-    # Get balanced indices.
-    seed = 1
-    category_balanced_indices = [
-        data_utils.get_balanced_indices_sample(q_true, minlength=len(category_levels[j]), seed=seed)
-        for j, q_true in enumerate(Q_true)]
 
     # Tokenize text.
     max_words = shared_parameters.TEXT_MAX_WORDS
@@ -102,31 +90,26 @@ def main():
                           for source_tokens in predict_tokens])
 
     # Evaluate.
-    model_paths = [
-        os.path.join(folders.MODELS_PATH, 'paragraph_cnn_maxavg_ordinal', '{}.h5'.format(args.cnn)),
-        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_maxavg_ordinal', '{}.h5'.format(args.rnn)),
-        os.path.join(folders.MODELS_PATH, 'paragraph_rnncnn_maxavg_ordinal', '{}.h5'.format(args.rnncnn))
-    ]
-    model_custom_objects = [
-        None,
-        {'AttentionWithContext': AttentionWithContext},
-        {'AttentionWithContext': AttentionWithContext}
-    ]
-    for m, model_path in enumerate(model_paths):
-        print('\n{}'.format(model_path))
-        model = load_model(model_path, custom_objects=model_custom_objects[m])
-        evaluate_model(model,
-                       P_predict,
-                       Q_true,
-                       categories,
-                       overall_last=return_overall)
-        print('\nBalanced')
-        evaluate_model(model,
-                       P_predict,
-                       Q_true,
-                       categories,
-                       overall_last=return_overall,
-                       category_indices=category_balanced_indices)
+    for j, category in enumerate(categories):
+        model_paths = [
+            os.path.join(folders.MODELS_PATH, 'paragraph_cnn_maxavg_ordinal', '{}_{:d}.h5'.format(args.cnn, j)),
+            os.path.join(folders.MODELS_PATH, 'paragraph_rnn_maxavg_ordinal', '{}_{:d}.h5'.format(args.rnn, j)),
+            os.path.join(folders.MODELS_PATH, 'paragraph_rnncnn_maxavg_ordinal', '{}_{:d}.h5'.format(args.rnncnn, j))
+        ]
+        model_custom_objects = [
+            None,
+            {'AttentionWithContext': AttentionWithContext},
+            {'AttentionWithContext': AttentionWithContext}
+        ]
+
+        q_true = Q_true[j]
+        for m, model_path in enumerate(model_paths):
+            print('\n{}'.format(model_path))
+            model = load_model(model_path, custom_objects=model_custom_objects[m])
+            evaluate_model(model,
+                           P_predict,
+                           q_true,
+                           category)
 
 
 def get_input_sequence(source_tokens, tokenizer, n_tokens, padding='pre', truncating='pre', split='\t'):
@@ -136,37 +119,18 @@ def get_input_sequence(source_tokens, tokenizer, n_tokens, padding='pre', trunca
                                   truncating=truncating))
 
 
-def evaluate_model(model, P_predict, Q_true, categories, overall_last=True, category_indices=None):
+def evaluate_model(model, P_predict, q_true, category):
     # Predict.
-    Q_pred_ordinal = model.predict(P_predict)
-    Q_pred = [ordinal.from_multi_hot_ordinal(q, threshold=.5) for q in Q_pred_ordinal]
+    q_pred_ordinal = model.predict(P_predict)
+    q_pred = ordinal.from_multi_hot_ordinal(q_pred_ordinal, threshold=.5)
 
     # Evaluate.
-    category_metrics = []
-    for j, category in enumerate(categories):
-        print()
-        print(category)
-        q_true = Q_true[j]
-        q_pred = Q_pred[j]
-        if category_indices is not None:
-            q_true = q_true[category_indices[j]]
-            q_pred = q_pred[category_indices[j]]
-        confusion, metrics = evaluation.get_confusion_and_metrics(q_true, q_pred)
-        print(confusion)
-        for i, metric_name in enumerate(evaluation.METRIC_NAMES):
-            print('{}: {:.4f}'.format(metric_name, metrics[i]))
-        category_metrics.append(metrics)
-
-    # Average.
-    print('\nAverage')
-    if overall_last:
-        n_average = len(category_metrics) - 1
-    else:
-        n_average = len(category_metrics)
-    metrics_avg = [sum([metrics[i] for metrics in category_metrics[:n_average]])/n_average
-                   for i in range(len(category_metrics[0]))]
+    print()
+    print(category)
+    confusion, metrics = evaluation.get_confusion_and_metrics(q_true, q_pred)
+    print(confusion)
     for i, metric_name in enumerate(evaluation.METRIC_NAMES):
-        print('{}: {:.4f}'.format(metric_name, metrics_avg[i]))
+        print('{}: {:.4f}'.format(metric_name, metrics[i]))
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-from tensorflow.keras import utils
+from keras import utils
 
 from python.util import ordinal
 
@@ -29,47 +29,11 @@ EVAL_VAL_SIZE = 1/4
 EVAL_VAL_RANDOM_STATE = 1
 
 
-def transform_labels(Y, category_k, label_mode):
+def transform_labels(y, k, label_mode):
     if label_mode == LABEL_MODE_ORDINAL:
-        return [ordinal.to_multi_hot_ordinal(Y[j], k=k) for j, k in enumerate(category_k)]  # (c, n, k - 1)
+        return ordinal.to_multi_hot_ordinal(y, k=k)  # (n, k - 1)
     if label_mode == LABEL_MODE_CATEGORICAL:
-        return [utils.to_categorical(Y[j], num_classes=k) for j, k in enumerate(category_k)]  # (c, n, k)
+        return utils.to_categorical(y, num_classes=k)  # (n, k)
     if label_mode == LABEL_MODE_REGRESSION:
-        return [Y[j] / k for j, k in enumerate(category_k)]  # (c, n)
-    raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
-
-
-def get_category_class_weights(Y, label_mode, f='inverse'):
-    if label_mode == LABEL_MODE_ORDINAL:
-        category_class_weights = []  # [[dict]], since objective will be binary cross-entropy.
-        for y in Y:
-            class_weights = []
-            for i in range(y.shape[1]):
-                ones_count = sum(y[:, i])
-                zeros_count = len(y) - ones_count
-                if f == 'inverse':
-                    class_weight = {0: 1 / (zeros_count + 1), 1: 1 / (ones_count + 1)}
-                elif f == 'square_inverse':
-                    class_weight = {0: 1 / (zeros_count + 1)**2, 1: 1 / (ones_count + 1)**2}
-                else:
-                    raise ValueError('Unknown f: {}'.format(f))
-                class_weights.append(class_weight)
-            category_class_weights.append(class_weights)
-        return category_class_weights
-    if label_mode == LABEL_MODE_CATEGORICAL:
-        category_class_weights = []  # [dict], since objective will be categorical cross-entropy.
-        for y in Y:
-            class_weight = dict()
-            for i in range(y.shape[1]):
-                count = sum(y[:, i])
-                if f == 'inverse':
-                    class_weight[i] = 1 / (count + 1)
-                elif f == 'square_inverse':
-                    class_weight[i] = 1 / (count + 1)**2
-                else:
-                    raise ValueError('Unknown f: {}'.format(f))
-            category_class_weights.append(class_weight)
-        return category_class_weights
-    if label_mode == LABEL_MODE_REGRESSION:
-        return None  # No classes.
+        return y / k  # (n)
     raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))

@@ -1,10 +1,9 @@
 import os
-import sys
 import time
 
-import numpy as np
 # Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
 import tensorflow as tf
+import numpy as np
 from sklearn.ensemble.forest import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -20,21 +19,15 @@ from python import folders
 from python.sites.bookcave import bookcave
 
 
-def main(argv):
-    if len(argv) > 1:
-        raise ValueError('Usage: [note]')
-    note = None
-    if len(argv) > 0:
-        note = str(argv[0])
+def main():
     max_words = shared_parameters.TEXT_MAX_WORDS
 
-    stamp = int(time.time())
-    print('Time stamp: {:d}'.format(stamp))
-    if note is not None:
-        print('Note: {}'.format(note))
-        base_fname = '{:d}_{}'.format(stamp, note)
+    start_time = int(time.time())
+    if 'SLURM_JOB_ID' in os.environ:
+        stamp = int(os.environ['SLURM_JOB_ID'])
     else:
-        base_fname = format(stamp, 'd')
+        stamp = start_time
+    print('Time stamp: {:d}'.format(stamp))
 
     # Load data.
     print('Retrieving texts...')
@@ -104,46 +97,44 @@ def main(argv):
     for m, create_func in enumerate(create_funcs):
         model_name = model_names[m]
         print('Training model `{}`...'.format(model_name))
-        Y_pred = []
         for j, category in enumerate(categories):
             print('Classifying category `{}`...'.format(category))
             y_train = Y_train[j]  # (n * (1 - b))
             k = len(category_levels[j])
             classifiers = fit_ordinal(create_func, X_train, y_train, k)
             y_pred = predict_ordinal(classifiers, X_test, k)  # (n * b)
-            Y_pred.append(y_pred)
+            y_test = Y_test[j]
 
-        print('Writing results...')
+            base_fname = '{:d}_{:d}'.format(stamp, j)
+            logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, model_name))
+            with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
+                fd.write('HYPERPARAMETERS\n')
+                fd.write('\nText\n')
+                fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
+                fd.write('subset_seed={}\n'.format(str(subset_seed)))
+                fd.write('min_len={:d}\n'.format(min_len))
+                fd.write('max_len={:d}\n'.format(max_len))
+                fd.write('min_tokens={:d}\n'.format(min_tokens))
+                fd.write('\nLabels\n')
+                fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
+                fd.write('return_overall={}\n'.format(return_overall))
+                fd.write('\nVectorization\n')
+                fd.write('max_words={:d}\n'.format(max_words))
+                fd.write('vectorizer={}\n'.format(vectorizer.__class__.__name__))
+                fd.write('\nTraining\n')
+                fd.write('test_size={}\n'.format(str(test_size)))
+                fd.write('test_random_state={:d}\n'.format(test_random_state))
+                fd.write('\nRESULTS\n\n')
+                fd.write('Data size: {:d}\n'.format(X.shape[0]))
+                fd.write('Train size: {:d}\n'.format(X_train.shape[0]))
+                fd.write('Test size: {:d}\n\n'.format(X_test.shape[0]))
+                evaluation.write_confusion_and_metrics(y_test, y_pred, fd, category)
 
-        logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, model_name))
-        with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
-            fd.write('HYPERPARAMETERS\n')
-            fd.write('\nText\n')
-            fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
-            fd.write('subset_seed={}\n'.format(str(subset_seed)))
-            fd.write('min_len={:d}\n'.format(min_len))
-            fd.write('max_len={:d}\n'.format(max_len))
-            fd.write('min_tokens={:d}\n'.format(min_tokens))
-            fd.write('\nLabels\n')
-            fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
-            fd.write('return_overall={}\n'.format(return_overall))
-            fd.write('\nVectorization\n')
-            fd.write('max_words={:d}\n'.format(max_words))
-            fd.write('vectorizer={}\n'.format(vectorizer.__class__.__name__))
-            fd.write('\nTraining\n')
-            fd.write('test_size={:.2f}\n'.format(test_size))
-            fd.write('test_random_state={:d}\n'.format(test_random_state))
-            fd.write('\nRESULTS\n\n')
-            fd.write('Data size: {:d}\n'.format(X.shape[0]))
-            fd.write('Train size: {:d}\n'.format(X_train.shape[0]))
-            fd.write('Test size: {:d}\n\n'.format(X_test.shape[0]))
-            evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=return_overall)
+            predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, model_name))
+            with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
+                evaluation.write_predictions(y_test, y_pred, fd, category)
 
-        predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, model_name))
-        with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
-            evaluation.write_predictions(Y_test, Y_pred, fd, categories)
-
-        print('Done.')
+    print('Done.')
 
 
 def identity(v):
@@ -206,4 +197,4 @@ def predict_ordinal(classifiers, X, k):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    main()

@@ -1,61 +1,75 @@
 from imblearn.keras import BalancedBatchGenerator
+from keras.utils import Sequence
 import numpy as np
-from tensorflow.keras.utils import Sequence
 
-from python.util.shared_parameters import ordinal
+
+class SimpleBatchGenerator(Sequence):
+
+    def __init__(self, X, y, batch_size=32, shuffle=True):
+        super(SimpleBatchGenerator, self).__init__()
+        self.X = X
+        self.y = y
+        self.batch_size = batch_size
+        self.indices = np.arange(len(y))
+        self.shuffle = shuffle
+        if self.shuffle:
+            np.random.shuffle(self.indices)
+
+    def __len__(self):
+        return int(np.ceil(len(self.X) / self.batch_size))
+
+    def __getitem__(self, index):
+        indices = self.indices[index * self.batch_size:(index + 1) * self.batch_size]
+        return self.X[indices], self.y[indices]
+
+    def on_epoch_end(self):
+        if self.shuffle:
+            np.random.shuffle(self.indices)
 
 
 class SingleInstanceBatchGenerator(Sequence):
     """
-    When fitting the model, the batch size must be 1 to accommodate variable numbers of paragraphs per text.
+    When fitting the model, the easiest way to accommodate variable numbers of paragraphs per text
+    is to set the batch size to 1.
     See `https://datascience.stackexchange.com/a/48814/66450`.
     """
-    def __init__(self, X, Y, X_w=None, shuffle=True, row_dropout=0.0):
+    def __init__(self, X, y, shuffle=True):
         super(SingleInstanceBatchGenerator, self).__init__()
         # `fit_generator` wants each `x` to be a NumPy array, not a list.
         self.X = [np.array([x]) for x in X]
-        self.X_w = X_w
-        # Transform Y from shape (c, n, k-1) to (n, c, 1, k-1) if Y is ordinal,
-        # or from shape (c, n, k) to (n, c, 1, k) if Y is not ordinal,
-        # where `c` is the number of categories, `n` is the number of instances,
-        # and `k` is the number of classes for the current category.
-        self.Y = [[np.array([y[i]]) for y in Y]
-                  for i in range(len(X))]
+        self.y = [np.array([value]) for value in y]
         self.indices = np.arange(len(X))
         self.shuffle = shuffle
-        self.shuffle_indices()
-        self.row_dropout = row_dropout
+        if self.shuffle:
+            np.random.shuffle(self.indices)
 
     def __len__(self):
         return len(self.indices)
 
     def __getitem__(self, index):
         i = self.indices[index]
-        x = self.X[i]
-        dropout_mask = np.random.rand(len(self.X[i][0])) >= self.row_dropout
-        x = x[:, dropout_mask]
-        if self.X_w is not None:
-            return [x, self.X_w[i]], self.Y[i]
-        return x, self.Y[i]
+        return self.X[i], self.y[i]
 
     def on_epoch_end(self):
-        self.shuffle_indices()
-
-    def shuffle_indices(self):
         if self.shuffle:
             np.random.shuffle(self.indices)
 
 
-class OrdinalBalancedBatchGenerator(BalancedBatchGenerator):
+class TransformBalancedBatchGenerator(BalancedBatchGenerator):
 
-    def __init__(self, X, y, transform_X, k, batch_size=32):
-        super(OrdinalBalancedBatchGenerator, self).__init__(X, y, sample_weight=None, batch_size=batch_size)
+    def __init__(self, X, y, transform_X=None, transform_y=None, batch_size=32, **kwargs):
+        super(TransformBalancedBatchGenerator, self).__init__(X, y, batch_size=batch_size)
         self.transform_X = transform_X
-        self.k = k
+        self.transform_y = transform_y
+        self.kwargs = kwargs
 
     def __len__(self):
-        return super(OrdinalBalancedBatchGenerator, self).__len__()
+        return super(TransformBalancedBatchGenerator, self).__len__()
 
     def __getitem__(self, index):
-        X, y = super(OrdinalBalancedBatchGenerator, self).__getitem__(index)
-        return self.transform_X(X), ordinal.to_multi_hot_ordinal(y, k=self.k)
+        X, y = super(TransformBalancedBatchGenerator, self).__getitem__(index)
+        if self.transform_X is not None:
+            X = self.transform_X(X, **self.kwargs)
+        if self.transform_y is not None:
+            y = self.transform_y(y, **self.kwargs)
+        return X, y

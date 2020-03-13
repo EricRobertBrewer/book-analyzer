@@ -1,87 +1,79 @@
-import argparse
+from argparse import ArgumentParser, RawTextHelpFormatter
 import os
 import time
 
-import numpy as np
-import tensorflow as tf
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from tensorflow.keras.layers import Bidirectional, Concatenate, Conv2D, CuDNNGRU, Dense, Dropout, Embedding, Flatten, \
-    GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, MaxPool2D, Reshape, TimeDistributed
-from tensorflow.keras.models import Model
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras import regularizers
 # Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
-from sklearn.feature_extraction.text import TfidfVectorizer
+import tensorflow as tf
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from keras.layers import Bidirectional, Concatenate, Conv2D, CuDNNGRU, Dense, Dropout, Embedding, Flatten, \
+    GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, LeakyReLU, MaxPool2D, Reshape, TimeDistributed
+from keras.models import Model
+from keras.optimizers import Adam
+from keras.preprocessing.sequence import pad_sequences
+from keras.preprocessing.text import Tokenizer
+from keras import regularizers
+import numpy as np
 from sklearn.model_selection import train_test_split
 
 from python import folders
 from python.sites.bookcave import bookcave
 from python.text import load_embeddings
-from python.util import data_utils, evaluation, shared_parameters
+from python.util import evaluation, shared_parameters
 from python.util import ordinal
 from python.util.net.attention_with_context import AttentionWithContext
-from python.util.net.batch_generators import SingleInstanceBatchGenerator
+from python.util.net.batch_generators import SingleInstanceBatchGenerator, TransformBalancedBatchGenerator
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description='BookNet is a neural network classifier used to determine the maturity level of books.'
+    parser = ArgumentParser(
+        description='Classify the maturity level of books by their text.',
+        formatter_class=RawTextHelpFormatter
     )
+    parser.add_argument('category_index',
+                        type=int,
+                        help='The category index.\n  {}'.format(
+                            '\n  '.join(['{:d} {}'.format(j, bookcave.CATEGORY_NAMES[category])
+                                         for j, category in enumerate(bookcave.CATEGORIES)]
+                        )))
     parser.add_argument('--source_mode',
                         default='paragraph',
                         choices=['paragraph', 'sentence'],
-                        help='The source of text.`')
+                        help='The source of text. Default is `paragraph`.')
     parser.add_argument('--net_mode',
                         default='cnn',
                         choices=['rnn', 'cnn', 'rnncnn'],
-                        help='The type of neural network.')
+                        help='The type of neural network. Default is `cnn`.')
     parser.add_argument('--agg_mode',
                         default='maxavg',
                         choices=['max', 'avg', 'maxavg', 'rnn'],
-                        help='The way the network will aggregate paragraphs or sentences.')
+                        help='The way the network will aggregate paragraphs or sentences. Default is `maxavg`.')
+    parser.add_argument('--book_dropout',
+                        default=0.5,
+                        type=float,
+                        help='Dropout probability before final classification layer. Default is 0.5.')
+    parser.add_argument('--book_dense_units',
+                        default='128',
+                        help='The number of neurons in the final fully-connected layers, comma separated. '
+                             'Default is `128`.')
     parser.add_argument('--label_mode',
                         default=shared_parameters.LABEL_MODE_ORDINAL,
                         choices=[shared_parameters.LABEL_MODE_ORDINAL,
                                  shared_parameters.LABEL_MODE_CATEGORICAL,
                                  shared_parameters.LABEL_MODE_REGRESSION],
-                        help='The way that labels will be interpreted.')
-    parser.add_argument('--balance_mode',
-                        choices=['reduce_majority', 'sample_union'],
-                        help='Balance the data set. Optional.')
-    parser.add_argument('--bag_mode',
-                        action='store_true',
-                        help='Option to add a 2-layer MLP using bag-of-words representations of texts. Optional.')
-    parser.add_argument('--paragraph_dropout',
-                        default=0.0,
-                        type=float,
-                        help='Probability to drop paragraphs during training. Default is 0.')
-    parser.add_argument('--book_dropout',
-                        default=0.5,
-                        type=float,
-                        help='Dropout probability before final classification layer. Default is 0.5.')
-    parser.add_argument('--class_weight_f',
-                        default='square_inverse',
-                        choices=['inverse', 'square_inverse', 'none'],
-                        help='Option to use a weighted loss function for imbalanced data.')
-    parser.add_argument('--category_index',
-                        default=-1,
-                        type=int,
-                        help='The index of the category that should be classified, or `-1` to classify all categories.')
-    parser.add_argument('--steps_per_epoch',
-                        default=0,
-                        type=int,
-                        help='Number of books to train on per epoch, or 0 to train on all books every epoch.')
+                        help='The way that labels will be interpreted. '
+                             'Default is `{}`.'.format(shared_parameters.LABEL_MODE_ORDINAL))
     parser.add_argument('--epochs',
                         default=1,
                         type=int,
-                        help='Epochs.')
+                        help='Epochs. Default is 1.')
     parser.add_argument('--note',
                         help='An optional note that will be appended to the names of generated files.')
     args = parser.parse_args()
 
-    classifier_name = '{}_{}_{}_{}'.format(args.source_mode, args.net_mode, args.agg_mode, args.label_mode)
+    classifier_name = '{}_{}_{}_{}'.format(args.source_mode,
+                                           args.net_mode,
+                                           args.agg_mode,
+                                           args.label_mode)
 
     start_time = int(time.time())
     if 'SLURM_JOB_ID' in os.environ:
@@ -91,9 +83,9 @@ def main():
     print('Time stamp: {:d}'.format(stamp))
     if args.note is not None:
         print('Note: {}'.format(args.note))
-        base_fname = '{:d}_{}'.format(stamp, args.note)
+        base_fname = '{:d}_{}_{:d}'.format(stamp, args.note, args.category_index)
     else:
-        base_fname = format(stamp, 'd')
+        base_fname = '{:d}_{:d}'.format(stamp, args.category_index)
 
     # Load data.
     print('Retrieving texts...')
@@ -122,34 +114,11 @@ def main():
     text_source_tokens = list(zip(*inputs[source]))[0]
     print('Retrieved {:d} texts.'.format(len(text_source_tokens)))
 
-    # Reduce labels to the specified category, if needed.
-    if args.category_index != -1:
-        Y = np.array([Y[args.category_index]])
-        categories = [categories[args.category_index]]
-        category_levels = [category_levels[args.category_index]]
-
-    # Balance data set, if needed.
-    balance_majority_tolerance = 6
-    balance_sample_seed = 1
-    if args.balance_mode is not None:
-        index_set = set()
-        if args.balance_mode == 'reduce_majority':
-            majority_indices = data_utils.get_majority_indices(Y,
-                                                               minlengths=[len(category_levels[j])
-                                                                           for j in range(len(category_levels))],
-                                                               tolerance=balance_majority_tolerance)
-            index_set.update(set(np.arange(len(text_source_tokens))) - set(majority_indices))
-        else:  # args.balance_mode == 'sample_union':
-            category_balanced_indices = [data_utils.get_balanced_indices_sample(y,
-                                                                                minlength=len(category_levels[j]),
-                                                                                seed=balance_sample_seed)
-                                         for j, y in enumerate(Y)]
-            for indices in category_balanced_indices:
-                index_set.update(set(indices))
-        text_source_tokens = [source_tokens for i, source_tokens in enumerate(text_source_tokens) if i in index_set]
-        Y_T = Y.transpose()
-        Y_T = np.array([instance for i, instance in enumerate(Y_T) if i in index_set])
-        Y = Y_T.transpose()
+    # Reduce labels to the specified category.
+    y = Y[args.category_index]
+    category = categories[args.category_index]
+    levels = category_levels[args.category_index]
+    k = len(levels)
 
     # Tokenize.
     print('Tokenizing...')
@@ -181,47 +150,23 @@ def main():
     embedding_path = folders.EMBEDDING_GLOVE_300_PATH
     embedding_matrix = load_embeddings.load_embedding(tokenizer, embedding_path, max_words)
 
-    # Add a 2-layer MLP, if needed.
-    if args.bag_mode:
-        # Create vectorized representations of the book texts.
-        print('Vectorizing text...')
-        vectorizer = TfidfVectorizer(
-            preprocessor=identity,
-            tokenizer=identity,
-            analyzer='word',
-            token_pattern=None,
-            max_features=max_words,
-            norm='l2',
-            sublinear_tf=True)
-        text_tokens = []
-        for source_tokens in text_source_tokens:
-            all_tokens = []
-            for tokens in source_tokens:
-                all_tokens.extend(tokens)
-            text_tokens.append(all_tokens)
-        X_w = vectorizer.fit_transform(text_tokens).todense()
-        print('Vectorized text with {:d} unique words.'.format(len(vectorizer.get_feature_names())))
-    else:
-        X_w = None
-
     # Create model.
     print('Creating model...')
-    category_k = [len(levels) for levels in category_levels]
     embedding_trainable = False
     net_params = dict()
     if args.net_mode == 'rnn' or args.net_mode == 'rnncnn':
         net_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
         net_params['rnn_units'] = 128
-        net_params['rnn_l2'] = .01
+        net_params['rnn_l2'] = .001
         net_params['rnn_dense_units'] = 64
         net_params['rnn_dense_activation'] = 'elu'
-        net_params['rnn_dense_l2'] = .01
+        net_params['rnn_dense_l2'] = .001
         net_params['rnn_agg'] = 'attention'
     if args.net_mode == 'cnn' or args.net_mode == 'rnncnn':
         net_params['cnn_filters'] = 16
         net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
         net_params['cnn_activation'] = 'elu'
-        net_params['cnn_l2'] = .01
+        net_params['cnn_l2'] = .001
     agg_params = dict()
     if args.agg_mode == 'maxavg':
         pass
@@ -232,27 +177,17 @@ def main():
     else:  # args.agg_mode == 'rnn':
         agg_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
         agg_params['rnn_units'] = 64
-        agg_params['rnn_l2'] = .01
-    book_dense_units = 128
-    book_dense_activation = tf.keras.layers.LeakyReLU(alpha=.1)
-    book_dense_l2 = .01
-    bag_params = dict()
-    if args.bag_mode:
-        bag_params['max_words'] = max_words
-        bag_params['dense_1_units'] = 256
-        bag_params['dense_1_activation'] = tf.keras.layers.LeakyReLU(alpha=.1)
-        bag_params['dense_1_l2'] = .01
-        bag_params['dense_2_units'] = 256
-        bag_params['dense_2_activation'] = tf.keras.layers.LeakyReLU(alpha=.1)
-        bag_params['dense_2_l2'] = .01
+        agg_params['rnn_l2'] = .001
+    book_dense_units = [int(units) for units in args.book_dense_units.split(',')]
+    book_dense_activation = LeakyReLU(alpha=.1)
+    book_dense_l2 = .001
     book_dropout = args.book_dropout
     model = create_model(
         n_tokens, embedding_matrix, embedding_trainable,
         args.net_mode, net_params,
         args.agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
-        args.bag_mode, bag_params,
-        book_dropout, category_k, categories, args.label_mode)
+        book_dropout, k, category, args.label_mode)
     lr = 2**-16
     optimizer = Adam(lr=lr)
     if args.label_mode == shared_parameters.LABEL_MODE_ORDINAL:
@@ -272,43 +207,28 @@ def main():
     test_random_state = shared_parameters.EVAL_TEST_RANDOM_STATE
     val_size = shared_parameters.EVAL_VAL_SIZE  # v
     val_random_state = shared_parameters.EVAL_VAL_RANDOM_STATE
-    Y_T = Y.transpose()  # (n, c)
-    X_train, X_test, Y_train_T, Y_test_T = \
-        train_test_split(X, Y_T, test_size=test_size, random_state=test_random_state)
-    X_train, X_val, Y_train_T, Y_val_T = \
-        train_test_split(X_train, Y_train_T, test_size=val_size, random_state=val_random_state)
-    if X_w is not None:
-        X_w_train, X_w_test = train_test_split(X_w, test_size=test_size, random_state=test_random_state)
-        X_w_train, X_w_val = train_test_split(X_w_train, test_size=val_size, random_state=val_random_state)
-    else:
-        X_w_train, X_w_val, X_w_test = None, None, None
-    Y_train = Y_train_T.transpose()  # (c, n * (1 - b) * (1 - v))
-    Y_val = Y_val_T.transpose()  # (c, n * (1 - b) * v)
-    Y_test = Y_test_T.transpose()  # (c, n * b)
-
-    # Transform labels based on the label mode.
-    print('Transforming labels...')
-    Y_train = shared_parameters.transform_labels(Y_train, category_k, args.label_mode)
-    Y_val = shared_parameters.transform_labels(Y_val, category_k, args.label_mode)
-
-    # Calculate class weights.
-    print('Calculating class weights...')
-    class_weight_f = args.class_weight_f
-    if class_weight_f is not 'none':
-        category_class_weights = shared_parameters.get_category_class_weights(Y_train, args.label_mode, f=class_weight_f)
-    else:
-        category_class_weights = None
+    X_train, X_test, y_train, y_test = \
+        train_test_split(X, y, test_size=test_size, random_state=test_random_state)
+    X_train, X_val, y_train, y_val = \
+        train_test_split(X_train, y_train, test_size=val_size, random_state=val_random_state)
+    y_val_transform = shared_parameters.transform_labels(y_val, k, args.label_mode)
+    y_test_transform = shared_parameters.transform_labels(y_test, k, args.label_mode)
 
     # Create generators.
     print('Creating data generators...')
-    paragraph_dropout = abs(args.paragraph_dropout)
-    if paragraph_dropout > 1:
-        paragraph_dropout = 1 / paragraph_dropout
-    train_generator = SingleInstanceBatchGenerator(X_train, Y_train, X_w=X_w_train, shuffle=True, row_dropout=paragraph_dropout)
-    val_generator = SingleInstanceBatchGenerator(X_val, Y_val, X_w=X_w_val, shuffle=False)
-    test_generator = SingleInstanceBatchGenerator(X_test, Y_test, X_w=X_w_test, shuffle=False)
+    train_generator = TransformBalancedBatchGenerator(np.arange(len(X_train)).reshape((len(X_train), 1)),
+                                                      y_train,
+                                                      transform_X=transform_X,
+                                                      transform_y=transform_y,
+                                                      batch_size=1,
+                                                      X_data=[np.array([x]) for x in X_train],
+                                                      k=k,
+                                                      label_mode=args.label_mode)
+    val_generator = SingleInstanceBatchGenerator(X_val, y_val_transform, shuffle=False)
+    test_generator = SingleInstanceBatchGenerator(X_test, y_test_transform, shuffle=False)
 
     # Train.
+    print('Training for up to {:d} epoch{}...'.format(args.epochs, 's' if args.epochs != 1 else ''))
     plateau_monitor = 'val_loss'
     plateau_factor = .5
     early_stopping_monitor = 'val_loss'
@@ -328,11 +248,10 @@ def main():
                       patience=early_stopping_patience)
     ]
     history = model.fit_generator(train_generator,
-                                  steps_per_epoch=args.steps_per_epoch if args.steps_per_epoch > 0 else None,
                                   epochs=args.epochs,
-                                  validation_data=val_generator,
-                                  class_weight=category_class_weights,
-                                  callbacks=callbacks)
+                                  verbose=0,
+                                  callbacks=callbacks,
+                                  validation_data=val_generator)
     epochs_complete = len(history.history.get('val_loss'))
 
     # Save the history to visualize loss over time.
@@ -345,15 +264,13 @@ def main():
 
     # Predict test instances.
     print('Predicting test instances...')
-    Y_pred = model.predict_generator(test_generator)
-    if args.category_index != -1:
-        Y_pred = [Y_pred]
+    y_pred_transform = model.predict_generator(test_generator)
     if args.label_mode == shared_parameters.LABEL_MODE_ORDINAL:
-        Y_pred = [ordinal.from_multi_hot_ordinal(y, threshold=.5) for y in Y_pred]
+        y_pred = ordinal.from_multi_hot_ordinal(y_pred_transform, threshold=.5)
     elif args.label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
-        Y_pred = [np.argmax(y, axis=1) for y in Y_pred]
+        y_pred = np.argmax(y_pred_transform, axis=1)
     else:  # args.label_mode == shared_parameters.LABEL_MODE_REGRESSION:
-        Y_pred = [np.maximum(0, np.minimum(k - 1, np.round(Y_pred[i] * k))) for i, k in enumerate(category_k)]
+        y_pred = np.maximum(0, np.minimum(k - 1, np.round(y_pred_transform * k)))
 
     # Save model.
     save_model = True
@@ -378,7 +295,7 @@ def main():
         if args.note is not None:
             fd.write('{}\n\n'.format(args.note))
         fd.write('PARAMETERS\n\n')
-        fd.write('steps_per_epoch={:d}\n'.format(args.steps_per_epoch))
+        fd.write('category_index={:d}\n'.format(args.category_index))
         fd.write('epochs={:d}\n'.format(args.epochs))
         fd.write('\nHYPERPARAMETERS\n')
         fd.write('\nText\n')
@@ -390,12 +307,6 @@ def main():
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('return_overall={}\n'.format(return_overall))
-        fd.write('\nResampling\n')
-        fd.write('balance_mode={}\n'.format(str(args.balance_mode)))
-        if args.balance_mode == 'reduce majority':
-            fd.write('balance_majority_tolerance={:d}\n'.format(balance_majority_tolerance))
-        elif args.balance_mode == 'sample union':
-            fd.write('balance_split_seed={:d}\n'.format(balance_sample_seed))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
         fd.write('n_tokens={:d}\n'.format(n_tokens))
@@ -428,20 +339,10 @@ def main():
             fd.write('agg_rnn={}\n'.format(agg_params['rnn'].__name__))
             fd.write('agg_rnn_units={:d}\n'.format(agg_params['rnn_units']))
             fd.write('agg_rnn_l2={}\n'.format(str(agg_params['rnn_l2'])))
-        fd.write('book_dense_units={:d}\n'.format(book_dense_units))
+        fd.write('book_dense_units={}\n'.format(args.book_dense_units))
         fd.write('book_dense_activation={} {}\n'.format(book_dense_activation.__class__.__name__,
                                                         book_dense_activation.__dict__))
         fd.write('book_dense_l2={}\n'.format(str(book_dense_l2)))
-        fd.write('bag_mode={}\n'.format(args.bag_mode))
-        if args.bag_mode:
-            fd.write('dense_1_units={:d}\n'.format(bag_params['dense_1_units']))
-            fd.write('dense_1_activation={} {}\n'.format(bag_params['dense_1_activation'].__class__.__name__,
-                                                         bag_params['dense_1_activation'].__dict__))
-            fd.write('dense_1_l2={}\n'.format(str(bag_params['dense_2_l2'])))
-            fd.write('dense_2_units={:d}\n'.format(bag_params['dense_2_units']))
-            fd.write('dense_2_activation={} {}\n'.format(bag_params['dense_2_activation'].__class__.__name__,
-                                                         bag_params['dense_2_activation'].__dict__))
-            fd.write('dense_2_l2={}\n'.format(str(bag_params['dense_1_l2'])))
         fd.write('book_dropout={}\n'.format(str(book_dropout)))
         model.summary(print_fn=lambda x: fd.write('{}\n'.format(x)))
         fd.write('\nTraining\n')
@@ -453,8 +354,6 @@ def main():
         fd.write('test_random_state={:d}\n'.format(test_random_state))
         fd.write('val_size={}\n'.format(str(val_size)))
         fd.write('val_random_state={:d}\n'.format(val_random_state))
-        fd.write('class_weight_f={}\n'.format(class_weight_f))
-        fd.write('paragraph_dropout={}\n'.format(str(paragraph_dropout)))
         fd.write('plateau_monitor={}\n'.format(plateau_monitor))
         fd.write('plateau_factor={}\n'.format(str(plateau_factor)))
         fd.write('plateau_patience={:d}\n'.format(plateau_patience))
@@ -472,14 +371,13 @@ def main():
             fd.write('Model not saved.\n')
         fd.write('Epochs completed: {:d}\n'.format(epochs_complete))
         fd.write('Time elapsed: {:d}h {:d}m {:d}s\n\n'.format(elapsed_h, elapsed_m, elapsed_s))
-        overall_last = args.category_index == -1 and return_overall
-        evaluation.write_confusion_and_metrics(Y_test, Y_pred, fd, categories, overall_last=overall_last)
+        evaluation.write_confusion_and_metrics(y_test, y_pred, fd, category)
 
     # Write predictions.
     print('Writing predictions...')
     predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, classifier_name))
     with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
-        evaluation.write_predictions(Y_test, Y_pred, fd, categories)
+        evaluation.write_predictions(y_test, y_pred, fd, category)
 
     print('Done.')
 
@@ -493,8 +391,7 @@ def create_model(
         net_mode, net_params,
         agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
-        bag_mode, bag_params,
-        book_dropout, output_k, output_names, label_mode):
+        book_dropout, k, output_name, label_mode):
     # Source encoder.
     input_p = Input(shape=(n_tokens,), dtype='float32')  # (T)
     max_words, d = embedding_matrix.shape
@@ -535,23 +432,18 @@ def create_model(
                             merge_mode='concat')(x_b)  # (2h_b)
     if book_dense_l2 is not None:
         book_dense_l2 = regularizers.l2(book_dense_l2)
-    x_b = Dense(book_dense_units,
-                kernel_regularizer=book_dense_l2)(x_b)  # (c_b)
-    x_b = book_dense_activation(x_b)  # (c_b)
-    if bag_mode:
-        input_w, x_w = create_bag_mlp(bag_params)
-        x_b = Concatenate()([x_b, x_w])
-        inputs = [input_b, input_w]
-    else:
-        inputs = [input_b]
+    for units in book_dense_units:
+        x_b = Dense(units,
+                    kernel_regularizer=book_dense_l2)(x_b)  # (c_b)
+        x_b = book_dense_activation(x_b)  # (c_b)
     x_b = Dropout(book_dropout)(x_b)  # (c_b)
     if label_mode == shared_parameters.LABEL_MODE_ORDINAL:
-        outputs = [Dense(k - 1, activation='sigmoid', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+        output = Dense(k - 1, activation='sigmoid', name=output_name)(x_b)
     elif label_mode == shared_parameters.LABEL_MODE_CATEGORICAL:
-        outputs = [Dense(k, activation='softmax', name=output_names[i])(x_b) for i, k in enumerate(output_k)]
+        output = Dense(k, activation='softmax', name=output_name)(x_b)
     else:  # label_mode == shared_parameters.LABEL_MODE_REGRESSION:
-        outputs = [Dense(1, activation='linear', name=output_names[i])(x_b) for i in range(len(output_k))]
-    return Model(inputs, outputs)
+        output = Dense(1, activation='linear', name=output_name)(x_b)
+    return Model(input_b, output)
 
 
 def create_source_rnn(net_params, x_p):
@@ -602,26 +494,16 @@ def create_source_cnn(n_tokens, d, net_params, x_p):
     return x_p
 
 
-def create_bag_mlp(bag_params):
-    max_words = bag_params['max_words']
-    dense_1_l2 = bag_params['dense_1_l2'] if bag_params['dense_1_l2'] is not None else None
-    dense_1_units = bag_params['dense_1_units']
-    dense_1_activation = bag_params['dense_1_activation']
-    dense_2_l2 = bag_params['dense_2_l2'] if bag_params['dense_2_l2'] is not None else None
-    dense_2_units = bag_params['dense_2_units']
-    dense_2_activation = bag_params['dense_2_activation']
-    input_w = Input(shape=(max_words,), dtype='float32')
-    if dense_1_l2 is not None:
-        dense_1_l2 = regularizers.l2(dense_1_l2)
-    x_w = Dense(dense_1_units,
-                kernel_regularizer=dense_1_l2)(input_w)
-    x_w = dense_1_activation(x_w)  # (c_w)
-    if dense_2_l2 is not None:
-        dense_2_l2 = regularizers.l2(dense_2_l2)
-    x_w = Dense(dense_2_units,
-                kernel_regularizer=dense_2_l2)(x_w)
-    x_w = dense_2_activation(x_w)  # (c_w)
-    return input_w, x_w
+def transform_X(X, **kwargs):
+    indices = np.array([x[0] for x in X])
+    X_data = kwargs['X_data']
+    return [X_data[i] for i in indices]
+
+
+def transform_y(y, **kwargs):
+    k = kwargs['k']
+    label_mode = kwargs['label_mode']
+    return shared_parameters.transform_labels(y, k, label_mode)
 
 
 if __name__ == '__main__':
