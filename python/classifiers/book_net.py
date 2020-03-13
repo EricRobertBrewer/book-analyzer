@@ -62,6 +62,14 @@ def main():
                                  shared_parameters.LABEL_MODE_REGRESSION],
                         help='The way that labels will be interpreted. '
                              'Default is `{}`.'.format(shared_parameters.LABEL_MODE_ORDINAL))
+    parser.add_argument('--plateau_patience',
+                        default=16,
+                        type=int,
+                        help='Number of epochs to wait before dividing the learning rate by 2. Default is 16.')
+    parser.add_argument('--early_stopping_patience',
+                        default=32,
+                        type=int,
+                        help='Number of epochs to wait before dividing the learning rate by 2. Default is 32.')
     parser.add_argument('--epochs',
                         default=1,
                         type=int,
@@ -233,12 +241,8 @@ def main():
     plateau_factor = .5
     early_stopping_monitor = 'val_loss'
     early_stopping_min_delta = 2**-10
-    if args.net_mode == 'rnn' or args.net_mode == 'rnncnn':
-        plateau_patience = 3
-        early_stopping_patience = 6
-    else:  # args.net_mode == 'cnn':
-        plateau_patience = 6
-        early_stopping_patience = 12
+    plateau_patience = args.plateau_patience
+    early_stopping_patience = args.early_stopping_patience
     callbacks = [
         ReduceLROnPlateau(monitor=plateau_monitor,
                           factor=plateau_factor,
