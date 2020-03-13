@@ -3,7 +3,7 @@ from tensorflow.keras import utils
 from python.util import ordinal
 
 DATA_SUBSET_RATIO = None
-DATA_SUBSET_SEED = None
+DATA_SUBSET_SEED = 1
 DATA_PARAGRAPH_MIN_LEN = 256  # The minimum number of paragraphs in each text.
 DATA_PARAGRAPH_MAX_LEN = 4096  # The maximum number of paragraphs in each text.
 DATA_SENTENCE_MIN_LEN = 512  # The minimum number of sentences in each text.
