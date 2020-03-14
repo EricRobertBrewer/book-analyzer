@@ -3,7 +3,7 @@ import os
 import time
 
 import tensorflow as tf
-from keras.callbacks import Callback
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from keras.layers import Conv2D
 from keras.layers import Dense, Dropout, Input, Flatten, LeakyReLU, MaxPooling2D
 from keras.models import Model
@@ -99,6 +99,20 @@ def main():
     # Train.
     optimizer = Adam(lr=2**-10)
     model = get_model(images_size, k, optimizer)
+    plateau_monitor = 'val_loss'
+    plateau_factor = .5
+    early_stopping_monitor = 'val_loss'
+    early_stopping_min_delta = 2 ** -10
+    plateau_patience = 10
+    early_stopping_patience = 20
+    callbacks = [
+        ReduceLROnPlateau(monitor=plateau_monitor,
+                          factor=plateau_factor,
+                          patience=plateau_patience),
+        EarlyStopping(monitor=early_stopping_monitor,
+                      min_delta=early_stopping_min_delta,
+                      patience=early_stopping_patience)
+    ]
     train_generator = TransformBalancedBatchGenerator(image_paths_train,
                                                       y_train,
                                                       transform_X=image_paths_to_tensors,
@@ -108,7 +122,8 @@ def main():
                                                       label_mode=shared_parameters.LABEL_MODE_ORDINAL)
     val_generator = SimpleBatchGenerator(X_val, y_val_transform, batch_size=32)
     history = model.fit_generator(train_generator,
-                                  epochs=8,
+                                  callbacks=callbacks,
+                                  epochs=1000,
                                   validation_data=val_generator)
 
     y_pred_ordinal = model.predict(X_test)
