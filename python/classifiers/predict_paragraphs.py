@@ -24,12 +24,8 @@ def main():
                             '\n  '.join(['{:d} {}'.format(j, bookcave.CATEGORY_NAMES[category])
                                          for j, category in enumerate(bookcave.CATEGORIES)]
                         )))
-    parser.add_argument('cnn',
-                        help='CNN base file name.')
-    parser.add_argument('rnn',
-                        help='RNN base file name.')
-    parser.add_argument('rnncnn',
-                        help='RNN-CNN base file name.')
+    parser.add_argument('name',
+                        help='Model base file name.')
     args = parser.parse_args()
 
     # Load data.
@@ -97,24 +93,13 @@ def main():
                           for source_tokens in predict_tokens])
 
     # Evaluate.
-    model_paths = [
-        os.path.join(folders.MODELS_PATH, 'paragraph_cnn_maxavg_ordinal', '{}.h5'.format(args.cnn)),
-        os.path.join(folders.MODELS_PATH, 'paragraph_rnn_maxavg_ordinal', '{}.h5'.format(args.rnn)),
-        os.path.join(folders.MODELS_PATH, 'paragraph_rnncnn_maxavg_ordinal', '{}.h5'.format(args.rnncnn))
-    ]
-    model_custom_objects = [
-        None,
-        {'AttentionWithContext': AttentionWithContext},
-        {'AttentionWithContext': AttentionWithContext}
-    ]
+    model_path = os.path.join(folders.MODELS_PATH, 'paragraph_maxavg_ordinal', '{}.h5'.format(args.name))
     q_true = Q_true[args.category_index]
-    for m, model_path in enumerate(model_paths):
-        print('\n{}'.format(model_path))
-        model = load_model(model_path, custom_objects=model_custom_objects[m])
-        evaluate_model(model,
-                       P_predict,
-                       q_true,
-                       categories[args.category_index])
+    model = load_model(model_path)
+    evaluate_model(model,
+                   P_predict,
+                   q_true,
+                   categories[args.category_index])
 
 
 def get_input_sequence(source_tokens, tokenizer, n_tokens, padding='pre', truncating='pre', split='\t'):

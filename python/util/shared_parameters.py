@@ -37,3 +37,13 @@ def transform_labels(y, k, label_mode):
     if label_mode == LABEL_MODE_REGRESSION:
         return y / k  # (n)
     raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
+
+
+def get_class_weight(k, label_mode):
+    if label_mode == LABEL_MODE_ORDINAL:
+        return [{0: 1 - i / k, 1: i / k} for i in range(1, k)]
+    if label_mode == LABEL_MODE_CATEGORICAL:
+        return {i: 1 / k for i in range(k)}
+    if label_mode == LABEL_MODE_REGRESSION:
+        return None
+    raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
