@@ -316,8 +316,9 @@ def get_data(
         images_source='cover'):
     """
     Retrieve text and/or images with corresponding labels for books in the BookCave database.
-    :param sources: set of str {'paragraphs', 'images', 'paragraph_tokens', 'sentence_tokens'}
+    :param sources: set of str {'titles', 'paragraphs', 'images', 'paragraph_tokens', 'sentence_tokens'}
         The type(s) of media to be retrieved.
+        When 'titles', the titles will be returned.
         When 'paragraphs', the sections and paragraphs will be returned (as tuples).
         When 'images', cover images will be returned.
         When 'paragraph_tokens', the tokens for each paragraph will be returned.
@@ -410,10 +411,14 @@ def get_data(
         has_all_sources = True
         book_inputs = dict()
         for source in sources:
-            book_input = get_input(source, asin, min_len, max_len, min_tokens, max_tokens, image_size, images_source)
-            if book_input is None:
-                has_all_sources = False
-                break
+            if source == 'titles':
+                book_input = rated_book_row['title']
+            else:
+                book_input = \
+                    get_input(source, asin, min_len, max_len, min_tokens, max_tokens, image_size, images_source)
+                if book_input is None:
+                    has_all_sources = False
+                    break
             book_inputs[source] = book_input
 
         if has_all_sources:
