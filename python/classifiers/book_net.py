@@ -49,6 +49,10 @@ def main():
                                  shared_parameters.LABEL_MODE_REGRESSION],
                         help='The way that labels will be interpreted. '
                              'Default is `{}`.'.format(shared_parameters.LABEL_MODE_ORDINAL))
+    parser.add_argument('--remove_classes',
+                        type=str,
+                        help='Remove classes altogether. Can be used when the minority class is severely tiny. '
+                             'Like `<class1>[,<class2>,...]` as in `3` or `3,0`. Optional.')
     parser.add_argument('--class_weight_p',
                         default=2,
                         type=int,
@@ -122,6 +126,13 @@ def main():
     y = Y[args.category_index]
     category = categories[args.category_index]
     levels = category_levels[args.category_index]
+    if args.remove_classes is not None:
+        # Reduce number of classes.
+        remove_classes = sorted(list(map(int, args.remove_classes.strip().split(','))),
+                                reverse=True)
+        for class_ in remove_classes:
+            y[y >= class_] -= 1
+            del levels[class_]
     k = len(levels)
 
     # Tokenize.
@@ -301,6 +312,10 @@ def main():
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('return_overall={}\n'.format(return_overall))
+        if args.remove_classes is not None:
+            fd.write('remove_classes={}\n'.format(args.remove_classes))
+        else:
+            fd.write('No classes removed.\n')
         fd.write('class_weight_p={:d}\n'.format(args.class_weight_p))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
