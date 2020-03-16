@@ -20,6 +20,7 @@ do
 
     # Append python statement.
     py="python3 -m python.classifiers.book_net ${j}"
+    py+=" --remove_stopwords"
     py+="${remove_classes[j]}"
     py+=" --plateau_patience ${plateau_patience[j]}"
     py+=" --early_stopping_patience ${early_stopping_patience[j]}"

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from python import folders
-from python.text import paragraph_io
+from python.text import STOPWORDS, paragraph_io
 
 CATEGORY_INDEX_CRUDE_HUMOR_LANGUAGE = 0
 CATEGORY_INDEX_DRUG_ALCOHOL_TOBACCO_USE = 1
@@ -241,7 +241,7 @@ def get_paragraphs(asin, min_len=None, max_len=None):
     return all_paragraphs, section_ids, sections
 
 
-def get_paragraph_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None):
+def get_paragraph_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None, remove_stopwords=False):
     path = os.path.join(folders.AMAZON_KINDLE_PARAGRAPH_TOKENS_PATH, '{}.txt'.format(asin))
     if not os.path.exists(path):
         return None
@@ -250,6 +250,8 @@ def get_paragraph_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_
     all_paragraph_tokens, section_ids = [], []
     for section_i, paragraph_tokens in enumerate(section_paragraph_tokens):
         for paragraph_i, tokens in enumerate(paragraph_tokens):
+            if remove_stopwords:
+                tokens = [token for token in tokens if token not in STOPWORDS]
             if not is_between(len(tokens), min_tokens, max_tokens):
                 continue
             all_paragraph_tokens.append(tokens)
@@ -259,7 +261,7 @@ def get_paragraph_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_
     return all_paragraph_tokens, section_ids
 
 
-def get_sentence_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None):
+def get_sentence_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None, remove_stopwords=False):
     path = os.path.join(folders.AMAZON_KINDLE_SENTENCE_TOKENS_PATH, '{}.txt'.format(asin))
     if not os.path.exists(path):
         return None
@@ -268,7 +270,11 @@ def get_sentence_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_t
     all_sentence_tokens, section_ids, paragraph_ids = [], [], []
     for section_i, paragraph_sentence_tokens in enumerate(section_paragraph_sentence_tokens):
         for paragraph_i, sentence_tokens in enumerate(paragraph_sentence_tokens):
-            if len(sentence_tokens) == 1 and not is_between(len(sentence_tokens[0]), min_tokens, max_tokens):
+            if remove_stopwords:
+                sentence_tokens = [[token for token in tokens if token not in STOPWORDS]
+                                   for tokens in sentence_tokens]
+            n_tokens = sum(list(map(len, sentence_tokens)))
+            if not is_between(n_tokens, min_tokens, max_tokens):
                 continue
             for tokens in sentence_tokens:
                 all_sentence_tokens.append(tokens)
@@ -279,15 +285,15 @@ def get_sentence_tokens(asin, min_len=None, max_len=None, min_tokens=None, max_t
     return all_sentence_tokens, section_ids, paragraph_ids
 
 
-def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None, image_size=None, images_source='cover'):
+def get_input(source, asin, min_len=None, max_len=None, min_tokens=None, max_tokens=None, remove_stopwords=False, image_size=None, images_source='cover'):
     if source == 'paragraphs':
         return get_paragraphs(asin, min_len, max_len)
     if source == 'images':
         return get_images(asin, images_source, size=image_size)
     if source == 'paragraph_tokens':
-        return get_paragraph_tokens(asin, min_len, max_len, min_tokens, max_tokens)
+        return get_paragraph_tokens(asin, min_len, max_len, min_tokens, max_tokens, remove_stopwords)
     if source == 'sentence_tokens':
-        return get_sentence_tokens(asin, min_len, max_len, min_tokens, max_tokens)
+        return get_sentence_tokens(asin, min_len, max_len, min_tokens, max_tokens, remove_stopwords)
     raise ValueError('Unknown source: `{}`.'.format(source))
 
 
@@ -307,6 +313,7 @@ def get_data(
         max_len=None,
         min_tokens=None,
         max_tokens=None,
+        remove_stopwords=False,
         categories_mode='soft',
         return_overall=True,
         combine_ratings='max',
@@ -342,6 +349,8 @@ def get_data(
     :param max_tokens: int, optional
         The maximum number of tokens in each paragraph. Paragraphs with more tokens will not be returned.
         Only applied when `source` is 'tokens'.
+    :param remove_stopwords: bool, default False
+        Set to `True` to remove stop-words from paragraphs or sentences.
     :param categories_mode: string {'soft' (default), 'medium', 'hard'}
         The flexibility of rating levels within categories.
         When 'soft', all levels which would yield the same base overall rating (without a '+') will be merged.
@@ -415,7 +424,7 @@ def get_data(
                 book_input = rated_book_row['title']
             else:
                 book_input = \
-                    get_input(source, asin, min_len, max_len, min_tokens, max_tokens, image_size, images_source)
+                    get_input(source, asin, min_len, max_len, min_tokens, max_tokens, remove_stopwords, image_size, images_source)
                 if book_input is None:
                     has_all_sources = False
                     break

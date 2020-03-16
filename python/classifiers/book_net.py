@@ -38,6 +38,9 @@ def main():
                         default='paragraph',
                         choices=['paragraph', 'sentence'],
                         help='The source of text. Default is `paragraph`.')
+    parser.add_argument('--remove_stopwords',
+                        action='store_true',
+                        help='Remove stop-words from text. Default is False.')
     parser.add_argument('--agg_mode',
                         default='maxavg',
                         choices=['max', 'avg', 'maxavg', 'rnn'],
@@ -100,7 +103,10 @@ def main():
     if args.source_mode == 'paragraph':
         source = 'paragraph_tokens'
         min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
-        max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
+        if not args.remove_stopwords:
+            max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
+        else:
+            max_len = 64
     else:  # args.source_mode == 'sentence':
         source = 'sentence_tokens'
         min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
@@ -117,6 +123,7 @@ def main():
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens,
+                          remove_stopwords=args.remove_stopwords,
                           categories_mode=categories_mode,
                           return_overall=return_overall)
     text_source_tokens = list(zip(*inputs[source]))[0]
@@ -309,6 +316,7 @@ def main():
         fd.write('min_len={:d}\n'.format(min_len))
         fd.write('max_len={:d}\n'.format(max_len))
         fd.write('min_tokens={:d}\n'.format(min_tokens))
+        fd.write('remove_stopwords={}\n'.format(args.remove_stopwords))
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('return_overall={}\n'.format(return_overall))
