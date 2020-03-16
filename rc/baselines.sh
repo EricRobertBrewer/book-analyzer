@@ -8,7 +8,7 @@
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
 module load python/3.6
-module load tensorflow-gpu/1.9
+module load tensorflow/1.9
 
 # Run.
 python3 -m python.classifiers.baselines
