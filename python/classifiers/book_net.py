@@ -154,7 +154,7 @@ def main():
     print('Creating model...')
     embedding_trainable = False
     cnn_filters = 16
-    cnn_filter_sizes = [1, 2, 3, 4, 5, 6]
+    cnn_filter_sizes = [1, 2, 3, 4]
     cnn_activation = 'elu'
     cnn_l2 = .001
     agg_params = dict()
