@@ -10,7 +10,7 @@ epochs=(1153 1382 289 349 640 220 490 557)
 
 for j in {0..7}
 do
-    # Use `book_master` as a base file.
+    # Use `book_master.txt` as a base file.
     # Slurm doesn't require that scripts be executable.
     f=rc/gen/book_${j}.sh
     [[ ! -e $f ]] || rm $f
@@ -24,5 +24,5 @@ do
     echo $py >> $f
 
     # Send to slurm.
-    sbatch $f
+    sbatch -J "book_${j}" $f
 done
