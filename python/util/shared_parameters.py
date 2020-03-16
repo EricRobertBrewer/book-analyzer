@@ -39,9 +39,17 @@ def transform_labels(y, k, label_mode):
     raise ValueError('Unknown value for `label_mode`: {}'.format(label_mode))
 
 
-def get_class_weight(k, label_mode):
+def get_class_weight(k, label_mode, p=1):
     if label_mode == LABEL_MODE_ORDINAL:
-        return [{0: 1 - i / k, 1: i / k} for i in range(1, k)]
+        # For example, when `k` is 4, [[ 0 0 0 ], [ 1 0 0 ], [ 1 1 0 ], [ 1 1 1 ]].
+        # Scale by `p`, then normalize.
+        weight = []
+        for i in range(1, k):
+            _0 = (1 - i / k) ** p
+            _1 = (i / k) ** p
+            sum_ = _0 + _1
+            weight.append({0: _0 / sum_, 1: _1 / sum_})
+        return weight
     if label_mode == LABEL_MODE_CATEGORICAL:
         return {i: 1 / k for i in range(k)}
     if label_mode == LABEL_MODE_REGRESSION:

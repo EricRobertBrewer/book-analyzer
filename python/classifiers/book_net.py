@@ -42,6 +42,17 @@ def main():
                         default='maxavg',
                         choices=['max', 'avg', 'maxavg', 'rnn'],
                         help='The way the network will aggregate paragraphs or sentences. Default is `maxavg`.')
+    parser.add_argument('--label_mode',
+                        default=shared_parameters.LABEL_MODE_ORDINAL,
+                        choices=[shared_parameters.LABEL_MODE_ORDINAL,
+                                 shared_parameters.LABEL_MODE_CATEGORICAL,
+                                 shared_parameters.LABEL_MODE_REGRESSION],
+                        help='The way that labels will be interpreted. '
+                             'Default is `{}`.'.format(shared_parameters.LABEL_MODE_ORDINAL))
+    parser.add_argument('--class_weight_p',
+                        default=2,
+                        type=int,
+                        help='Power with which to scale class weights. Default is 2.')
     parser.add_argument('--book_dense_units',
                         default='128',
                         help='The number of neurons in the final fully-connected layers, comma separated. '
@@ -50,13 +61,6 @@ def main():
                         default=0.5,
                         type=float,
                         help='Dropout probability before final classification layer. Default is 0.5.')
-    parser.add_argument('--label_mode',
-                        default=shared_parameters.LABEL_MODE_ORDINAL,
-                        choices=[shared_parameters.LABEL_MODE_ORDINAL,
-                                 shared_parameters.LABEL_MODE_CATEGORICAL,
-                                 shared_parameters.LABEL_MODE_REGRESSION],
-                        help='The way that labels will be interpreted. '
-                             'Default is `{}`.'.format(shared_parameters.LABEL_MODE_ORDINAL))
     parser.add_argument('--plateau_patience',
                         default=16,
                         type=int,
@@ -218,7 +222,7 @@ def main():
     test_generator = SingleInstanceBatchGenerator(X_test, y_test_transform, shuffle=False)
 
     # Get class weight.
-    class_weight = shared_parameters.get_class_weight(k, args.label_mode)
+    class_weight = shared_parameters.get_class_weight(k, args.label_mode, p=args.class_weight_p)
 
     # Train.
     print('Training for up to {:d} epoch{}...'.format(args.epochs, 's' if args.epochs != 1 else ''))
@@ -297,6 +301,7 @@ def main():
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('return_overall={}\n'.format(return_overall))
+        fd.write('class_weight_p={:d}\n'.format(args.class_weight_p))
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
         fd.write('n_tokens={:d}\n'.format(n_tokens))
