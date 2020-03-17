@@ -4,7 +4,7 @@ import time
 
 # Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
 import tensorflow as tf
-from keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from keras.layers import Bidirectional, Concatenate, Conv2D, CuDNNGRU, Dense, Dropout, Embedding, Flatten, \
     GlobalMaxPooling1D, GlobalAveragePooling1D, GRU, Input, LeakyReLU, MaxPool2D, Reshape, TimeDistributed
 from keras.models import Model
@@ -80,6 +80,9 @@ def main():
                         default=1,
                         type=int,
                         help='Epochs. Default is 1.')
+    parser.add_argument('--save_model',
+                        action='store_true',
+                        help='Save the model and its weights.')
     parser.add_argument('--note',
                         help='An optional note that will be appended to the names of generated files.')
     args = parser.parse_args()
@@ -254,6 +257,16 @@ def main():
                       min_delta=early_stopping_min_delta,
                       patience=early_stopping_patience)
     ]
+    if args.save_model:
+        models_path = folders.ensure(os.path.join(folders.MODELS_PATH, classifier_name))
+        model_path = os.path.join(models_path, '{}.h5'.format(base_fname))
+        model_checkpoint = ModelCheckpoint(model_path,
+                                           monitor='val_loss',
+                                           save_best_only=True,
+                                           mode='min')
+        callbacks.append(model_checkpoint)
+    else:
+        model_path = None
     history = model.fit_generator(train_generator,
                                   epochs=args.epochs,
                                   verbose=0,
@@ -279,16 +292,6 @@ def main():
         y_pred = np.argmax(y_pred_transform, axis=1)
     else:  # args.label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         y_pred = np.maximum(0, np.minimum(k - 1, np.round(y_pred_transform * k)))
-
-    # Save model.
-    save_model = True
-    if save_model:
-        models_path = folders.ensure(os.path.join(folders.MODELS_PATH, classifier_name))
-        model_path = os.path.join(models_path, '{}.h5'.format(base_fname))
-        print('Saving model to `{}`...'.format(model_path))
-        model.save(model_path)
-    else:
-        model_path = None
 
     # Calculate elapsed time.
     end_time = int(time.time())
@@ -334,13 +337,7 @@ def main():
         fd.write('cnn_filter_sizes={}\n'.format(str(cnn_filter_sizes)))
         fd.write('cnn_activation=\'{}\'\n'.format(cnn_activation))
         fd.write('cnn_l2={}\n'.format(str(cnn_l2)))
-        if args.agg_mode == 'maxavg':
-            pass
-        elif args.agg_mode == 'max':
-            pass
-        elif args.agg_mode == 'avg':
-            pass
-        elif args.agg_mode == 'rnn':
+        if args.agg_mode == 'rnn':
             fd.write('agg_rnn={}\n'.format(agg_params['rnn'].__name__))
             fd.write('agg_rnn_units={:d}\n'.format(agg_params['rnn_units']))
             fd.write('agg_rnn_l2={}\n'.format(str(agg_params['rnn_l2'])))
@@ -370,7 +367,7 @@ def main():
         fd.write('Train size: {:d}\n'.format(len(X_train)))
         fd.write('Validation size: {:d}\n'.format(len(X_val)))
         fd.write('Test size: {:d}\n'.format(len(X_test)))
-        if save_model:
+        if model_path is not None:
             fd.write('Model path: \'{}\'\n'.format(model_path))
         else:
             fd.write('Model not saved.\n')
