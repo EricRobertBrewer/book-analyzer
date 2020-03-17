@@ -130,14 +130,8 @@ def main():
     y = Y[args.category_index]
     category = categories[args.category_index]
     levels = category_levels[args.category_index]
-    if args.remove_classes is not None:
-        # Reduce number of classes.
-        remove_classes = sorted(list(map(int, args.remove_classes.strip().split(','))),
-                                reverse=True)
-        for class_ in remove_classes:
-            y[y >= class_] -= 1
-            del levels[class_]
     k = len(levels)
+    k_train = k
 
     # Tokenize.
     print('Tokenizing...')
@@ -180,13 +174,7 @@ def main():
     cnn_activation = 'elu'
     cnn_l2 = .001
     agg_params = dict()
-    if args.agg_mode == 'maxavg':
-        pass
-    elif args.agg_mode == 'max':
-        pass
-    elif args.agg_mode == 'avg':
-        pass
-    else:  # args.agg_mode == 'rnn':
+    if args.agg_mode == 'rnn':
         agg_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
         agg_params['rnn_units'] = 64
         agg_params['rnn_l2'] = .001
@@ -226,6 +214,14 @@ def main():
     y_val_transform = shared_parameters.transform_labels(y_val, k, args.label_mode)
     y_test_transform = shared_parameters.transform_labels(y_test, k, args.label_mode)
 
+    # Remove classes from training set, if specified.
+    if args.remove_classes is not None:
+        remove_classes = sorted(list(map(int, args.remove_classes.strip().split(','))),
+                                reverse=True)
+        for class_ in remove_classes:
+            y_train[y_train >= class_] -= 1
+            k_train -= 1
+
     # Create generators.
     print('Creating data generators...')
     train_generator = TransformBalancedBatchGenerator(np.arange(len(X_train)).reshape((len(X_train), 1)),
@@ -240,7 +236,7 @@ def main():
     test_generator = SingleInstanceBatchGenerator(X_test, y_test_transform, shuffle=False)
 
     # Get class weight.
-    class_weight = shared_parameters.get_class_weight(k, args.label_mode, p=args.class_weight_p)
+    class_weight = shared_parameters.get_class_weight(k_train, args.label_mode, p=args.class_weight_p)
 
     # Train.
     print('Training for up to {:d} epoch{}...'.format(args.epochs, 's' if args.epochs != 1 else ''))
