@@ -22,10 +22,12 @@ do
     py="python3 -m python.classifiers.book_net ${j}"
     py+=" --remove_stopwords"
     py+="${remove_classes[j]}"
+    py+=" --embedding_trainable"
     py+=" --plateau_patience ${plateau_patience[j]}"
     py+=" --early_stopping_patience ${early_stopping_patience[j]}"
     py+=" --epochs ${epochs[j]}"
     py+=" --save_model"
+    py+=" --note nostop-trainemb"
     echo $py >> $f
 
     # Send to slurm.

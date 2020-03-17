@@ -60,6 +60,9 @@ def main():
                         default=2,
                         type=int,
                         help='Power with which to scale class weights. Default is 2.')
+    parser.add_argument('--embedding_trainable',
+                        action='store_true',
+                        help='Flag to allow the model to optimize the word embeddings. Default is False.')
     parser.add_argument('--book_dense_units',
                         default='128',
                         help='The number of neurons in the final fully-connected layers, comma separated. '
@@ -82,7 +85,7 @@ def main():
                         help='Epochs. Default is 1.')
     parser.add_argument('--save_model',
                         action='store_true',
-                        help='Save the model and its weights.')
+                        help='Save the model and its weights. Default is False.')
     parser.add_argument('--note',
                         help='An optional note that will be appended to the names of generated files.')
     args = parser.parse_args()
@@ -171,7 +174,6 @@ def main():
 
     # Create model.
     print('Creating model...')
-    embedding_trainable = False
     cnn_filters = 16
     cnn_filter_sizes = [1, 2, 3, 4]
     cnn_activation = 'elu'
@@ -186,7 +188,7 @@ def main():
     book_dense_l2 = .001
     book_dropout = args.book_dropout
     model = create_model(
-        n_tokens, embedding_matrix, embedding_trainable,
+        n_tokens, embedding_matrix, args.embedding_trainable,
         cnn_filters, cnn_filter_sizes, cnn_activation, cnn_l2,
         args.agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
@@ -331,7 +333,7 @@ def main():
         fd.write('truncating=\'{}\'\n'.format(truncating))
         fd.write('\nWord Embedding\n')
         fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
-        fd.write('embedding_trainable={}\n'.format(embedding_trainable))
+        fd.write('embedding_trainable={}\n'.format(args.embedding_trainable))
         fd.write('\nModel\n')
         fd.write('cnn_filters={:d}\n'.format(cnn_filters))
         fd.write('cnn_filter_sizes={}\n'.format(str(cnn_filter_sizes)))
