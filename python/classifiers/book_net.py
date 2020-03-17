@@ -103,10 +103,7 @@ def main():
     if args.source_mode == 'paragraph':
         source = 'paragraph_tokens'
         min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
-        if not args.remove_stopwords:
-            max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
-        else:
-            max_len = 64
+        max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
     else:  # args.source_mode == 'sentence':
         source = 'sentence_tokens'
         min_len = shared_parameters.DATA_SENTENCE_MIN_LEN
@@ -156,7 +153,10 @@ def main():
     # Convert to sequences.
     print('Converting texts to sequences...')
     if args.source_mode == 'paragraph':
-        n_tokens = shared_parameters.TEXT_N_PARAGRAPH_TOKENS
+        if not args.remove_stopwords:
+            n_tokens = shared_parameters.TEXT_N_PARAGRAPH_TOKENS
+        else:
+            n_tokens = shared_parameters.TEXT_N_PARAGRAPH_TOKENS_NO_STOPWORDS
     else:  # args.source_mode == 'sentence':
         n_tokens = shared_parameters.TEXT_N_SENTENCE_TOKENS
     padding = shared_parameters.TEXT_PADDING

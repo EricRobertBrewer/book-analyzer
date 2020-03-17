@@ -14,6 +14,7 @@ DATA_RETURN_OVERALL = True
 
 TEXT_MAX_WORDS = 8192  # The maximum size of the vocabulary.
 TEXT_N_PARAGRAPH_TOKENS = 128  # The maximum number of tokens to process in each paragraph.
+TEXT_N_PARAGRAPH_TOKENS_NO_STOPWORDS = 64
 TEXT_N_SENTENCES = 16  # The maximum number of sentences to process in each paragraph (HAN only).
 TEXT_N_SENTENCE_TOKENS = 32  # The maximum number of tokens to process in each sentence.
 TEXT_PADDING = 'pre'
