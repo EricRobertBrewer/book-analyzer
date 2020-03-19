@@ -26,6 +26,9 @@ def main():
                         )))
     parser.add_argument('name',
                         help='Model base file name.')
+    parser.add_argument('--remove_stopwords',
+                        action='store_true',
+                        help='Remove stop-words from text. Default is False.')
     args = parser.parse_args()
 
     # Load data.
@@ -44,6 +47,7 @@ def main():
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens,
+                          remove_stopwords=args.remove_stopwords,
                           categories_mode=categories_mode,
                           return_overall=return_overall,
                           return_meta=True)
@@ -86,7 +90,10 @@ def main():
             all_sources.append(split.join(tokens))
     tokenizer.fit_on_texts(all_sources)
 
-    n_tokens = shared_parameters.TEXT_N_PARAGRAPH_TOKENS
+    if not args.remove_stopwords:
+        n_tokens = shared_parameters.TEXT_N_PARAGRAPH_TOKENS
+    else:
+        n_tokens = shared_parameters.TEXT_N_PARAGRAPH_TOKENS_NO_STOPWORDS
     padding = shared_parameters.TEXT_PADDING
     truncating = shared_parameters.TEXT_TRUNCATING
     P_predict = np.array([get_input_sequence([source_tokens], tokenizer, n_tokens, padding, truncating)
