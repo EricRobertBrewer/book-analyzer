@@ -45,4 +45,6 @@ SITES_PATH = os.path.join('python', 'sites')
 BOOKCAVE_PATH = os.path.join(SITES_PATH, 'bookcave')
 BOOKCAVE_CATEGORIES_PATH = os.path.join(BOOKCAVE_PATH, 'categories')
 
+TOKENIZERS_PATH = ensure('tokenizers')
+
 VECTORS_PATH = ensure('vectors')
