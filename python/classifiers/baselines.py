@@ -1,4 +1,5 @@
 import os
+import pickle
 import time
 
 # Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
@@ -96,6 +97,7 @@ def main():
     ]
     for m, create_func in enumerate(create_funcs):
         model_name = model_names[m]
+        model_path = folders.ensure(os.path.join(folders.MODELS_PATH, model_name))
         print('Training model `{}`...'.format(model_name))
         for j, category in enumerate(categories):
             print('Classifying category `{}`...'.format(category))
@@ -133,6 +135,10 @@ def main():
             predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, model_name))
             with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
                 evaluation.write_predictions(y_test, y_pred, fd, category)
+
+            for i, classifier in enumerate(classifiers):
+                with open(os.path.join(model_path, '{}_{:d}i.pickle'.format(base_fname, j, i))) as fd:
+                    pickle.dump(classifier, fd, protocol=pickle.HIGHEST_PROTOCOL)
 
     print('Done.')
 
