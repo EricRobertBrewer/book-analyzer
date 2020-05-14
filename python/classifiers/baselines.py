@@ -136,8 +136,9 @@ def main():
             with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
                 evaluation.write_predictions(y_test, y_pred, fd, category)
 
+            models_path = folders.ensure(os.path.join(model_path, base_fname))
             for i, classifier in enumerate(classifiers):
-                with open(os.path.join(model_path, '{}_{:d}i.pickle'.format(base_fname, j, i))) as fd:
+                with open(os.path.join(models_path, 'model{:d}.pickle'.format(i)), 'wb') as fd:
                     pickle.dump(classifier, fd, protocol=pickle.HIGHEST_PROTOCOL)
 
     print('Done.')
