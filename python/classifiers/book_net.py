@@ -10,14 +10,13 @@ from keras.layers import Bidirectional, Concatenate, Conv2D, CuDNNGRU, Dense, Dr
 from keras.models import Model
 from keras.optimizers import Adam
 from keras.preprocessing.sequence import pad_sequences
-from keras.preprocessing.text import Tokenizer
 from keras import regularizers
 import numpy as np
 from sklearn.model_selection import train_test_split
 
 from python import folders
 from python.sites.bookcave import bookcave
-from python.text import load_embeddings
+from python.text import load_embeddings, tokenizers
 from python.util import evaluation, shared_parameters
 from python.util import ordinal
 from python.util.net.batch_generators import SingleInstanceBatchGenerator, TransformBalancedBatchGenerator
@@ -143,12 +142,10 @@ def main():
     print('Tokenizing...')
     max_words = shared_parameters.TEXT_MAX_WORDS
     split = '\t'
-    tokenizer = Tokenizer(num_words=max_words, split=split)
-    all_sources = []
-    for source_tokens in text_source_tokens:
-        for tokens in source_tokens:
-            all_sources.append(split.join(tokens))
-    tokenizer.fit_on_texts(all_sources)
+    tokenizer = tokenizers.get_tokenizer_and_fit(text_source_tokens,
+                                                 max_words,
+                                                 args.source_mode,
+                                                 args.remove_stopwords)
 
     # Convert to sequences.
     print('Converting texts to sequences...')

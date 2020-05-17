@@ -1,3 +1,4 @@
+import argparse
 import os
 import pickle
 import time
@@ -6,7 +7,6 @@ import time
 import tensorflow as tf
 import numpy as np
 from sklearn.ensemble.forest import RandomForestClassifier
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
@@ -18,9 +18,22 @@ from python.util import evaluation, shared_parameters
 from python.util import ordinal
 from python import folders
 from python.sites.bookcave import bookcave
+from python.text import tokenizers
 
 
 def main():
+    parser = argparse.ArgumentParser(
+        description='Run baseline classifiers.'
+    )
+    parser.add_argument('--skip_models',
+                        action='store_true',
+                        help='Flag to skip saving the models.')
+
+    args = parser.parse_args()
+    train(**args.__dict__)
+
+
+def train(skip_models=False):
     max_words = shared_parameters.TEXT_MAX_WORDS
 
     start_time = int(time.time())
@@ -38,6 +51,7 @@ def main():
     min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
     max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
     min_tokens = shared_parameters.DATA_MIN_TOKENS
+    remove_stopwords = False
     categories_mode = shared_parameters.DATA_CATEGORIES_MODE
     return_overall = shared_parameters.DATA_RETURN_OVERALL
     inputs, Y, categories, category_levels = \
@@ -47,6 +61,7 @@ def main():
                           min_len=min_len,
                           max_len=max_len,
                           min_tokens=min_tokens,
+                          remove_stopwords=remove_stopwords,
                           categories_mode=categories_mode,
                           return_overall=return_overall)
     text_source_tokens = list(zip(*inputs[source]))[0]
@@ -54,21 +69,14 @@ def main():
 
     # Create vectorized representations of the book texts.
     print('Vectorizing text...')
-    vectorizer = TfidfVectorizer(
-        preprocessor=identity,
-        tokenizer=identity,
-        analyzer='word',
-        token_pattern=None,
-        max_features=max_words,
-        norm='l2',
-        sublinear_tf=True)
     text_tokens = []
     for source_tokens in text_source_tokens:
         all_tokens = []
         for tokens in source_tokens:
             all_tokens.extend(tokens)
         text_tokens.append(all_tokens)
-    X = vectorizer.fit_transform(text_tokens)
+    vectorizer = tokenizers.get_vectorizer_and_fit(text_tokens, max_words, remove_stopwords)
+    X = vectorizer.transform(text_tokens)
     print('Vectorized text with {:d} unique words.'.format(len(vectorizer.get_feature_names())))
 
     # Split data set.
@@ -136,16 +144,13 @@ def main():
             with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
                 evaluation.write_predictions(y_test, y_pred, fd, category)
 
-            models_path = folders.ensure(os.path.join(model_path, base_fname))
-            for i, classifier in enumerate(classifiers):
-                with open(os.path.join(models_path, 'model{:d}.pickle'.format(i)), 'wb') as fd:
-                    pickle.dump(classifier, fd, protocol=pickle.HIGHEST_PROTOCOL)
+            if not skip_models:
+                models_path = folders.ensure(os.path.join(model_path, base_fname))
+                for i, classifier in enumerate(classifiers):
+                    with open(os.path.join(models_path, 'model{:d}.pickle'.format(i)), 'wb') as fd:
+                        pickle.dump(classifier, fd, protocol=pickle.HIGHEST_PROTOCOL)
 
     print('Done.')
-
-
-def identity(v):
-    return v
 
 
 def create_k_nearest_neighbors():
