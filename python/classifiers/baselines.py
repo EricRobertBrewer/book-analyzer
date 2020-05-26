@@ -46,7 +46,7 @@ def train(skip_models=False):
     # Load data.
     print('Retrieving texts...')
     source = 'paragraph_tokens'
-    subset_ratio = shared_parameters.DATA_SUBSET_RATIO
+    subset_ratio = .1#shared_parameters.DATA_SUBSET_RATIO
     subset_seed = shared_parameters.DATA_SUBSET_SEED
     min_len = shared_parameters.DATA_PARAGRAPH_MIN_LEN
     max_len = shared_parameters.DATA_PARAGRAPH_MAX_LEN
@@ -75,7 +75,7 @@ def train(skip_models=False):
         for tokens in source_tokens:
             all_tokens.extend(tokens)
         text_tokens.append(all_tokens)
-    vectorizer = tokenizers.get_vectorizer_and_fit(text_tokens, max_words, remove_stopwords)
+    vectorizer = tokenizers.get_vectorizer_or_fit(max_words, remove_stopwords, text_tokens=text_tokens)
     X = vectorizer.transform(text_tokens)
     print('Vectorized text with {:d} unique words.'.format(len(vectorizer.get_feature_names())))
 

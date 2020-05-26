@@ -142,10 +142,10 @@ def main():
     print('Tokenizing...')
     max_words = shared_parameters.TEXT_MAX_WORDS
     split = '\t'
-    tokenizer = tokenizers.get_tokenizer_and_fit(text_source_tokens,
-                                                 max_words,
-                                                 args.source_mode,
-                                                 args.remove_stopwords)
+    tokenizer = tokenizers.get_tokenizer_or_fit(max_words,
+                                                args.source_mode,
+                                                args.remove_stopwords,
+                                                text_source_tokens=text_source_tokens)
 
     # Convert to sequences.
     print('Converting texts to sequences...')

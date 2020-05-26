@@ -8,7 +8,6 @@ from keras.preprocessing.text import Tokenizer
 
 from python.util import evaluation, shared_parameters
 from python.util import ordinal
-from python.util.net.attention_with_context import AttentionWithContext
 from python import folders
 from python.sites.bookcave import bookcave
 
