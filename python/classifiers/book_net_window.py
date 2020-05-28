@@ -25,10 +25,6 @@ def main():
     parser.add_argument('window',
                         type=int,
                         help='The paragraph window size.')
-    parser.add_argument('--remove_classes',
-                        type=str,
-                        help='Remove classes altogether. Can be used when the minority class is severely tiny. '
-                             'Like `<class1>[,<class2>,...]` as in `3` or `3,0`. Optional.')
     args = parser.parse_args()
     source_mode = 'paragraph'
     remove_stopwords = False
@@ -65,9 +61,6 @@ def main():
     # Reduce labels to the specified category.
     y = Y[category_index]
     category = categories[category_index]
-    levels = category_levels[category_index]
-    k = len(levels)
-    k_train = k
 
     # Tokenize.
     print('Tokenizing...')
@@ -93,14 +86,6 @@ def main():
     print('Loading model...')
     model_path = os.path.join(folders.MODELS_PATH, classifier_name, args.model_file_name)
     model = tf.keras.models.load_model(model_path)
-
-    # Remove classes from training set, if specified.
-    if args.remove_classes is not None:
-        remove_classes = sorted(list(map(int, args.remove_classes.strip().split(','))),
-                                reverse=True)
-        for class_ in remove_classes:
-            y[y >= class_] -= 1
-            k_train -= 1
 
     # Split data set.
     print('Splitting data set...')
