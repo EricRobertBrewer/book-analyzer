@@ -25,6 +25,9 @@ def main():
     parser.add_argument('window',
                         type=int,
                         help='The paragraph window size.')
+    parser.add_argument('--j',
+                        type=int,
+                        help='Only operate on the specified category index.')
     args = parser.parse_args()
 
     max_words = shared_parameters.TEXT_MAX_WORDS
@@ -92,47 +95,72 @@ def main():
         category_classifiers.append(classifiers)
 
     # Infer from paragraphs.
-    for j, y_test in enumerate(Y_test):
-        category = categories[j]
-        print('Predicting category `{}`...'.format(category))
-        k = len(category_levels[j])
-        models = category_classifiers[j]
-        y_pred = np.zeros((len(y_test),), dtype=np.int32)
-        for i in range(len(y_test)):
-            P = text_P[i]
-            q_pred = base.predict_ordinal(models, P, k)
-            label_pred = max(q_pred)
-            y_pred[i] = label_pred
-
-        base_fname = '{}_{:d}_{:d}w'.format(args.stamp, j, args.window)
-        logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, args.model_name))
-        with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
-            fd.write('HYPERPARAMETERS\n')
-            fd.write('\nText\n')
-            fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
-            fd.write('subset_seed={}\n'.format(str(subset_seed)))
-            fd.write('min_len={:d}\n'.format(min_len))
-            fd.write('max_len={:d}\n'.format(max_len))
-            fd.write('min_tokens={:d}\n'.format(min_tokens))
-            fd.write('\nLabels\n')
-            fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
-            fd.write('return_overall={}\n'.format(return_overall))
-            fd.write('\nVectorization\n')
-            fd.write('max_words={:d}\n'.format(max_words))
-            fd.write('vectorizer={}\n'.format(vectorizer.__class__.__name__))
-            fd.write('\nTraining\n')
-            fd.write('test_size={}\n'.format(str(test_size)))
-            fd.write('test_random_state={:d}\n'.format(test_random_state))
-            fd.write('\nRESULTS\n\n')
-            fd.write('Data size: {:d}\n'.format(len(text_source_tokens)))
-            fd.write('Test size: {:d}\n\n'.format(len(text_source_tokens_test)))
-            evaluation.write_confusion_and_metrics(y_test, y_pred, fd, category)
-
-        predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, args.model_name))
-        with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
-            evaluation.write_predictions(y_test, y_pred, fd, category)
+    if args.j is None:
+        for j, y_test in enumerate(Y_test):
+            k = len(category_levels[j])
+            models = category_classifiers[j]
+            infer(j, y_test,
+                  args.model_name, args.stamp, args.window,
+                  categories, k, models, text_P,
+                  subset_ratio, subset_seed, min_len, max_len, min_tokens,
+                  categories_mode, return_overall, max_words, vectorizer,
+                  test_size, test_random_state, len(text_source_tokens), len(text_source_tokens_test))
+    else:
+        k = len(category_levels[args.j])
+        models = category_classifiers[args.j]
+        infer(args.j, Y_test[args.j],
+              args.model_name, args.stamp, args.window,
+              categories, k, models, text_P,
+              subset_ratio, subset_seed, min_len, max_len, min_tokens,
+              categories_mode, return_overall, max_words, vectorizer,
+              test_size, test_random_state, len(text_source_tokens), len(text_source_tokens_test))
 
     print('Done.')
+
+
+def infer(j, y_test,
+          model_name, stamp, window,
+          categories, k, models, text_P,
+          subset_ratio, subset_seed, min_len, max_len, min_tokens,
+          categories_mode, return_overall, max_words, vectorizer,
+          test_size, test_random_state, data_len, test_len):
+    category = categories[j]
+    print('Predicting category `{}`...'.format(category))
+    y_pred = np.zeros((len(y_test),), dtype=np.int32)
+    for i in range(len(y_test)):
+        P = text_P[i]
+        q_pred = base.predict_ordinal(models, P, k)
+        label_pred = max(q_pred)
+        y_pred[i] = label_pred
+
+    base_fname = '{}_{:d}_{:d}w'.format(stamp, j, window)
+    logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, model_name))
+    with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
+        fd.write('HYPERPARAMETERS\n')
+        fd.write('\nText\n')
+        fd.write('subset_ratio={}\n'.format(str(subset_ratio)))
+        fd.write('subset_seed={}\n'.format(str(subset_seed)))
+        fd.write('min_len={:d}\n'.format(min_len))
+        fd.write('max_len={:d}\n'.format(max_len))
+        fd.write('min_tokens={:d}\n'.format(min_tokens))
+        fd.write('\nLabels\n')
+        fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
+        fd.write('return_overall={}\n'.format(return_overall))
+        fd.write('\nVectorization\n')
+        fd.write('max_words={:d}\n'.format(max_words))
+        fd.write('vectorizer={}\n'.format(vectorizer.__class__.__name__))
+        fd.write('\nTraining\n')
+        fd.write('test_size={}\n'.format(str(test_size)))
+        fd.write('test_random_state={:d}\n'.format(test_random_state))
+        fd.write('\nRESULTS\n\n')
+        fd.write('Data size: {:d}\n'.format(data_len))
+        fd.write('Test size: {:d}\n\n'.format(test_len))
+        evaluation.write_confusion_and_metrics(y_test, y_pred, fd, category)
+
+    predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, model_name))
+    with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
+        evaluation.write_predictions(y_test, y_pred, fd, category)
+
 
 
 if __name__ == '__main__':
