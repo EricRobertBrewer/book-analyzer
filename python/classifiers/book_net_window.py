@@ -130,10 +130,6 @@ def main():
         fd.write('\nLabels\n')
         fd.write('categories_mode=\'{}\'\n'.format(categories_mode))
         fd.write('return_overall={}\n'.format(return_overall))
-        if args.remove_classes is not None:
-            fd.write('remove_classes={}\n'.format(args.remove_classes))
-        else:
-            fd.write('No classes removed.\n')
         fd.write('\nTokenization\n')
         fd.write('max_words={:d}\n'.format(max_words))
         fd.write('n_tokens={:d}\n'.format(n_tokens))
