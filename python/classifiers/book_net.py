@@ -19,6 +19,7 @@ from python.sites.bookcave import bookcave
 from python.text import load_embeddings, tokenizers
 from python.util import evaluation, shared_parameters
 from python.util import ordinal
+from python.util.net.attention_with_context import AttentionWithContext
 from python.util.net.batch_generators import SingleInstanceBatchGenerator, TransformBalancedBatchGenerator
 
 
@@ -37,6 +38,10 @@ def main():
                         default='paragraph',
                         choices=['paragraph', 'sentence'],
                         help='The source of text. Default is `paragraph`.')
+    parser.add_argument('--net_mode',
+                        default='cnn',
+                        choices=['rnn', 'cnn', 'rnncnn'],
+                        help='The type of neural network. Default is `cnn`.')
     parser.add_argument('--remove_stopwords',
                         action='store_true',
                         help='Remove stop-words from text. Default is False.')
@@ -89,7 +94,7 @@ def main():
                         help='An optional note that will be appended to the names of generated files.')
     args = parser.parse_args()
 
-    classifier_name = '{}_{}_{}'.format(args.source_mode, args.agg_mode, args.label_mode)
+    classifier_name = '{}_{}_{}_{}'.format(args.source_mode, args.net_mode, args.agg_mode, args.label_mode)
 
     start_time = int(time.time())
     if 'SLURM_JOB_ID' in os.environ:
@@ -171,10 +176,20 @@ def main():
 
     # Create model.
     print('Creating model...')
-    cnn_filters = 16
-    cnn_filter_sizes = [1, 2, 3, 4]
-    cnn_activation = 'elu'
-    cnn_l2 = .001
+    net_params = dict()
+    if args.net_mode == 'rnn' or args.net_mode == 'rnncnn':
+        net_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
+        net_params['rnn_units'] = 128
+        net_params['rnn_l2'] = .001
+        net_params['rnn_dense_units'] = 64
+        net_params['rnn_dense_activation'] = 'elu'
+        net_params['rnn_dense_l2'] = .001
+        net_params['rnn_agg'] = 'attention'
+    if args.net_mode == 'cnn' or args.net_mode == 'rnncnn':
+        net_params['cnn_filters'] = 16
+        net_params['cnn_filter_sizes'] = [1, 2, 3, 4]
+        net_params['cnn_activation'] = 'elu'
+        net_params['cnn_l2'] = .001
     agg_params = dict()
     if args.agg_mode == 'rnn':
         agg_params['rnn'] = CuDNNGRU if tf.test.is_gpu_available(cuda_only=True) else GRU
@@ -186,7 +201,7 @@ def main():
     book_dropout = args.book_dropout
     model = create_model(
         n_tokens, embedding_matrix, args.embedding_trainable,
-        cnn_filters, cnn_filter_sizes, cnn_activation, cnn_l2,
+        args.net_mode, net_params,
         args.agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
         book_dropout, k, category, args.label_mode)
@@ -332,10 +347,19 @@ def main():
         fd.write('embedding_path=\'{}\'\n'.format(embedding_path))
         fd.write('embedding_trainable={}\n'.format(args.embedding_trainable))
         fd.write('\nModel\n')
-        fd.write('cnn_filters={:d}\n'.format(cnn_filters))
-        fd.write('cnn_filter_sizes={}\n'.format(str(cnn_filter_sizes)))
-        fd.write('cnn_activation=\'{}\'\n'.format(cnn_activation))
-        fd.write('cnn_l2={}\n'.format(str(cnn_l2)))
+        if args.net_mode == 'rnn' or args.net_mode == 'rnncnn':
+            fd.write('rnn={}\n'.format(net_params['rnn'].__name__))
+            fd.write('rnn_units={:d}\n'.format(net_params['rnn_units']))
+            fd.write('rnn_l2={}\n'.format(str(net_params['rnn_l2'])))
+            fd.write('rnn_dense_units={:d}\n'.format(net_params['rnn_dense_units']))
+            fd.write('rnn_dense_activation=\'{}\'\n'.format(net_params['rnn_dense_activation']))
+            fd.write('rnn_dense_l2={}\n'.format(str(net_params['rnn_dense_l2'])))
+            fd.write('rnn_agg={}\n'.format(net_params['rnn_agg']))
+        if args.net_mode == 'cnn' or args.net_mode == 'rnncnn':
+            fd.write('cnn_filters={:d}\n'.format(net_params['cnn_filters']))
+            fd.write('cnn_filter_sizes={}\n'.format(str(net_params['cnn_filter_sizes'])))
+            fd.write('cnn_activation=\'{}\'\n'.format(net_params['cnn_activation']))
+            fd.write('cnn_l2={}\n'.format(str(net_params['cnn_l2'])))
         if args.agg_mode == 'rnn':
             fd.write('agg_rnn={}\n'.format(agg_params['rnn'].__name__))
             fd.write('agg_rnn_units={:d}\n'.format(agg_params['rnn_units']))
@@ -389,7 +413,7 @@ def identity(v):
 
 def create_model(
         n_tokens, embedding_matrix, embedding_trainable,
-        cnn_filters, cnn_filter_sizes, cnn_activation, cnn_l2,
+        net_mode, net_params,
         agg_mode, agg_params,
         book_dense_units, book_dense_activation, book_dense_l2,
         book_dropout, k, output_name, label_mode):
@@ -400,22 +424,15 @@ def create_model(
                     d,
                     weights=[embedding_matrix],
                     trainable=embedding_trainable)(input_p)  # (T, d)
-    if cnn_l2 is not None:
-        cnn_l2 = regularizers.l2(cnn_l2)
-    x_p = Reshape((n_tokens, d, 1))(x_p)  # (T, d, 1)
-    X_p = [Conv2D(cnn_filters,
-                  (filter_size, d),
-                  strides=(1, 1),
-                  padding='valid',
-                  activation=cnn_activation,
-                  kernel_regularizer=cnn_l2)(x_p)
-           for filter_size in cnn_filter_sizes]  # [(T - z + 1, f)]; z = filter_size, f = filters
-    X_p = [MaxPool2D(pool_size=(n_tokens - cnn_filter_sizes[i] + 1, 1),
-                     strides=(1, 1),
-                     padding='valid')(x_p)
-           for i, x_p in enumerate(X_p)]  # [(f, 1)]
-    x_p = Concatenate(axis=1)(X_p)  # (f * |Z|); |Z| = length of filter_sizes
-    x_p = Flatten()(x_p)  # (f * |Z|)
+    if net_mode == 'rnn':
+        x_p = create_source_rnn(net_params, x_p)
+    elif net_mode == 'cnn':
+        x_p = create_source_cnn(n_tokens, d, net_params, x_p)
+    else:  # net_mode == 'rnncnn':
+        x_p = Concatenate()([
+            create_source_rnn(net_params, x_p),
+            create_source_cnn(n_tokens, d, net_params, x_p)
+        ])
     source_encoder = Model(input_p, x_p)  # (m_p); constant per configuration
 
     # Consider signals among all sources of books.
@@ -452,6 +469,54 @@ def create_model(
     else:  # label_mode == shared_parameters.LABEL_MODE_REGRESSION:
         output = Dense(1, activation='linear', name=output_name)(x_b)
     return Model(input_b, output)
+
+
+def create_source_rnn(net_params, x_p):
+  rnn = net_params['rnn']
+  rnn_units = net_params['rnn_units']
+  rnn_l2 = regularizers.l2(net_params['rnn_l2']) if net_params['rnn_l2'] is not None else None
+  rnn_dense_units = net_params['rnn_dense_units']
+  rnn_dense_activation = net_params['rnn_dense_activation']
+  rnn_dense_l2 = regularizers.l2(net_params['rnn_dense_l2']) if net_params['rnn_dense_l2'] is not None else None
+  rnn_agg = net_params['rnn_agg']
+  x_p = Bidirectional(rnn(rnn_units,
+                          kernel_regularizer=rnn_l2,
+                          return_sequences=True))(x_p)  # (2T, h_p)
+  x_p = TimeDistributed(Dense(rnn_dense_units,
+                              activation=rnn_dense_activation,
+                              kernel_regularizer=rnn_dense_l2))(x_p)  # (2T, c_p)
+  if rnn_agg == 'attention':
+    x_p = AttentionWithContext()(x_p)  # (c_p)
+  elif rnn_agg == 'maxavg':
+    x_p = Concatenate()([
+      GlobalMaxPooling1D()(x_p),
+      GlobalAveragePooling1D()(x_p)
+    ])  # (2c_p)
+  else:  # rnn_agg == 'max':
+    x_p = GlobalMaxPooling1D()(x_p)  # (c_p)
+  return x_p
+
+
+def create_source_cnn(n_tokens, d, net_params, x_p):
+  cnn_filters = net_params['cnn_filters']
+  cnn_filter_sizes = net_params['cnn_filter_sizes']
+  cnn_activation = net_params['cnn_activation']
+  cnn_l2 = regularizers.l2(net_params['cnn_l2']) if net_params['cnn_l2'] is not None else None
+  x_p = Reshape((n_tokens, d, 1))(x_p)  # (T, d, 1)
+  X_p = [Conv2D(cnn_filters,
+                (filter_size, d),
+                strides=(1, 1),
+                padding='valid',
+                activation=cnn_activation,
+                kernel_regularizer=cnn_l2)(x_p)
+         for filter_size in cnn_filter_sizes]  # [(T - z + 1, f)]; z = filter_size, f = filters
+  X_p = [MaxPool2D(pool_size=(n_tokens - cnn_filter_sizes[i] + 1, 1),
+                   strides=(1, 1),
+                   padding='valid')(x_p)
+         for i, x_p in enumerate(X_p)]  # [(f, 1)]
+  x_p = Concatenate(axis=1)(X_p)  # (f * |Z|); |Z| = length of filter_sizes
+  x_p = Flatten()(x_p)  # (f * |Z|)
+  return x_p
 
 
 def transform_X(X, **kwargs):
