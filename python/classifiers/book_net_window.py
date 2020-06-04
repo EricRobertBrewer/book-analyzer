@@ -4,6 +4,7 @@ import time
 
 # Weird "`GLIBCXX_...' not found" error occurs on rc.byu.edu if `sklearn` is imported before `tensorflow`.
 import tensorflow as tf
+import keras
 from keras.preprocessing.sequence import pad_sequences
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -12,6 +13,7 @@ from python import folders
 from python.sites.bookcave import bookcave
 from python.text import tokenizers
 from python.util import evaluation, shared_parameters
+from python.util.net.attention_with_context import AttentionWithContext
 from python.util import ordinal
 
 
@@ -20,6 +22,8 @@ def main():
         description='Classify the maturity level of a book by its paragraphs.',
         formatter_class=RawTextHelpFormatter
     )
+    parser.add_argument('classifier_name',
+                        help='The name of the classifier.')
     parser.add_argument('model_file_name',
                         help='The file name of the model to load.')
     parser.add_argument('window',
@@ -30,7 +34,6 @@ def main():
     remove_stopwords = False
 
     start_time = int(time.time())
-    classifier_name = 'paragraph_max_ordinal'
     model_file_base_name = args.model_file_name[:args.model_file_name.rindex('.')]
     category_index = int(model_file_base_name[-1])
     base_fname = '{}_{:d}w'.format(model_file_base_name, args.window)
@@ -84,8 +87,14 @@ def main():
 
     # Load model.
     print('Loading model...')
-    model_path = os.path.join(folders.MODELS_PATH, classifier_name, args.model_file_name)
-    model = tf.keras.models.load_model(model_path)
+    model_path = os.path.join(folders.MODELS_PATH, args.classifier_name, args.model_file_name)
+    if 'rnn' in args.classifier_name:
+        # Since `keras` was used with the custom layer, we have to reload it with `keras`.
+        # https://github.com/keras-team/keras/issues/10907
+        custom_objects = {'AttentionWithContext': AttentionWithContext}
+        model = keras.models.load_model(model_path, custom_objects=custom_objects)
+    else:
+        model = tf.keras.models.load_model(model_path)
 
     # Split data set.
     print('Splitting data set...')
@@ -114,9 +123,10 @@ def main():
 
     # Write results.
     print('Writing results...')
-    logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, classifier_name))
+    logs_path = folders.ensure(os.path.join(folders.LOGS_PATH, args.classifier_name))
     with open(os.path.join(logs_path, '{}.txt'.format(base_fname)), 'w') as fd:
         fd.write('PARAMETERS\n\n')
+        fd.write('classifier_name={}\n'.format(args.classifier_name))
         fd.write('model_file_name={}\n'.format(args.model_file_name))
         fd.write('window={:d}\n'.format(args.window))
         fd.write('\nHYPERPARAMETERS\n')
@@ -143,7 +153,7 @@ def main():
 
     # Write predictions.
     print('Writing predictions...')
-    predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, classifier_name))
+    predictions_path = folders.ensure(os.path.join(folders.PREDICTIONS_PATH, args.classifier_name))
     with open(os.path.join(predictions_path, '{}.txt'.format(base_fname)), 'w') as fd:
         evaluation.write_predictions(y_test, y_pred, fd, category)
 
