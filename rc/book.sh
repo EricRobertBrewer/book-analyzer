@@ -18,7 +18,7 @@ do
         plateau_patience=(16 22 14 17 15 11 24 27)
         early_stopping_patience=(25 34 21 26 23 16 36 41)
         epochs=(335 457 289 349 314 220 490 557)
-    else  # [ $net == 'rnncnn' ]
+    else  # [[ $net == 'rnncnn' ]]
         plateau_patience=(12 11 2 3 6 6 6 5)
         early_stopping_patience=(16 15 3 4 8 8 8 7)
         epochs=(337 302 78 96 173 176 176 153)
